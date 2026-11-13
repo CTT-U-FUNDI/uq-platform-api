@@ -1,0 +1,71 @@
+﻿// ====================
+// 📋 FILE D'ATTENTE KYC
+// ====================
+//
+// Les dossiers sont traites 1 par 1 par le proprietaire.
+//
+// ====================
+
+use serde::{Serialize, Deserialize};
+use crate::kyc::dossier::{KycDossier, KycStatus};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct KycQueue {
+    pub dossiers: Vec<KycDossier>,
+}
+
+impl KycQueue {
+    pub fn new() -> Self {
+        Self { dossiers: Vec::new() }
+    }
+
+    /// Ajoute un dossier a la file
+    pub fn ajouter(&mut self, dossier: KycDossier) {
+        // Verifier si deja present
+        if let Some(existing) = self.dossiers.iter_mut().find(|d| d.uq_number == dossier.uq_number) {
+            *existing = dossier;
+        } else {
+            self.dossiers.push(dossier);
+        }
+    }
+
+    /// Retourne le prochain dossier en attente
+    pub fn prochain(&self) -> Option<&KycDossier> {
+        self.dossiers.iter().find(|d| d.statut == KycStatus::EnAttente)
+    }
+
+    /// Liste tous les dossiers en attente
+    pub fn en_attente(&self) -> Vec<&KycDossier> {
+        self.dossiers.iter().filter(|d| d.statut == KycStatus::EnAttente).collect()
+    }
+
+    /// Valide un dossier
+    pub fn valider(&mut self, uq_number: &str, par: &str) -> Result<(), String> {
+        let dossier = self.dossiers.iter_mut()
+            .find(|d| d.uq_number == uq_number)
+            .ok_or("Dossier introuvable")?;
+
+        dossier.statut = KycStatus::Verifie;
+        dossier.decision_at = Some(chrono::Utc::now().timestamp());
+        dossier.decision_par = Some(par.to_string());
+        Ok(())
+    }
+
+    /// Refuse un dossier
+    pub fn refuser(&mut self, uq_number: &str, raison: &str, par: &str) -> Result<(), String> {
+        let dossier = self.dossiers.iter_mut()
+            .find(|d| d.uq_number == uq_number)
+            .ok_or("Dossier introuvable")?;
+
+        dossier.statut = KycStatus::Refuse;
+        dossier.decision_at = Some(chrono::Utc::now().timestamp());
+        dossier.decision_par = Some(par.to_string());
+        dossier.raison_refus = Some(raison.to_string());
+        Ok(())
+    }
+
+    /// Compte les dossiers en attente
+    pub fn count_en_attente(&self) -> usize {
+        self.dossiers.iter().filter(|d| d.statut == KycStatus::EnAttente).count()
+    }
+}

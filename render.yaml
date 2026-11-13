@@ -1,0 +1,40 @@
+# UQ Platform API — déploiement Render (Blueprint)
+# 1. Pousser ce dossier sur GitHub
+# 2. Render → New → Blueprint → sélectionner le repo
+# 3. Renseigner les "sync: false" (dashboard Render ou `render` CLI)
+services:
+  - type: web
+    name: uq-platform-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: RUST_HOST
+        value: 0.0.0.0
+      - key: ALLOWED_ORIGINS
+        value: https://uqplatform.com,https://www.uqplatform.com,http://localhost:5173
+      # ---- Secrets : à renseigner dans le dashboard Render ----
+      - key: JWT_SECRET
+        sync: false
+      - key: TERMINAL_AUTH_KEY
+        sync: false
+      - key: KYC_SECRET_SERVER
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_NUMBER
+        sync: false
+      - key: OWNER_PASSWORD_INITIAL
+        sync: false
+      - key: OWNER_UNLOCK_CODE
+        sync: false
+      # Optionnels (IA / marché)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_API_SECRET
+        sync: false

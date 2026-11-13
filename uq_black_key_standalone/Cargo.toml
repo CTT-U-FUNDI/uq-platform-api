@@ -1,0 +1,20 @@
+[package]
+name = "uq_black_key_standalone"
+version = "1.0.1"
+edition = "2021"
+description = "UqBlackKey 512 bits — secure cryptographic key management with HKDF, AES-256-GCM and Ed25519 signing"
+
+[dependencies]
+rand = "0.8"
+sha2 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+aes-gcm = { version = "0.10", features = ["std"] }
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[lib]
+name = "uq_black_key_standalone"
+path = "src/lib.rs"
+

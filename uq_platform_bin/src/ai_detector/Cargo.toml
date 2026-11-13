@@ -1,0 +1,12 @@
+﻿[package]
+name = "ai_detector"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ai_detector"
+path = "src/lib.rs"
+
+[dependencies]
+image = "0.25"
+log = "0.4"

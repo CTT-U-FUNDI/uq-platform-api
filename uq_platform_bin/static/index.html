@@ -1,0 +1,423 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UQ Platform — Votre Banque Décentralisée</title>
+    <style>
+        :root {
+            --bg: #0f0f1a;
+            --card: #1a1a2e;
+            --card-hover: #242444;
+            --primary: #8b5cf6;
+            --primary-dark: #6d28d9;
+            --gold: #f59e0b;
+            --green: #10b981;
+            --red: #ef4444;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .app { max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; }
+        
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 10px 5px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+        }
+        .nav-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 8px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .nav-btn .icon { font-size: 22px; }
+        .nav-btn.active { color: var(--primary); background: rgba(139, 92, 246, 0.15); }
+        .nav-btn:hover { color: var(--text); }
+        
+        /* Screens */
+        .screen { display: none; padding: 16px; animation: fadeIn 0.3s; }
+        .screen.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Cards */
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s;
+        }
+        .card:hover { background: var(--card-hover); }
+        
+        /* Balance */
+        .balance-display {
+            background: linear-gradient(135deg, #8b5cf6, #6d28d9, #4c1d95);
+            border-radius: 20px;
+            padding: 28px 24px;
+            text-align: center;
+            margin-bottom: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .balance-display::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        }
+        .balance-label { font-size: 13px; opacity: 0.8; letter-spacing: 1px; text-transform: uppercase; }
+        .balance-value { font-size: 42px; font-weight: 800; margin: 8px 0; position: relative; }
+        .balance-usd { font-size: 16px; opacity: 0.7; position: relative; }
+        
+        /* Grid */
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        
+        /* Case card */
+        .case-card {
+            background: var(--card);
+            border-radius: 14px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid transparent;
+        }
+        .case-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .case-icon { font-size: 28px; margin-bottom: 6px; }
+        .case-name { font-size: 11px; color: var(--text-muted); }
+        .case-value { font-size: 14px; font-weight: 600; margin-top: 4px; }
+        
+        /* Buttons */
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.3s;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        .btn:hover { background: var(--primary-dark); transform: translateY(-1px); }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+        .btn-gold { background: var(--gold); color: #000; }
+        
+        /* Inputs */
+        .input {
+            background: var(--card);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text);
+            padding: 14px 16px;
+            border-radius: 12px;
+            width: 100%;
+            font-size: 15px;
+            margin-bottom: 10px;
+            transition: border 0.3s;
+        }
+        .input:focus { outline: none; border-color: var(--primary); }
+        
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--green);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 14px;
+            z-index: 1000;
+            animation: slideUp 0.3s;
+            display: none;
+        }
+        @keyframes slideUp { from { transform: translateX(-50%) translateY(20px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+        
+        /* Loading */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <nav class="navbar">
+            <button class="nav-btn active" onclick="show('coffre',this)"><span class="icon">💼</span>Coffre</button>
+            <button class="nav-btn" onclick="show('echanges',this)"><span class="icon">🔄</span>Échanges</button>
+            <button class="nav-btn" onclick="show('marche',this)"><span class="icon">🏪</span>Marché</button>
+            <button class="nav-btn" onclick="show('chat',this)"><span class="icon">💬</span>Chat</button>
+            <button class="nav-btn" onclick="show('profil',this)"><span class="icon">👤</span>Profil</button>
+        </nav>
+
+        <!-- ÉCRAN COFFRE -->
+        <div id="coffre" class="screen active">
+            <div class="balance-display">
+                <div class="balance-label">Disponibilité BORB</div>
+                <div class="balance-value" id="bal_borb">0 BORB</div>
+                <div class="balance-usd" id="bal_usd">≈ 0 USD</div>
+            </div>
+            
+            <h3 style="margin-bottom:10px;color:#8b5cf6;">📦 Les 6 Cases</h3>
+            <div class="grid-3" id="cases_container">
+                <div class="case-card" onclick="refreshCases()">
+                    <div class="case-icon">💰</div>
+                    <div class="case-name">Trésor</div>
+                    <div class="case-value" id="case_treasury">--</div>
+                </div>
+                <div class="case-card"><div class="case-icon">💸</div><div class="case-name">Frais</div><div class="case-value" id="case_fees">--</div></div>
+                <div class="case-card"><div class="case-icon">🏆</div><div class="case-name">Récompenses</div><div class="case-value" id="case_rewards">--</div></div>
+                <div class="case-card"><div class="case-icon">❄️</div><div class="case-name">Épargne</div><div class="case-value" id="case_savings">--</div></div>
+                <div class="case-card"><div class="case-icon">💳</div><div class="case-name">Crédit</div><div class="case-value" id="case_credit">--</div></div>
+                <div class="case-card"><div class="case-icon">🛡️</div><div class="case-name">Bouclier</div><div class="case-value" id="case_shield">--</div></div>
+            </div>
+            
+            <div class="card">
+                <h4>🔄 Conversion</h4>
+                <input class="input" id="conv_amount" type="number" placeholder="Montant" value="10000">
+                <div class="grid-2">
+                    <button class="btn btn-outline" onclick="convert('borb','BORB')">borb → BORB</button>
+                    <button class="btn btn-outline" onclick="convert('BORB','borb')">BORB → borb</button>
+                </div>
+            </div>
+            
+            <button class="btn" onclick="createAccount()">👤 Créer un compte UQ</button>
+            <button class="btn btn-gold" onclick="claimUbi()">🎁 Réclamer mon UBI</button>
+        </div>
+
+        <!-- ÉCRAN ÉCHANGES -->
+        <div id="echanges" class="screen">
+            <div class="card" id="price_card">
+                <h3>📊 Prix BORB</h3>
+                <p id="price_gold">--</p>
+                <p id="price_usd">--</p>
+            </div>
+            <button class="btn" onclick="getPrices()">🔄 Actualiser les prix</button>
+            <button class="btn btn-outline" onclick="createOrder()">📝 Créer un ordre d'échange</button>
+        </div>
+
+        <!-- ÉCRAN MARCHÉ -->
+        <div id="marche" class="screen">
+            <input class="input" id="search_input" placeholder="🔍 Rechercher un produit..." onkeyup="searchMarket()">
+            <div id="search_results"></div>
+            <button class="btn" onclick="createShop()">🏪 Ouvrir ma boutique</button>
+            <button class="btn btn-outline" onclick="sellConnection()">🛰️ Vendre ma connexion 4G</button>
+            <button class="btn btn-outline" onclick="listShops()">📋 Voir les boutiques</button>
+        </div>
+
+        <!-- ÉCRAN CHAT -->
+        <div id="chat" class="screen">
+            <div class="card" id="messages_container" style="min-height:300px;max-height:400px;overflow-y:auto;">
+                <div id="messages"></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <input class="input" id="chat_input" placeholder="Votre message..." style="margin-bottom:0;">
+                <button class="btn" onclick="sendMsg()" style="width:auto;margin-bottom:0;">➤</button>
+            </div>
+        </div>
+
+        <!-- ÉCRAN PROFIL -->
+        <div id="profil" class="screen">
+            <div class="card">
+                <h3>👤 Mon Profil</h3>
+                <div id="profile_info"></div>
+            </div>
+            <button class="btn" onclick="getReputation()">⭐ Voir ma réputation</button>
+            <button class="btn btn-outline" onclick="createIdentity()">🪪 Créer mon identité UQ</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API = window.location.origin;
+        
+        function show(id, btn) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+        
+        function toast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 3000);
+        }
+        
+        async function getBalance() {
+            try {
+                const r = await fetch(API + '/api/borb/balance/test');
+                const d = await r.json();
+                document.getElementById('bal_borb').textContent = d.balance_borb + ' BORB';
+                document.getElementById('bal_usd').textContent = '≈ ' + d.balance_borb + ' USD';
+            } catch(e) { toast('Erreur balance'); }
+        }
+        
+        async function refreshCases() {
+            try {
+                const r = await fetch(API + '/api/cases/stats');
+                const d = await r.json();
+                if (d.cases) {
+                    d.cases.forEach(c => {
+                        const id = 'case_' + c.name.toLowerCase()
+                            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                            .replace('treasury','treasury').replace('fees','fees')
+                            .replace('rewards','rewards').replace('savings','savings')
+                            .replace('credit','credit').replace('shield','shield');
+                        const el = document.getElementById(id);
+                        if (el) el.textContent = (c.balance / 1e9).toFixed(1) + ' Mrd';
+                    });
+                }
+            } catch(e) { toast('Erreur cases'); }
+        }
+        
+        async function convert(from, to) {
+            const amount = document.getElementById('conv_amount').value;
+            const r = await fetch(API + '/api/borb/convert', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({amount: parseFloat(amount), from, to})
+            });
+            const d = await r.json();
+            toast(d.formula || 'Converti !');
+        }
+        
+        async function createAccount() {
+            const r = await fetch(API + '/api/account/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: '{}'
+            });
+            const d = await r.json();
+            toast('Compte créé : ' + d.uq_number);
+            getBalance();
+        }
+        
+        async function claimUbi() {
+            const r = await fetch(API + '/api/ubi/claim', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: '{}'
+            });
+            toast('UBI réclamé !');
+        }
+        
+        async function getPrices() {
+            try {
+                const r1 = await fetch(API + '/api/price/gold');
+                const d1 = await r1.json();
+                document.getElementById('price_gold').textContent = 'Or : ' + (d1.price_usd_per_ounce || 2000) + ' USD/once';
+                const r2 = await fetch(API + '/api/price/usd');
+                const d2 = await r2.json();
+                document.getElementById('price_usd').textContent = '1 BORB = ' + (d2.ucoin_to_usd || 1) + ' USD';
+            } catch(e) { toast('Erreur prix'); }
+        }
+        
+        async function createOrder() {
+            await fetch(API + '/api/exchange/order', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+            toast('Ordre créé');
+        }
+        
+        async function searchMarket() {
+            const q = document.getElementById('search_input').value;
+            const r = await fetch(API + '/api/search?q=' + q);
+            const d = await r.json();
+            document.getElementById('search_results').innerHTML = '<div class="card"><p>' + d.total + ' résultats pour "' + q + '"</p></div>';
+        }
+        
+        async function createShop() {
+            await fetch(API + '/api/shop/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:'Ma Boutique UQ'})});
+            toast('Boutique créée !');
+        }
+        
+        async function sellConnection() {
+            await fetch(API + '/api/connect/sell', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'4G', price_per_mb:5})});
+            toast('Connexion en vente !');
+        }
+        
+        async function listShops() {
+            const r = await fetch(API + '/api/shops/list');
+            const d = await r.json();
+            document.getElementById('search_results').innerHTML = '<div class="card"><p>' + d.total + ' boutiques</p></div>';
+        }
+        
+        async function sendMsg() {
+            const content = document.getElementById('chat_input').value;
+            if (!content) return;
+            await fetch(API + '/api/chat/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sender:'user1', recipient:'user2', content})});
+            document.getElementById('messages').innerHTML += '<div class="card" style="background:#8b5cf6;"><p>' + content + '</p></div>';
+            document.getElementById('chat_input').value = '';
+        }
+        
+        async function getReputation() {
+            const r = await fetch(API + '/api/reputation/test');
+            const d = await r.json();
+            document.getElementById('profile_info').innerHTML = '<p>⭐ Réputation : ' + (d.score || 50) + '/100</p>';
+        }
+        
+        async function createIdentity() {
+            await fetch(API + '/api/identity/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+            toast('Identité créée');
+        }
+        
+        getBalance();
+        refreshCases();
+        getPrices();
+    </script>
+</body>
+</html>
+
