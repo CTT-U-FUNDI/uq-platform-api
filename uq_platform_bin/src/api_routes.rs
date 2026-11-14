@@ -56,6 +56,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/mail/mark-read", web::post().to(crate::mail_routes::mail_mark_read))
         .route("/api/mail/send", web::post().to(crate::mail_routes::mail_send))
         .route("/api/mail/in", web::post().to(crate::mail_routes::mail_in))
+        // ===== CONTACT PUBLIC (site vitrine) =====
+        .route("/api/contact", web::post().to(crate::contact_routes::contact_envoyer))
         // ====================
         // UQ SMS — relais OTP (vieux Android → /inbound ; signature Ed25519 user)
         // ====================

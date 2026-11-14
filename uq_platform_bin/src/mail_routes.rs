@@ -118,7 +118,7 @@ pub async fn mail_mark_read(body: web::Json<serde_json::Value>) -> HttpResponse 
 
 /// Envoie un mail via le relais du VPS (HTTPS → sendmail).
 /// UQ_MAIL_RELAY_URL + UQ_MAIL_RELAY_KEY dans .env.
-async fn envoyer_via_relais(from: &str, to: &str, subject: &str, body_text: &str) -> Result<(), String> {
+pub(crate) async fn envoyer_via_relais(from: &str, to: &str, subject: &str, body_text: &str) -> Result<(), String> {
     let url = std::env::var("UQ_MAIL_RELAY_URL")
         .map_err(|_| "UQ_MAIL_RELAY_URL non configuré".to_string())?;
     let key = std::env::var("UQ_MAIL_RELAY_KEY").unwrap_or_default();

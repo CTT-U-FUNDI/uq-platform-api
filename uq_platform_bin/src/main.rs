@@ -41,6 +41,7 @@ mod audit_log;
 mod mail_store;
 mod capsule_routes;
 mod mail_routes;
+mod contact_routes;
 mod sms_store;
 mod sms_routes;
 mod binance_p2p;
