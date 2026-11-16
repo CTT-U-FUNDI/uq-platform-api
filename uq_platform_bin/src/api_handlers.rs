@@ -7771,6 +7771,51 @@ fn base_passkey(uq_number: &str) -> Result<rusqlite::Connection, HttpResponse> {
 /// c'est la ligne `security_devices` + l'horodatage serveur qui decident.
 /// Sans cle connue, le palier est complet : on ne pretend pas verifier une
 /// enclave qui n'a jamais rien signe pour ce compte.
+
+/// POST /api/auth/firebase-token — émet un custom token Firebase pour lier
+/// l'identité UQ (claims.sub) au projet Firebase uqz-platform.
+/// Le client appelle ensuite signInWithCustomToken() : auth.uid = UQ number.
+pub async fn firebase_token(req: actix_web::HttpRequest) -> HttpResponse {
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let email = match std::env::var("FIREBASE_SA_CLIENT_EMAIL") {
+        Ok(v) if !v.is_empty() => v,
+        _ => return HttpResponse::ServiceUnavailable().json(json!({
+            "status":"error","message":"Firebase non configuré (FIREBASE_SA_CLIENT_EMAIL)"
+        })),
+    };
+    let key_pem = match std::env::var("FIREBASE_SA_PRIVATE_KEY") {
+        Ok(v) if !v.is_empty() => v.replace("\n", "
+"),
+        _ => return HttpResponse::ServiceUnavailable().json(json!({
+            "status":"error","message":"Firebase non configuré (FIREBASE_SA_PRIVATE_KEY)"
+        })),
+    };
+    let now = chrono::Utc::now().timestamp();
+    let claims_fb = json!({
+        "iss": email,
+        "sub": email,
+        "aud": "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
+        "iat": now,
+        "exp": now + 3600,
+        "uid": claims.sub,
+    });
+    let token = match jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
+        &claims_fb,
+        &jsonwebtoken::EncodingKey::from_rsa_pem(key_pem.as_bytes())
+            .unwrap_or_else(|_| jsonwebtoken::EncodingKey::from_secret(b"invalid")),
+    ) {
+        Ok(t) => t,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status":"error","message":format!("token: {}", e)
+        })),
+    };
+    HttpResponse::Ok().json(json!({"status":"success","custom_token":token,"uid":claims.sub}))
+}
+
 pub async fn auth_resume(body: web::Json<serde_json::Value>) -> HttpResponse {
     use crate::device_auth as appareils;
 

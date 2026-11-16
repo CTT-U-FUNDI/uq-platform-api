@@ -162,6 +162,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/auth/verify-account", web::post().to(verify_account_exists))
         // Le serveur decide du palier de connexion (24 h / 48 h / 30 jours).
         .route("/api/auth/resume", web::post().to(auth_resume))
+        .route("/api/auth/firebase-token", web::post().to(crate::api_handlers::firebase_token))
         .route("/api/account/me", web::get().to(account_me))
         .route("/api/dev/regen-keys", web::post().to(dev_regen_keys))
         .route("/api/bubble/create", web::post().to(bubble_create))
