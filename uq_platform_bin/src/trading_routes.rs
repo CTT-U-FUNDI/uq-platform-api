@@ -2616,6 +2616,11 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
     let reference = lire_taux(&taux.rates, &devise)
         .map(|par_usd| prix_borb_usd * par_usd)
         .filter(|valeur| valeur.is_finite() && *valeur > 0.0);
+    // Taux live obligatoire : le taux envoye par le client est ignore,
+    // l'offre utilise toujours la reference oracle (prix BORB x taux devise).
+    if let Some(valeur) = reference {
+        cote_taux = valeur;
+    }
     let ecart = reference.map(|valeur| (cote_taux - valeur) / valeur * 100.0);
 
     let insertion = conn.execute(
