@@ -189,6 +189,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/wallet/depot/{uq}", web::get().to(crate::wallet_deposit::mes_depots))
         .route("/api/wallet/depot/{id}/annuler", web::post().to(crate::wallet_deposit::annuler))
         .route("/api/owner/depots", web::get().to(crate::wallet_deposit::owner_liste))
+        .route("/api/owner/frais", web::get().guard(crate::owner_guard::owner_guard()).to(crate::treasury_handlers::owner_frais_get))
+        .route("/api/owner/frais", web::post().guard(crate::owner_guard::owner_guard()).to(crate::treasury_handlers::owner_frais_set))
         .route("/api/owner/depots/{id}/confirmer", web::post().to(crate::wallet_deposit::owner_confirmer))
         .route("/api/owner/depots/{id}/refuser", web::post().to(crate::wallet_deposit::owner_refuser))
         .route("/api/cases/treasury", web::get().guard(crate::owner_guard::owner_guard()).to(case_treasury))

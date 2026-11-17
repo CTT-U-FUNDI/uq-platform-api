@@ -77,12 +77,52 @@ pub fn est_retirable(code: &str) -> bool {
     est_fiat(code) || est_crypto(code)
 }
 
+/// Taux de frais configurables en DB (settings.frais_taux_fiat /
+/// settings.frais_taux_crypto dans uq_index.db) — modifiables sans redeploy.
+/// Fallback : les constantes historiques.
+fn lire_taux_db(cle: &str, defaut: f64) -> f64 {
+    rusqlite::Connection::open("uq_index.db")
+        .ok()
+        .and_then(|c| c.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            rusqlite::params![cle], |r| r.get::<_, String>(0)).ok())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0 && *v < 1.0)
+        .unwrap_or(defaut)
+}
+
+/// Taux lus en DB a chaque appel -> modifiables sans redeploy.
 pub fn taux_frais(code: &str) -> f64 {
     if est_crypto(code) {
-        TAUX_CRYPTO
+        lire_taux_db("frais_taux_crypto", TAUX_CRYPTO)
     } else {
-        TAUX_FIAT
+        lire_taux_db("frais_taux_fiat", TAUX_FIAT)
     }
+}
+
+/// Lit les deux taux (endpoint owner).
+pub fn taux_actuels() -> serde_json::Value {
+    serde_json::json!({
+        "frais_taux_fiat": lire_taux_db("frais_taux_fiat", TAUX_FIAT),
+        "frais_taux_crypto": lire_taux_db("frais_taux_crypto", TAUX_CRYPTO),
+    })
+}
+
+/// Ecrit un taux en DB (endpoint owner). Retourne Err si invalide.
+pub fn definir_taux(cle: &str, valeur: f64) -> Result<(), String> {
+    if !valeur.is_finite() || valeur < 0.0 || valeur >= 1.0 {
+        return Err("Taux invalide (0 <= t < 1)".to_string());
+    }
+    let cle = match cle {
+        "fiat" => "frais_taux_fiat",
+        "crypto" => "frais_taux_crypto",
+        _ => return Err("Cle inconnue (fiat|crypto)".to_string()),
+    };
+    let conn = rusqlite::Connection::open("uq_index.db").map_err(|e| e.to_string())?;
+    conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)", []).map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO settings (key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        rusqlite::params![cle, valeur.to_string()]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn devise_earn(brut: &str) -> Option<String> {

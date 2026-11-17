@@ -444,3 +444,25 @@ pub async fn treasury_wallets_add(req: actix_web::HttpRequest, body: web::Json<s
         })),
     }
 }
+
+/// GET /api/owner/frais — taux fiat/crypto actuels
+pub async fn owner_frais_get(_req: actix_web::HttpRequest) -> actix_web::HttpResponse {
+    actix_web::HttpResponse::Ok().json(crate::frais_plateforme::taux_actuels())
+}
+
+/// POST /api/owner/frais {"type":"fiat"|"crypto","taux":0.0015}
+pub async fn owner_frais_set(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> actix_web::HttpResponse {
+    let ty = body.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let taux = body.get("taux").and_then(|v| v.as_f64()).unwrap_or(-1.0);
+    match crate::frais_plateforme::definir_taux(ty, taux) {
+        Ok(()) => actix_web::HttpResponse::Ok().json(serde_json::json!({
+            "status":"success","frais":crate::frais_plateforme::taux_actuels()
+        })),
+        Err(e) => actix_web::HttpResponse::BadRequest().json(serde_json::json!({
+            "status":"error","message":e
+        })),
+    }
+}
