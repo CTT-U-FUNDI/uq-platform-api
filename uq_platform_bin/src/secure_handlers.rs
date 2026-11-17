@@ -559,3 +559,27 @@ pub async fn secure_forgot_password(body: web::Json<serde_json::Value>) -> HttpR
 
 
 
+
+// DEBUG BETA — verifie la resolution d'un UQ sans connexion.
+pub async fn debug_account_check(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let uq = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    if uq.is_empty() { return bad_data(); }
+
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let account = idx.get_account(&uq);
+    let exists = account.is_some();
+    let is_owner = account.as_ref()
+        .and_then(|a| a.get("is_owner").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let config = crate::application::login_service::get_login_config(&uq).ok();
+
+    HttpResponse::Ok().json(json!({
+        "uq": uq,
+        "exists_in_index": exists,
+        "is_owner": is_owner,
+        "login_config_ok": config.is_some(),
+        "is_owner_config": config.as_ref().map(|c| c.is_owner),
+        "firestore_env": std::env::var("FIREBASE_SA_CLIENT_EMAIL").is_ok(),
+    }))
+}

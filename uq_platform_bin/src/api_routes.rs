@@ -156,6 +156,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/secure/step1", web::post().to(crate::secure_handlers::secure_step1))
         .route("/api/secure/step2", web::post().to(crate::secure_handlers::secure_step2))
         .route("/api/secure/step-login-pin", web::post().to(crate::secure_handlers::secure_step_login_pin))
+        .route("/api/debug/account-check", web::post().to(crate::secure_handlers::debug_account_check))
         .route("/api/secure/finalize-owner", web::post().to(crate::secure_handlers::secure_finalize_owner))
         .route("/api/secure/finalize-user", web::post().to(crate::secure_handlers::secure_finalize_user))
         .route("/api/secure/forgot-password", web::post().to(crate::secure_handlers::secure_forgot_password))
