@@ -2616,10 +2616,24 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
     let reference = lire_taux(&taux.rates, &devise)
         .map(|par_usd| prix_borb_usd * par_usd)
         .filter(|valeur| valeur.is_finite() && *valeur > 0.0);
-    // Taux live obligatoire : le taux envoye par le client est ignore,
-    // l'offre utilise toujours la reference oracle (prix BORB x taux devise).
-    if let Some(valeur) = reference {
-        cote_taux = valeur;
+    // Plancher P2P : jamais moins de 500 CDF (equivalent dans la devise de
+    // l'offre). Au-dessus, le vendeur configure librement ; le taux live UQ
+    // reste la reference affichee (reference_rate).
+    let plancher = {
+        let cdf = lire_taux(&taux.rates, "CDF");
+        let par_devise = lire_taux(&taux.rates, &devise);
+        match (cdf, par_devise) {
+            (Some(cdf_par_usd), Some(devise_par_usd)) if cdf_par_usd > 0.0 => {
+                // 500 CDF en USD, converti dans la devise de l'offre
+                Some(500.0 / cdf_par_usd * devise_par_usd)
+            }
+            _ => None,
+        }
+    };
+    if let Some(min) = plancher {
+        if cote_taux < min {
+            cote_taux = min;
+        }
     }
     let ecart = reference.map(|valeur| (cote_taux - valeur) / valeur * 100.0);
 
