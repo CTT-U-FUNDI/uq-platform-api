@@ -331,11 +331,15 @@ pub async fn secure_step_login_pin(
 
     let (stored_tfa, current_step, _uq) = match result {
         Ok(v) => v,
-        Err(_) => return bad_data(),
+        Err(_) => {
+            eprintln!("🔍 step-login-pin: session introuvable {}", session_id);
+            return HttpResponse::Ok().json(json!({"status":"error","message":"SESSION_INTROUVABLE","debug":"session"}));
+        }
     };
 
     if stored_tfa != tfa_token || current_step != 3 {
-        return bad_data();
+        eprintln!("🔍 step-login-pin: gate fail tfa={} step={} (attendu step=3)", stored_tfa==tfa_token, current_step);
+        return HttpResponse::Ok().json(json!({"status":"error","message":"GATE_FAIL","debug":format!("step={}",current_step)}));
     }
 
     let salt: String = conn.query_row(
@@ -370,7 +374,8 @@ pub async fn secure_step_login_pin(
     };
 
     if !pin_ok {
-        return bad_data();
+        eprintln!("🔍 step-login-pin: PIN incorrect (env_ok={})", env_ok);
+        return HttpResponse::Ok().json(json!({"status":"error","message":"PIN_INCORRECT","debug":format!("env_ok={}",env_ok)}));
     }
 
     let new_tfa = security_login::generate_tfa_token();
