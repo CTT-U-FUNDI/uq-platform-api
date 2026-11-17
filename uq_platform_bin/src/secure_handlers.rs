@@ -212,7 +212,10 @@ pub async fn secure_step2(
     let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
     let ip = get_ip(&req);
 
-    if session_id.is_empty() || tfa_token.is_empty() || password.is_empty() || email.is_empty() {
+    // Login « UQ + mot de passe » : l'email est OPTIONNEL. S'il est absent,
+    // le serveur le resout depuis le uq_number de la session — l'utilisateur
+    // ne saisit jamais son email dans l'app UQZ.
+    if session_id.is_empty() || tfa_token.is_empty() || password.is_empty() {
         return bad_data();
     }
 
@@ -237,6 +240,16 @@ pub async fn secure_step2(
         let _ = crate::application::login_service::increment_failure(&uq);
         return bad_data();
     }
+
+    // Email absent -> resolution interne par numero UQ (login mobile).
+    let email_resolu;
+    let email = if email.trim().is_empty() {
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        match idx.get_email(&uq) {
+            Some(e) if !e.trim().is_empty() => { email_resolu = e; &email_resolu }
+            _ => return bad_data(),
+        }
+    } else { email };
 
     // 2. Valider email + password via le service
     match crate::application::login_service::validate_step2(&uq, email, password) {

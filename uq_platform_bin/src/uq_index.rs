@@ -508,6 +508,17 @@ impl UqIndex {
 
 
     /// Clé publique Ed25519 du compte (pour vérif signature d'autorisation).
+    /// Email associe a un numero UQ — resolution interne pour le login
+    /// « UQ + mot de passe » (l'utilisateur ne saisit jamais son email).
+    pub fn get_email(&self, uq_number: &str) -> Option<String> {
+        let conn = self.conn.lock().ok()?;
+        conn.query_row(
+            "SELECT uq_email FROM uq_index WHERE uq_number = ?1",
+            params![uq_number],
+            |row| row.get::<_, String>(0),
+        ).ok()
+    }
+
     pub fn get_public_key(&self, uq_number: &str) -> Option<Vec<u8>> {
         let conn = self.conn.lock().ok()?;
         conn.query_row(
