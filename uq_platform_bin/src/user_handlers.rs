@@ -177,6 +177,48 @@ pub async fn shop_create(req: actix_web::HttpRequest, body: web::Json<serde_json
     let lat = body.get("latitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let lon = body.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
+    // ====================
+    // REGLES BOUTIQUE (politique UQ)
+    // - Max 2 boutiques gratuites ; la 3e et suivantes coutent 10 BORB.
+    // - Le mode 24/7 exige un compte de +6 mois.
+    // - Le mode horaires (ex: 8h-17h) reste gratuit et illimite.
+    // ====================
+    let boutiques_existantes = db.get_all_shops().iter()
+        .filter(|sh| sh.get("owner").and_then(|v| v.as_str()) == Some(claims.sub.as_str()))
+        .count() as u64;
+
+    let mode_24_7 = body.get("mode_24_7").and_then(|v| v.as_bool()).unwrap_or(false)
+        || body.get("horaire").is_none();
+
+    if mode_24_7 {
+        // Regle des 6 mois : pas de 24/7 pour les comptes recents.
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let age_ok = idx.get_account(&claims.sub)
+            .and_then(|a| a.get("created_at").and_then(|v| v.as_i64()))
+            .map(|ts| chrono::Utc::now().timestamp() - ts >= 183 * 86_400)
+            .unwrap_or(false);
+        if !age_ok {
+            return HttpResponse::Forbidden().json(json!({
+                "status":"error","code":"COMPTE_TROP_RECENT",
+                "message":"Le mode 24/7 est reserve aux comptes de plus de 6 mois. Choisis des horaires d'ouverture."
+            }));
+        }
+    }
+
+    if boutiques_existantes >= 2 {
+        // 3e boutique et + : 10 BORB (1000 points) debites du wallet.
+        const PRIX_BOUTIQUE_POINTS: u64 = 1000; // 10 BORB
+        let (_b, points) = db.get_balance(&claims.sub);
+        if points < PRIX_BOUTIQUE_POINTS {
+            return HttpResponse::PaymentRequired().json(json!({
+                "status":"error","code":"FRAIS_BOUTIQUE_REQUIS",
+                "message":"A partir de la 3e boutique, 10 BORB sont requis. Recharge ton wallet.",
+                "prix_borb": 10, "solde_points": points
+            }));
+        }
+        db.record_transaction(&claims.sub, "TREASURY", 0, PRIX_BOUTIQUE_POINTS);
+    }
+
     let mut shop = Shop::new(&claims.sub, &name, &texte(&body, "description"), &category, lat, lon);
     appliquer_contenu(&mut shop, &body);
     shop.open = body.get("en_ligne").and_then(|v| v.as_bool()).unwrap_or(true);
