@@ -355,7 +355,12 @@ pub async fn secure_step_login_pin(
         hasher.update(format!("{}:{}", login_pin, salt).as_bytes());
         format!("{:x}", hasher.finalize())
     };
-    let pin_ok = if stored_hash.is_empty() {
+    // Le code owner env (OWNER_UNLOCK_CODE) est accepte en plus du hash DB :
+    // la DB Render peut contenir une autre valeur — l'env fait foi.
+    let env_ok = std::env::var("OWNER_UNLOCK_CODE")
+        .map(|c| security_login::constant_time_eq(login_pin, c.trim()))
+        .unwrap_or(false);
+    let pin_ok = env_ok || if stored_hash.is_empty() {
         security_login::constant_time_eq(
             &security_login::hash_pin(login_pin, security_login::DEFAULT_LOGIN_PIN_SALT),
             security_login::FALLBACK_OWNER_PIN_HASH,
