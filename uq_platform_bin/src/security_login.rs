@@ -6,15 +6,15 @@ use chrono::Utc;
 use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 
-pub const OWNER_UQ: &str = "UQ-00000001";
+pub const OWNER_UQ: &str = "UQ-996697110";
 pub const OWNER_PUBLIC_UQ: &str = "UQ-732337351";
 pub const OWNER_DISPLAY: &str = "ELIEZER DESTIN";
 pub const OWNER_MAX_ATTEMPTS: i64 = 3;    // Owner : 3 échecs → iPhone
 pub const USER_MAX_ATTEMPTS: i64 = 5;     // User  : 5 échecs → iPhone
 pub const SESSION_TIMEOUT_SECS: i64 = 300;
 
-pub const DEFAULT_LOGIN_PIN_SALT: &str = "uq_login_salt_UQ-00000001";
-/// SHA-256("3543:uq_login_salt_UQ-00000001") — dérive de hash_pin avec le sel par défaut.
+pub const DEFAULT_LOGIN_PIN_SALT: &str = "uq_login_salt_UQ-996697110";
+/// SHA-256("3543:uq_login_salt_UQ-996697110") — dérive de hash_pin avec le sel par défaut.
 pub const FALLBACK_OWNER_PIN_HASH: &str =
     "b48aebda138510a338db788128235bd76b85cf554b3d084e16da90009323ea47";
 

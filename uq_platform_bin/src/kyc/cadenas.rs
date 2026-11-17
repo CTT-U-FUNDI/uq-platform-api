@@ -323,7 +323,7 @@ pub fn est_gele(uq_number: &str) -> bool {
 // ====================
 // 👑 KYC OWNER AUTO-VALIDÉ (Mission 7)
 // ====================
-// Le propriétaire (UQ-00000001) n'a pas à fournir photo/vidéo :
+// Le propriétaire (UQ-996697110) n'a pas à fournir photo/vidéo :
 // son KYC est validé d'office. Sans cela, son cadenas restait
 // « verrouille = 1 » et il ne pouvait rien faire (même pas tester
 // la Règle 4).
@@ -333,7 +333,7 @@ pub fn est_gele(uq_number: &str) -> bool {
 //   date_naissance, lieu_naissance, pays, adresse, telephone,
 //   created_at, verifie_at, est_verifie, verrouille, est_actif
 
-pub const OWNER_UQ_NUMBER: &str = "UQ-00000001";
+pub const OWNER_UQ_NUMBER: &str = "UQ-996697110";
 
 pub fn valider_kyc_owner_auto() -> Result<(), String> {
     let db_path = chemin_db(OWNER_UQ_NUMBER);
@@ -397,7 +397,7 @@ pub fn valider_kyc_owner_auto() -> Result<(), String> {
     }
     let _ = crate::persistence::save_global_orb(&orb);
 
-    eprintln!("👑 KYC owner auto-valide (UQ-00000001) — cadenas ouvert");
+    eprintln!("👑 KYC owner auto-valide (UQ-996697110) — cadenas ouvert");
     Ok(())
 }
 

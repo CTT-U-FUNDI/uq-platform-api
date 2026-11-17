@@ -1,6 +1,6 @@
 //! Handlers API pour la protection des binaires propriétaires.
 //! Routes : /api/binaire/*
-//! Auth : signature Ed25519 du owner UQ-00000001.
+//! Auth : signature Ed25519 du owner UQ-996697110.
 
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::json;

@@ -456,7 +456,7 @@ impl GlobalState {
         ).map_err(|e| e.to_string())?;
         
         // 🔐 TRACAGE UBI
-        let db_path = "data/users/uq_00000001.db";
+        let db_path = "data/users/uq_996697110.db";
         if let Ok(conn) = rusqlite::Connection::open(db_path) {
             let _ = crate::borb_tracer::init_borb_origins_table(&conn);
             

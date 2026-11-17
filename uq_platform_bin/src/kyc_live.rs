@@ -511,7 +511,7 @@ mod tests {
         table_sessions().insert(
             "kyc_test_une_fois".to_string(),
             Session {
-                uq: "UQ-00000001".to_string(),
+                uq: "UQ-996697110".to_string(),
                 nonce: "ABC234".to_string(),
                 cree_le: maintenant,
                 gabarit: "Zm9v".to_string(),

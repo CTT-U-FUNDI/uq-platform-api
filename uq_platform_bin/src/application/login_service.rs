@@ -101,7 +101,7 @@ pub fn get_login_config(uq_number: &str) -> Result<LoginConfig, String> {
         }),
         Err(_) => {
             // Pas de config → utiliser les défauts
-            let is_owner = uq_number == "UQ-00000001";
+            let is_owner = uq_number == "UQ-996697110";
             if is_owner {
                 Ok(LoginConfig::default_owner(uq_number))
             } else {
@@ -142,7 +142,7 @@ pub fn ensure_config_exists(uq_number: &str) -> Result<(), String> {
 
     if count == 0 {
         // Créer la config par défaut
-        let is_owner = uq_number == "UQ-00000001";
+        let is_owner = uq_number == "UQ-996697110";
         let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
         let now = chrono::Utc::now().timestamp();
 
@@ -171,7 +171,7 @@ pub fn validate_uq_step1(uq_number: &str, allow_circle_member: bool) -> Result<L
 
     // 1.5 BLOQUER si le compte est membre d'un cercle (sauf bascule owner)
     // Un membre de cercle ne peut PAS se connecter seul depuis l'exterieur.
-    // Il doit passer par le compte owner (UQ-00000001) via X-Switch-From.
+    // Il doit passer par le compte owner (UQ-996697110) via X-Switch-From.
     if !allow_circle_member {
         if let Ok(conn) = Connection::open("uq_index.db") {
             let is_member: i64 = conn.query_row(
@@ -207,7 +207,7 @@ pub fn validate_uq_step1(uq_number: &str, allow_circle_member: bool) -> Result<L
 
 pub fn get_attempts_ok(uq_number: &str) -> i64 {
     let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
 
     if let Ok(conn) = Connection::open(owner_db) {
         return conn.query_row(
@@ -220,7 +220,7 @@ pub fn get_attempts_ok(uq_number: &str) -> i64 {
 }
 
 pub fn increment_attempts_ok(uq_number: &str) -> i64 {
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
     let now = chrono::Utc::now().timestamp();
 
     if let Ok(conn) = Connection::open(owner_db) {
@@ -240,7 +240,7 @@ pub fn increment_attempts_ok(uq_number: &str) -> i64 {
 }
 
 pub fn reset_attempts_ok(uq_number: &str) {
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
     if let Ok(conn) = Connection::open(owner_db) {
         let _ = conn.execute(
             "UPDATE security_login_cooldown_uq SET attempts_ok = 0 WHERE uq_number = ?1",
@@ -342,7 +342,7 @@ pub fn validate_step2(
 // ====================
 
 pub fn increment_failure(uq_number: &str) -> i64 {
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
     let now = chrono::Utc::now().timestamp();
 
     if let Ok(conn) = Connection::open(owner_db) {
@@ -409,7 +409,7 @@ pub fn increment_failure(uq_number: &str) -> i64 {
 // ====================
 
 pub fn is_in_cooldown(uq_number: &str) -> Option<i64> {
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
     let now = chrono::Utc::now().timestamp();
 
     if let Ok(conn) = Connection::open(owner_db) {
@@ -433,7 +433,7 @@ pub fn is_in_cooldown(uq_number: &str) -> Option<i64> {
 // ====================
 
 pub fn reset_cooldown(uq_number: &str) {
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
     if let Ok(conn) = Connection::open(owner_db) {
         let _ = conn.execute(
             "UPDATE security_login_cooldown_uq SET failure_count = 0, cooldown_level = 0, cooldown_until = 0 WHERE uq_number = ?1",
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_default_owner_config() {
-        let cfg = LoginConfig::default_owner("UQ-00000001");
+        let cfg = LoginConfig::default_owner("UQ-996697110");
         assert!(cfg.is_owner);
         assert!(cfg.requires_unlock_code);
         assert!(cfg.requires_triple_attempt);
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_next_step_owner() {
-        let cfg = LoginConfig::default_owner("UQ-00000001");
+        let cfg = LoginConfig::default_owner("UQ-996697110");
         assert_eq!(calculate_next_step(&cfg, 0), 2);
         assert_eq!(calculate_next_step(&cfg, 1), 2);
         assert_eq!(calculate_next_step(&cfg, 2), 2);

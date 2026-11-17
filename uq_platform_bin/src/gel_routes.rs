@@ -67,7 +67,7 @@ pub async fn voir(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
     let uq = path.into_inner();
     // Un non-admin ne peut consulter que son propre état.
     if claims.sub.trim().to_uppercase() != uq.to_uppercase()
-        && claims.sub.trim().to_uppercase() != "UQ-00000001"
+        && claims.sub.trim().to_uppercase() != "UQ-996697110"
     {
         return HttpResponse::Forbidden().json(json!({
             "status": "error",
@@ -86,7 +86,7 @@ pub async fn peut(req: HttpRequest, path: web::Path<String>, query: web::Query<s
     let uq = path.into_inner();
     let action = query.get("action").map(String::as_str).unwrap_or("");
     if claims.sub.trim().to_uppercase() != uq.to_uppercase()
-        && claims.sub.trim().to_uppercase() != "UQ-00000001"
+        && claims.sub.trim().to_uppercase() != "UQ-996697110"
     {
         return HttpResponse::Forbidden().json(json!({
             "status": "error",

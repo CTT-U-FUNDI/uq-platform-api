@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn test_uq_valide() {
         assert!(validate_uq_number("UQ-732688531").is_ok());
-        assert!(validate_uq_number("UQ-00000001").is_ok());
+        assert!(validate_uq_number("UQ-996697110").is_ok());
         assert!(!validate_uq_number("UQ-123").is_ok());
         assert!(!validate_uq_number("732688531").is_ok());
     }

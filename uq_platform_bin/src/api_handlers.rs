@@ -955,15 +955,15 @@ pub async fn bubble_transfer(
 
     let mut sender = claims.sub.clone();
     // ===== Profil 2 : si le sender est le owner, utiliser UQ-732337351 =====
-    let profil2_active = claims.sub == "UQ-00000001";
+    let profil2_active = claims.sub == "UQ-996697110";
     if profil2_active {
         sender = "UQ-732337351".to_string();
         eprintln!("[PROFIL2] Utilisation de UQ-732337351 comme sender");
     }
 
     let sender_original = claims.sub.clone();
-    let accepte_owner_ou_profil2 = (body.sender == "UQ-00000001" || body.sender == "UQ-732337351")
-        && (sender == "UQ-00000001" || sender == "UQ-732337351");
+    let accepte_owner_ou_profil2 = (body.sender == "UQ-996697110" || body.sender == "UQ-732337351")
+        && (sender == "UQ-996697110" || sender == "UQ-732337351");
     if !body.sender.is_empty() && body.sender != sender && !accepte_owner_ou_profil2 {
         eprintln!("🚨 TENTATIVE FRAUDE : {} essaie d'envoyer au nom de {}", sender, body.sender);
         return HttpResponse::Forbidden().json(json!({
@@ -1018,9 +1018,9 @@ pub async fn bubble_transfer(
     //    Règle STRUCTURELLE : elle passe AVANT le cadenas et le KYC.
     //    Le Profil 1 est un acteur système : il ne sort que par son
     //    carnet d'ordres P2P.
-    // Si le sender est le owner (UQ-00000001) MAIS que le profil 2 est actif,
+    // Si le sender est le owner (UQ-996697110) MAIS que le profil 2 est actif,
     // on a deja remplace sender par UQ-732337351. Donc ce check ne se declenche
-    // QUE si quelqu'un essaie de forcer UQ-00000001 en sender direct.
+    // QUE si quelqu'un essaie de forcer UQ-996697110 en sender direct.
     if sender.eq_ignore_ascii_case(crate::ocean::PROFIL_1) && !profil2_active {
         eprintln!("🚫 [REGLE 4] Transfert direct refuse depuis le Profil 1");
         return HttpResponse::Forbidden().json(json!({
@@ -2821,14 +2821,14 @@ pub async fn validator_validate() -> HttpResponse { let db = Database::shared("u
 pub async fn distribution_stats(req: actix_web::HttpRequest) -> HttpResponse {
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     HttpResponse::Ok().json(dist.get_stats())
 }
 
 pub async fn distribution_treasury_status(req: actix_web::HttpRequest) -> HttpResponse {
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     let mut stats = dist.get_stats();
     // Le frontend resout le profil vise via les champs `uq`/`email` : on
     // expose les identifiants reels pour que la bascule ne dépende pas du
@@ -2854,7 +2854,7 @@ pub async fn distribution_treasury_status(req: actix_web::HttpRequest) -> HttpRe
 pub async fn distribution_delis_status(req: actix_web::HttpRequest) -> HttpResponse {
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     let mut stats = dist.get_stats();
     // Le membre actif du cercle owner est LE profil 2 : on expose son UQ
     // et son email pour que la bascule cible le bon compte sans deviner
@@ -2882,7 +2882,7 @@ pub async fn distribution_delis_status(req: actix_web::HttpRequest) -> HttpRespo
 pub async fn distribution_sell_crypto(req: actix_web::HttpRequest) -> HttpResponse {
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     match dist.profile1_sell_crypto(100, true) {
         Ok(stock) => HttpResponse::Ok().json(json!({"status":"success","stock_restant":stock})),
         Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
@@ -2892,7 +2892,7 @@ pub async fn distribution_sell_crypto(req: actix_web::HttpRequest) -> HttpRespon
 pub async fn distribution_sell_p2p(req: actix_web::HttpRequest) -> HttpResponse {
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     match dist.profile2_sell_p2p(50, true) {
         Ok(balance) => HttpResponse::Ok().json(json!({"status":"success","balance_restant":balance})),
         Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
@@ -2902,7 +2902,7 @@ pub async fn distribution_sell_p2p(req: actix_web::HttpRequest) -> HttpResponse 
 pub async fn distribution_auto_recharge(req: actix_web::HttpRequest) -> HttpResponse {
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     let recharged = dist.profile1_auto_recharge();
     HttpResponse::Ok().json(json!({"status":"success","recharged":recharged}))
 }
@@ -2941,7 +2941,7 @@ pub async fn distribution_claim(body: web::Json<serde_json::Value>) -> HttpRespo
     }
 
     // 4. Reclamation treasury -> dev_profile (compteurs internes)
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     let _ = match dist.profile2_claim_from_profile1() {
         Ok(_new_balance) => {},
         Err(e) => return HttpResponse::BadRequest().json(json!({
@@ -2954,7 +2954,7 @@ pub async fn distribution_claim(body: web::Json<serde_json::Value>) -> HttpRespo
     //    multi_wallets.BORB n'est qu'un miroir de points/100 : on le
     //    resynchronise apres le mouvement au lieu de l'incrementer.
     let montant_points: i64 = (300_000.0 * 100.0) as i64;
-    let owner_db = "data/users/uq_00000001.db";
+    let owner_db = "data/users/uq_996697110.db";
     let p2_db = format!("data/users/{}.db", uq_profil2.replace("-", "_").to_lowercase());
 
     let conn_owner = match Connection::open(owner_db) {
@@ -3012,7 +3012,7 @@ pub async fn distribution_claim(body: web::Json<serde_json::Value>) -> HttpRespo
     // 6. Resynchroniser le miroir multi_wallets.BORB = points/100
     let now = chrono::Utc::now().timestamp();
     for (uq_mirror, conn_mirror) in [
-        ("UQ-00000001", &conn_owner),
+        ("UQ-996697110", &conn_owner),
         (uq_profil2, &conn_p2),
     ] {
         let pts: i64 = conn_mirror.query_row(
@@ -3046,7 +3046,7 @@ pub async fn distribution_claim(body: web::Json<serde_json::Value>) -> HttpRespo
 
 pub async fn distribution_ubi_distribute() -> HttpResponse {
     use crate::borb_distribution::BorbDistribution;
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     match dist.distribute_ubi(100, 2) {
         Ok(total) => HttpResponse::Ok().json(json!({"status":"success","total_distribue":total})),
         Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
@@ -4661,8 +4661,8 @@ pub async fn borb_transactions(
     let account_id = path.into_inner();
     
     // Un user ne peut voir QUE ses propres transactions
-    // L'owner (UQ-00000001) peut voir TOUT
-    let is_owner = claims.sub == "UQ-00000001";
+    // L'owner (UQ-996697110) peut voir TOUT
+    let is_owner = claims.sub == "UQ-996697110";
     let is_self = claims.sub == account_id;
     
     if !is_owner && !is_self {
@@ -6053,7 +6053,7 @@ pub async fn cases_live_stats(
     let cases_json = serde_json::Value::Object(cases_json_map);
     
     // 2. Ouvrir la DB owner pour lire counter_transactions + seven_cases
-    let db_path = "data/users/uq_00000001.db";
+    let db_path = "data/users/uq_996697110.db";
     let conn = match Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -9734,7 +9734,7 @@ pub async fn owner_force_demande(body: web::Json<serde_json::Value>) -> HttpResp
 pub async fn borb_get_origin(path: web::Path<String>) -> HttpResponse {
     let trace_key = path.into_inner();
 
-    let db_path = "data/users/uq_00000001.db";
+    let db_path = "data/users/uq_996697110.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -9763,7 +9763,7 @@ pub async fn borb_get_origin(path: web::Path<String>) -> HttpResponse {
 pub async fn borb_list_origins(path: web::Path<String>) -> HttpResponse {
     let recipient_uq = path.into_inner();
 
-    let db_path = "data/users/uq_00000001.db";
+    let db_path = "data/users/uq_996697110.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -9818,7 +9818,7 @@ pub async fn borb_list_origins(path: web::Path<String>) -> HttpResponse {
 /// GET /api/borb/stats
 /// Retourne les statistiques de traçabilité
 pub async fn borb_tracer_stats() -> HttpResponse {
-    let db_path = "data/users/uq_00000001.db";
+    let db_path = "data/users/uq_996697110.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -9952,7 +9952,7 @@ pub async fn distribution_repartition(
     // Verifier que l'owner est connecte
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     
     // Deja reparti ?
     if dist.est_deja_reparti() {
@@ -9997,7 +9997,7 @@ pub async fn distribution_repartition_status(
     
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
     
-    let dist = BorbDistribution::new("UQ-00000001");
+    let dist = BorbDistribution::new("UQ-996697110");
     let deja = dist.est_deja_reparti();
     let stats = dist.get_stats();
     
@@ -10081,7 +10081,7 @@ pub async fn distribution_claim_with_pin(body: web::Json<serde_json::Value>) -> 
         }));
     }
 
-    let owner_uq = "UQ-00000001";
+    let owner_uq = "UQ-996697110";
     let now = chrono::Utc::now().timestamp();
 
     // 1. Ouvrir DB owner + verifier PIN
@@ -10270,11 +10270,11 @@ pub async fn distribution_auto_validate_kyc(req: actix_web::HttpRequest, body: w
         }));
     }
 
-    // 1. Verifier que c'est bien l'owner UQ-00000001
-    if owner_uq != "UQ-00000001" {
+    // 1. Verifier que c'est bien l'owner UQ-996697110
+    if owner_uq != "UQ-996697110" {
         return HttpResponse::Forbidden().json(json!({
             "status": "error",
-            "message": "Seul UQ-00000001 peut valider un KYC"
+            "message": "Seul UQ-996697110 peut valider un KYC"
         }));
     }
 
@@ -10288,7 +10288,7 @@ pub async fn distribution_auto_validate_kyc(req: actix_web::HttpRequest, body: w
     };
 
     let owner_email_stored: String = conn_idx.query_row(
-        "SELECT COALESCE(uq_email, '') FROM uq_index WHERE uq_number = 'UQ-00000001'",
+        "SELECT COALESCE(uq_email, '') FROM uq_index WHERE uq_number = 'UQ-996697110'",
         [], |row| row.get(0)
     ).unwrap_or_default();
 
@@ -10383,7 +10383,7 @@ pub async fn can_reclaim(req: actix_web::HttpRequest) -> HttpResponse {
     let uq_connecte = claims.sub.clone();
 
     // 2. Verifier que c'est bien le Profil 2 (UQ-230354360)
-    //    (on accepte AUSSI UQ-00000001 pour permettre le switch)
+    //    (on accepte AUSSI UQ-996697110 pour permettre le switch)
     let est_profil2 = uq_connecte == "UQ-230354360";
 
     if !est_profil2 {
@@ -10415,7 +10415,7 @@ pub async fn can_reclaim(req: actix_web::HttpRequest) -> HttpResponse {
 
     let lien_existe: i64 = conn_idx.query_row(
         "SELECT COUNT(*) FROM circle_members 
-         WHERE owner_uq = 'UQ-00000001' 
+         WHERE owner_uq = 'UQ-996697110' 
          AND member_uq = ?1 
          AND is_active = 1",
         rusqlite::params![uq_connecte],

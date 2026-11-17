@@ -277,7 +277,7 @@ mod tests {
     fn nom_de_fichier_reconnu() {
         assert_eq!(uq_depuis_fichier("uq_732837813.db"), Some("UQ-732837813".to_string()));
         assert_eq!(uq_depuis_fichier("uq_xxx.db"), None);
-        assert_eq!(uq_depuis_fichier("uq_00000001.db.backup"), None);
+        assert_eq!(uq_depuis_fichier("uq_996697110.db.backup"), None);
         assert_eq!(uq_depuis_fichier("block_orb_global.json"), None);
     }
 }

@@ -1201,11 +1201,11 @@ mod tests {
     fn registre_reperifie_par_uq_normalise() {
         let carte = carte_registre(vec![
             ("uq-732688531".to_string(), 1_700_000_000),
-            ("UQ-00000001".to_string(), -5),
+            ("UQ-996697110".to_string(), -5),
         ]);
         assert_eq!(carte.get("UQ-732688531").copied(), Some(1_700_000_000));
         // Date négative jamais utilisée comme ancienneté.
-        assert_eq!(carte.get("UQ-00000001").copied(), Some(0));
+        assert_eq!(carte.get("UQ-996697110").copied(), Some(0));
         assert_eq!(carte.get("uq-732688531"), None);
     }
 }

@@ -416,7 +416,7 @@ mod tests {
         assert_eq!(geler("UQ-00000000", 0, 1), Err(ErreurEscrow::MontantNonValide));
         assert_eq!(degeler("UQ-00000000", -5, 1), Err(ErreurEscrow::MontantNonValide));
         assert_eq!(
-            liberer("UQ-00000000", "UQ-00000001", 0, 1, 1),
+            liberer("UQ-00000000", "UQ-996697110", 0, 1, 1),
             Err(ErreurEscrow::MontantNonValide)
         );
     }

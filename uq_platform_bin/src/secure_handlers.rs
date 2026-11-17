@@ -7,12 +7,12 @@ use serde_json::json;
 use crate::security_login;
 
 // ====================
-// CHEMIN ABSOLU — cherche data/users/uq_00000001.db
+// CHEMIN ABSOLU — cherche data/users/uq_996697110.db
 // à partir du répertoire du binaire
 // ====================
 fn get_owner_db_path() -> String {
     // 1. Essayer le chemin relatif standard
-    let relative = "data/users/uq_00000001.db";
+    let relative = "data/users/uq_996697110.db";
     if std::path::Path::new(relative).exists() {
         return relative.to_string();
     }
@@ -22,11 +22,11 @@ fn get_owner_db_path() -> String {
         if let Some(exe_dir) = exe_path.parent() {
             // Remonter de target/release/ vers le projet
             let candidates = vec![
-                exe_dir.join("data/users/uq_00000001.db"),
-                exe_dir.join("../data/users/uq_00000001.db"),
-                exe_dir.join("../../data/users/uq_00000001.db"),
-                exe_dir.join("../../../data/users/uq_00000001.db"),
-                exe_dir.join("../../../../data/users/uq_00000001.db"),
+                exe_dir.join("data/users/uq_996697110.db"),
+                exe_dir.join("../data/users/uq_996697110.db"),
+                exe_dir.join("../../data/users/uq_996697110.db"),
+                exe_dir.join("../../../data/users/uq_996697110.db"),
+                exe_dir.join("../../../../data/users/uq_996697110.db"),
             ];
             
             for candidate in candidates {
@@ -40,7 +40,7 @@ fn get_owner_db_path() -> String {
     }
     
     // 3. Fallback : chemin absolu connu
-    let fallback = r"C:\Users\destin\Desktop\UQ_Platform\uq_platform_bin\data\users\uq_00000001.db";
+    let fallback = r"C:\Users\destin\Desktop\UQ_Platform\uq_platform_bin\data\users\uq_996697110.db";
     if std::path::Path::new(fallback).exists() {
         return fallback.to_string();
     }
@@ -138,13 +138,13 @@ pub async fn secure_step1(
     };
 
     // ===== BASCULE OWNER : Lire X-Switch-From =====
-    // Si le header est present ET vaut UQ-00000001 (owner) => autoriser la connexion
+    // Si le header est present ET vaut UQ-996697110 (owner) => autoriser la connexion
     // d'un membre de cercle (bascule). Sinon => bloquer si membre.
     let allow_circle_member = req
         .headers()
         .get("X-Switch-From")
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim() == "UQ-00000001")
+        .map(|v| v.trim() == "UQ-996697110")
         .unwrap_or(false);
 
     if allow_circle_member {

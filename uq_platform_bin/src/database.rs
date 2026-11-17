@@ -3156,7 +3156,7 @@ impl Database {
                 }
 
                 // Detecter si c'est le proprietaire
-                let is_owner = uq_number == "UQ-00000001" || uq_number == "UQ-266335331";
+                let is_owner = uq_number == "UQ-996697110" || uq_number == "UQ-266335331";
 
                 let next_step = if is_owner {
                     "unlock".to_string()
@@ -3216,7 +3216,7 @@ mod publications_tests {
         let now = chrono::Utc::now().timestamp();
         let ancienne = PublicationRecord {
             id: "pub_old".to_string(),
-            author: "UQ-00000001".to_string(),
+            author: "UQ-996697110".to_string(),
             kind: "annonce".to_string(),
             title: "Ancienne".to_string(),
             body: String::new(),
@@ -3236,7 +3236,7 @@ mod publications_tests {
         db.ecrire_publication(&ancienne).unwrap();
         db.ecrire_publication(&recente).unwrap();
 
-        let liste = db.lister_publications("UQ-00000001");
+        let liste = db.lister_publications("UQ-996697110");
         assert_eq!(liste.len(), 1, "seule la publication recente reste");
         assert_eq!(liste[0]["id"], "pub_new");
 
@@ -3255,17 +3255,17 @@ mod publications_tests {
         let (json, sqlite) = base_test("pub_like");
         let db = Database::new(&json);
         let creee = db
-            .creer_publication("UQ-00000001", "conference", "Titre", "Corps", None, "", "")
+            .creer_publication("UQ-996697110", "conference", "Titre", "Corps", None, "", "")
             .unwrap();
         let id = creee["id"].as_str().unwrap().to_string();
 
-        db.aimer_publication(&id, "UQ-00000001").unwrap();
-        let liste = db.lister_publications("UQ-00000001");
+        db.aimer_publication(&id, "UQ-996697110").unwrap();
+        let liste = db.lister_publications("UQ-996697110");
         assert_eq!(liste[0]["likes"], 1);
         assert_eq!(liste[0]["liked"], true);
 
-        db.commenter_publication(&id, "UQ-00000001", "Bravo").unwrap();
-        let liste = db.lister_publications("UQ-00000001");
+        db.commenter_publication(&id, "UQ-996697110", "Bravo").unwrap();
+        let liste = db.lister_publications("UQ-996697110");
         assert_eq!(liste[0]["comment_count"], 1);
         assert_eq!(liste[0]["comments"][0]["content"], "Bravo");
         nettoyer(&json, &sqlite);
@@ -3303,7 +3303,7 @@ mod publications_tests {
         // Publication déjà vieille de 7 jours : la purge la retire du flux.
         let vieille = PublicationRecord {
             id: "pub_perimee".to_string(),
-            author: "UQ-00000001".to_string(),
+            author: "UQ-996697110".to_string(),
             kind: "annonce".to_string(),
             title: "Offre".to_string(),
             body: String::new(),
@@ -3321,18 +3321,18 @@ mod publications_tests {
             let conn = db.sqlite_pool.get().unwrap();
             conn.execute(
                 "INSERT INTO publication_likes (publication_id, uq_liker, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_perimee", "UQ-00000002", "UQ-00000001", now],
+                rusqlite::params!["pub_perimee", "UQ-00000002", "UQ-996697110", now],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO publication_views (publication_id, uq_viewer, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_perimee", "UQ-00000003", "UQ-00000001", now],
+                rusqlite::params!["pub_perimee", "UQ-00000003", "UQ-996697110", now],
             )
             .unwrap();
         }
 
         assert!(
-            db.lister_publications("UQ-00000001").is_empty(),
+            db.lister_publications("UQ-996697110").is_empty(),
             "la publication expirée a disparu du flux"
         );
 
@@ -3340,14 +3340,14 @@ mod publications_tests {
         let likes_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_likes WHERE uq_auteur = ?1",
-                ["UQ-00000001"],
+                ["UQ-996697110"],
                 |row| row.get(0),
             )
             .unwrap();
         let vues_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_views WHERE uq_auteur = ?1",
-                ["UQ-00000001"],
+                ["UQ-996697110"],
                 |row| row.get(0),
             )
             .unwrap();
@@ -3364,7 +3364,7 @@ mod publications_tests {
 
         let statut = PublicationRecord {
             id: "pub_statut".to_string(),
-            author: "UQ-00000001".to_string(),
+            author: "UQ-996697110".to_string(),
             kind: "status".to_string(),
             title: "Nouvelle offre".to_string(),
             body: String::new(),
@@ -3392,12 +3392,12 @@ mod publications_tests {
             let conn = db.sqlite_pool.get().unwrap();
             conn.execute(
                 "INSERT INTO publication_likes (publication_id, uq_liker, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_statut", "UQ-00000002", "UQ-00000001", now],
+                rusqlite::params!["pub_statut", "UQ-00000002", "UQ-996697110", now],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO publication_views (publication_id, uq_viewer, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_statut", "UQ-00000003", "UQ-00000001", now],
+                rusqlite::params!["pub_statut", "UQ-00000003", "UQ-996697110", now],
             )
             .unwrap();
         }
@@ -3410,14 +3410,14 @@ mod publications_tests {
         let likes_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_likes WHERE uq_auteur = ?1",
-                ["UQ-00000001"],
+                ["UQ-996697110"],
                 |row| row.get(0),
             )
             .unwrap();
         let vues_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_views WHERE uq_auteur = ?1",
-                ["UQ-00000001"],
+                ["UQ-996697110"],
                 |row| row.get(0),
             )
             .unwrap();
@@ -3432,7 +3432,7 @@ mod publications_tests {
         let db = Database::new(&json);
         let creee = db
             .creer_publication(
-                "UQ-00000001",
+                "UQ-996697110",
                 "status",
                 "Coque iPhone",
                 "Disponible maintenant",
@@ -3458,13 +3458,13 @@ mod publications_tests {
             let conn = db.sqlite_pool.get().unwrap();
             conn.execute(
                 "INSERT INTO shop_items (id, shop_id, item_type, title, published, created_at, published_at)
-                 VALUES ('item_old', 'UQ-00000001', 'text', 'Vieux', 1, datetime('now','-8 days'), datetime('now','-8 days'))",
+                 VALUES ('item_old', 'UQ-996697110', 'text', 'Vieux', 1, datetime('now','-8 days'), datetime('now','-8 days'))",
                 [],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO shop_items (id, shop_id, item_type, title, published, created_at, published_at)
-                 VALUES ('item_new', 'UQ-00000001', 'text', 'Recent', 1, datetime('now','-1 days'), datetime('now','-1 days'))",
+                 VALUES ('item_new', 'UQ-996697110', 'text', 'Recent', 1, datetime('now','-1 days'), datetime('now','-1 days'))",
                 [],
             )
             .unwrap();
@@ -3531,7 +3531,7 @@ mod chat_messages_tests {
     fn un_message_normal_ne_porte_aucune_fin_de_vie() {
         let (json, sqlite) = base_test("chat_persistant");
         let db = Database::new(&json);
-        let id = db.send_message("UQ-00000001", "UQ-00000002", "Bonjour");
+        let id = db.send_message("UQ-996697110", "UQ-00000002", "Bonjour");
         let porte = db
             .data
             .lock()
@@ -3545,7 +3545,7 @@ mod chat_messages_tests {
 
         db.purger_messages_expires();
         assert_eq!(
-            db.get_messages_between("UQ-00000001", "UQ-00000002").len(),
+            db.get_messages_between("UQ-996697110", "UQ-00000002").len(),
             1,
             "la purge laisse le message persistant en place"
         );
@@ -3556,7 +3556,7 @@ mod chat_messages_tests {
     fn un_message_ephemere_porte_sa_date_de_finpuis_disparait() {
         let (json, sqlite) = base_test("chat_ephemere");
         let db = Database::new(&json);
-        let id = db.send_message_avec_image("UQ-00000001", "UQ-00000002", "Photo", None, true);
+        let id = db.send_message_avec_image("UQ-996697110", "UQ-00000002", "Photo", None, true);
         let maintenant = chrono::Utc::now().timestamp();
         let fin = db
             .data
@@ -3572,7 +3572,7 @@ mod chat_messages_tests {
         vieillir(&db, &id, 60);
         db.purger_messages_expires();
         assert!(
-            db.get_messages_between("UQ-00000001", "UQ-00000002")
+            db.get_messages_between("UQ-996697110", "UQ-00000002")
                 .iter()
                 .all(|m| m.id != id),
             "un ephemere ecoule doit etre purge"
@@ -3584,26 +3584,26 @@ mod chat_messages_tests {
     fn la_lecture_confirme_l_envoi_et_le_compte_rend_non_lus() {
         let (json, sqlite) = base_test("chat_lus");
         let db = Database::new(&json);
-        db.send_message("UQ-00000001", "UQ-00000002", "Salut");
-        db.send_message("UQ-00000001", "UQ-00000002", "Ca va ?");
-        db.send_message("UQ-00000002", "UQ-00000001", "Oui");
+        db.send_message("UQ-996697110", "UQ-00000002", "Salut");
+        db.send_message("UQ-996697110", "UQ-00000002", "Ca va ?");
+        db.send_message("UQ-00000002", "UQ-996697110", "Oui");
 
         assert_eq!(db.compter_non_lus("UQ-00000002"), 2);
         assert_eq!(db.conversations_non_lues("UQ-00000002"), 1);
-        assert_eq!(db.non_lus_par_pair("UQ-00000002").get("UQ-00000001").copied(), Some(2));
+        assert_eq!(db.non_lus_par_pair("UQ-00000002").get("UQ-996697110").copied(), Some(2));
 
-        let marques = db.marquer_lus("UQ-00000002", "UQ-00000001");
+        let marques = db.marquer_lus("UQ-00000002", "UQ-996697110");
         assert_eq!(marques, 2, "les deux messages viennent d'etre relus");
         assert_eq!(db.compter_non_lus("UQ-00000002"), 0);
         assert!(
-            db.get_messages_between("UQ-00000001", "UQ-00000002")
+            db.get_messages_between("UQ-996697110", "UQ-00000002")
                 .iter()
-                .filter(|m| m.sender == "UQ-00000001")
+                .filter(|m| m.sender == "UQ-996697110")
                 .all(|m| m.delivered),
             "l'expediteur doit voir ses messages marques lus"
         );
 
-        assert_eq!(db.marquer_lus("UQ-00000002", "UQ-00000001"), 0, "plus rien a marquer");
+        assert_eq!(db.marquer_lus("UQ-00000002", "UQ-996697110"), 0, "plus rien a marquer");
         nettoyer(&json, &sqlite);
     }
 
@@ -3611,7 +3611,7 @@ mod chat_messages_tests {
     fn un_ephemere_ecoule_n_alimente_plus_les_compteurs() {
         let (json, sqlite) = base_test("chat_non_lus_ttl");
         let db = Database::new(&json);
-        let id = db.send_message_avec_image("UQ-00000001", "UQ-00000002", "Vu une fois", None, true);
+        let id = db.send_message_avec_image("UQ-996697110", "UQ-00000002", "Vu une fois", None, true);
         assert_eq!(db.compter_non_lus("UQ-00000002"), 1);
 
         vieillir(&db, &id, 60);
@@ -3628,21 +3628,21 @@ mod chat_messages_tests {
         let (json, sqlite) = base_test("chat_redemarrage");
         {
             let db = Database::new(&json);
-            db.send_message("UQ-00000001", "UQ-00000002", "Bonjour");
-            let relu = db.send_message("UQ-00000001", "UQ-00000002", "Tu la vois ?");
-            db.send_message("UQ-00000002", "UQ-00000001", "Oui");
-            db.marquer_lus("UQ-00000002", "UQ-00000001");
+            db.send_message("UQ-996697110", "UQ-00000002", "Bonjour");
+            let relu = db.send_message("UQ-996697110", "UQ-00000002", "Tu la vois ?");
+            db.send_message("UQ-00000002", "UQ-996697110", "Oui");
+            db.marquer_lus("UQ-00000002", "UQ-996697110");
             let ephemere =
-                db.send_message_avec_image("UQ-00000001", "UQ-00000002", "Photo", None, true);
+                db.send_message_avec_image("UQ-996697110", "UQ-00000002", "Photo", None, true);
             vieillir(&db, &ephemere, 60);
             db.purger_messages_expires();
-            assert_eq!(db.get_messages_between("UQ-00000001", "UQ-00000002").len(), 3);
+            assert_eq!(db.get_messages_between("UQ-996697110", "UQ-00000002").len(), 3);
             assert!(relu.starts_with("msg_"));
         }
         // Second processus sur les memes fichiers : c'est ce que fait un
         // redemarrage du serveur, et l'historique doit en sortir intact.
         let db = Database::new(&json);
-        let fils = db.get_messages_between("UQ-00000001", "UQ-00000002");
+        let fils = db.get_messages_between("UQ-996697110", "UQ-00000002");
         assert_eq!(fils.len(), 3, "les trois messages survivent au redemarrage");
         assert_eq!(
             fils.iter().filter(|m| m.delivered).count(),
@@ -3655,7 +3655,7 @@ mod chat_messages_tests {
         );
         assert_eq!(db.compter_non_lus("UQ-00000002"), 0, "les accuses de lecture sont en base");
         assert_eq!(
-            db.compter_non_lus("UQ-00000001"),
+            db.compter_non_lus("UQ-996697110"),
             1,
             "la reponse jamais relue reste comptee apres le redemarrage"
         );
@@ -3666,7 +3666,7 @@ mod chat_messages_tests {
     fn l_envoi_reel_laisse_la_trace_en_base() {
         let (json, sqlite) = base_test("chat_miroir");
         let db = Database::new(&json);
-        let id = db.send_message("UQ-00000001", "UQ-00000002", "Trace");
+        let id = db.send_message("UQ-996697110", "UQ-00000002", "Trace");
         let conn = db.sqlite_pool.get().unwrap();
         let ligne = conn.query_row(
             "SELECT content, delivered, expires_at FROM chat_messages WHERE id = ?1",
@@ -3674,7 +3674,7 @@ mod chat_messages_tests {
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<i64>>(2)?)),
         );
         assert_eq!(ligne.map(|(c, d, e)| (c, d, e.is_none())), Ok(("Trace".to_string(), 0, true)));
-        db.marquer_lus("UQ-00000002", "UQ-00000001");
+        db.marquer_lus("UQ-00000002", "UQ-996697110");
         let marque: i64 = conn
             .query_row("SELECT delivered FROM chat_messages WHERE id = ?1", [id], |row| row.get(0))
             .unwrap();

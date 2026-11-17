@@ -269,9 +269,9 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_webauthn_table(&conn).unwrap();
         let c = generate_challenge();
-        store_challenge(&conn, &c, "UQ-00000001", "login").unwrap();
+        store_challenge(&conn, &c, "UQ-996697110", "login").unwrap();
         let premier = verify_challenge(&conn, &c).unwrap();
-        assert_eq!(premier, Some(("UQ-00000001".to_string(), "login".to_string())));
+        assert_eq!(premier, Some(("UQ-996697110".to_string(), "login".to_string())));
         // rejoue : le challenge a ete supprime
         assert_eq!(verify_challenge(&conn, &c).unwrap(), None);
     }

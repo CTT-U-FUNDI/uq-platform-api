@@ -3,12 +3,12 @@ use serde_json::json;
 
 // ============================================================
 // BORB DISTRIBUTION - VERSION DB OWNER
-// Les profils 1 et 2 sont dans uq_00000001.db
+// Les profils 1 et 2 sont dans uq_996697110.db
 //   Profil 1 -> table treasury_system
 //   Profil 2 -> table dev_profile
 // ============================================================
 
-const OWNER_DB: &str = "data/users/uq_00000001.db";
+const OWNER_DB: &str = "data/users/uq_996697110.db";
 
 pub struct BorbDistribution {
     pub owner_id: String,

@@ -589,7 +589,7 @@ pub fn migrate_existing_account(uq_number: &str) -> Result<(), String> {
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().timestamp();
 
-    let is_owner = uq_number == "UQ-00000001";
+    let is_owner = uq_number == "UQ-996697110";
 
     let existing = conn.query_row(
         "SELECT COUNT(*) FROM user_login_config WHERE uq_number = ?1",

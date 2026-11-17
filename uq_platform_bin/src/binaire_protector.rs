@@ -25,7 +25,7 @@ pub struct CleBinaire {
 #[derive(Debug, Deserialize)]
 pub struct DemandeDecrypt {
     pub binaire_id: String,      // "borb_node", "uq_platform", etc.
-    pub uq_owner: String,        // Doit être UQ-00000001
+    pub uq_owner: String,        // Doit être UQ-996697110
     pub ts: u64,                 // Timestamp anti-rejeu
     pub signature: String,       // Signature Ed25519 du owner
 }
@@ -136,7 +136,7 @@ pub fn signature_owner_valide(binaire_id: &str, uq: &str, ts: u64, signature_hex
     }
 
     // Vérifier que c'est bien le owner
-    if uq != "UQ-00000001" {
+    if uq != "UQ-996697110" {
         return false;
     }
 

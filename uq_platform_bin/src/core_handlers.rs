@@ -338,7 +338,7 @@ pub async fn core_migrate_accounts(req: actix_web::HttpRequest) -> HttpResponse 
         Err(resp) => return resp,
     };
 
-    let est_owner = claims.sub == "UQ-00000001"
+    let est_owner = claims.sub == "UQ-996697110"
         || claims.role == "admin"
         || crate::owner_guard::check_is_owner(&claims.sub);
 

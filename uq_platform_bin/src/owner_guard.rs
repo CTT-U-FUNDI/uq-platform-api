@@ -38,7 +38,7 @@ pub fn check_is_owner(uq_number: &str) -> bool {
     }
 }
 
-/// Extrait le UQ number depuis le path (ex: /api/borb/balance/UQ-00000001 → UQ-00000001)
+/// Extrait le UQ number depuis le path (ex: /api/borb/balance/UQ-996697110 → UQ-996697110)
 fn extract_uq_from_path(path: &str) -> Option<String> {
     // Patterns courants :
     // - /api/borb/balance/{id}

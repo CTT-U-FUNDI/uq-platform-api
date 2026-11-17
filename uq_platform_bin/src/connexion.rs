@@ -1001,14 +1001,14 @@ mod tests {
 
     #[test]
     fn une_fiche_sans_avis_n_affiche_aucune_moyenne() {
-        let vue = json!({ "id": "connexion_uq_00000001", "nom": "Fiche" });
+        let vue = json!({ "id": "connexion_uq_996697110", "nom": "Fiche" });
 
         let vu = avec_avis(&Default::default(), vue.clone());
         assert_eq!(vu["avis_total"], json!(0));
         assert_eq!(vu["avis_moyenne"], json!(null));
 
         let mut agregats = std::collections::HashMap::new();
-        agregats.insert("connexion_uq_00000001".to_string(), (4.333_3, 3i64));
+        agregats.insert("connexion_uq_996697110".to_string(), (4.333_3, 3i64));
         let vu = avec_avis(&agregats, vue);
         assert_eq!(vu["avis_total"], json!(3));
         assert_eq!(vu["avis_moyenne"], json!(4.3));

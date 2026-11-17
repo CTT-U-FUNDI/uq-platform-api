@@ -7,7 +7,7 @@
 //   Ocean est la réserve principale des 40 Md BORB.
 //
 // INVARIANT PERMANENT :
-//   Ocean (cases[0]) + Profil 1 (comptes["UQ-00000001"]) + Users
+//   Ocean (cases[0]) + Profil 1 (comptes["UQ-996697110"]) + Users
 //   + les 5 autres cases + enveloppe UBI = 40 000 000 000 BORB, EXACT.
 //
 // Toute recharge est un TRANSFERT INTERNE : rien n'est créé, rien n'est
@@ -18,7 +18,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 /// Profil 1 = propriétaire de la plateforme
-pub const PROFIL_1: &str = "UQ-00000001";
+pub const PROFIL_1: &str = "UQ-996697110";
 
 /// Trésor cible du Profil 1 : 1 000 000 BORB
 pub const TRESOR_CIBLE_BORB: i64 = 1_000_000;
