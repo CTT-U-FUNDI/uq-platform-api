@@ -2561,13 +2561,13 @@ pub async fn marketplace_publish() -> HttpResponse {
     db.publish_offer("seller", "Produit marketplace", 100, 1);
     HttpResponse::Ok().json(json!({"status":"success","published":true}))
 }
-pub async fn micro_credit_fund() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("lender", "Prêt financé", 0, 0); HttpResponse::Ok().json(json!({"status":"success","funded":true})) }
+pub async fn micro_credit_fund() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Non implemente"})) }
 pub async fn micro_credit_request() -> HttpResponse {
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("borrower", "Demande micro-crédit", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","request_created":true}))
 }
-pub async fn micro_credit_voucher() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("voucher", "borrower", "Garantie ajoutée"); HttpResponse::Ok().json(json!({"status":"success","voucher_added":true})) }
+pub async fn micro_credit_voucher() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Non implemente"})) }
 pub async fn offline_apply() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.record_transaction("offline_sender", "offline_recipient", 500, 5); HttpResponse::Ok().json(json!({"status":"success","applied":true})) }
 pub async fn offline_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("offline_user", "Transaction hors ligne", 0, 0); HttpResponse::Ok().json(json!({"status":"success","offline_tx_created":true})) }
 pub async fn offline_verify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verifier", "offline_user", "Transaction vérifiée"); HttpResponse::Ok().json(json!({"status":"success","verified":true})) }
@@ -2764,7 +2764,7 @@ pub async fn shield_key_lost() -> HttpResponse {
 }
 pub async fn shops_list() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let mut shops = db.get_all_shops(); shops.insert(0, crate::connexion::boutique_systeme()); HttpResponse::Ok().json(json!({"status":"success","shops":shops,"total":shops.len()})) }
 pub async fn stablecoin_burn() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("burner", "UST burned", 0, 0); HttpResponse::Ok().json(json!({"status":"success","burned":true})) }
-pub async fn stablecoin_mint() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("minter", "UST minted", 0, 0); HttpResponse::Ok().json(json!({"status":"success","minted":true})) }
+pub async fn stablecoin_mint() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Mint stablecoin non implemente — aucun BORB simule"})) }
 pub async fn stablecoin_ratio() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("stablecoin", "ratio", "check"); HttpResponse::Ok().json(json!({"status":"success","ratio":150.0})) }
 pub async fn validator_list() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","validators":stats["accounts"]})) }
 pub async fn validator_validate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("validator", "network", "Validation effectuée"); HttpResponse::Ok().json(json!({"status":"success","validated":true})) }

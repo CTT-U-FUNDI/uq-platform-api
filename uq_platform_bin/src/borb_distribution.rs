@@ -121,9 +121,12 @@ impl BorbDistribution {
     
     pub fn profile1_auto_recharge(&self) -> bool {
         let (p1, p2) = self.get_soldes();
-        let threshold = 700_000 * 50 / 100;
-        if p1 < threshold && p1 > 0 {
-            let _ = self.set_soldes(700_000, p2);
+        // Regle owner : si solde < 50% de 1M (500 000) -> recharge jusqu'a 1M max
+        let seuil = 1_000_000 / 2;
+        let plafond = 1_000_000u64;
+        if p1 < seuil && p1 > 0 {
+            let cible = plafond.min(p1 + (plafond - p1));
+            let _ = self.set_soldes(cible.min(plafond), p2);
             return true;
         }
         false

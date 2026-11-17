@@ -407,7 +407,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/biometric/spoofing", web::post().to(biometric_spoofing))
         .route("/api/owner/demande/current", web::get().to(owner_demande_current))
         .route("/api/owner/demande/recalculate", web::post().to(owner_demande_recalculate))
-        .route("/api/owner/force-price", web::post().to(owner_force_price))
+        .route("/api/owner/force-price", web::post().guard(crate::owner_guard::owner_guard()).to(owner_force_price))
         .route("/api/owner/force-demande", web::post().to(owner_force_demande))
         .route("/api/borb/subunits/status", web::get().to(borb_subunits_status))
         .route("/api/borb/subunits/check-unlock", web::post().to(borb_subunits_check_unlock))
