@@ -336,10 +336,10 @@ pub fn validate_step2(
         }
     }
 
-    // 3. User : passer directement au 2FA
+    // 3. Credentials OK — propager le vrai flag owner (owner -> etape code)
     Ok(LoginStep2Result {
         status: "step_required".to_string(),
-        is_owner: false,
+        is_owner: config.is_owner,
         next_step: 3,
         tfa_token: generate_tfa_token(),
         attempts_done: 0,
