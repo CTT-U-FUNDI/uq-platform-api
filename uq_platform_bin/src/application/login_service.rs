@@ -39,7 +39,7 @@ impl LoginConfig {
             uq_number: uq.to_string(),
             is_owner: true,
             requires_unlock_code: true,
-            requires_triple_attempt: true,
+            requires_triple_attempt: false,
             pin_required_step: 3,
             max_fails_before_iphone: 3,
         }
@@ -154,7 +154,7 @@ pub fn ensure_config_exists(uq_number: &str) -> Result<(), String> {
     if count == 0 {
         // Créer la config par défaut
         let is_owner = uq_number == "UQ-996697110";
-        let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
+        let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 0, 3, 3) } else { (0, 0, 1, 5) };
         let now = chrono::Utc::now().timestamp();
 
         conn.execute(
