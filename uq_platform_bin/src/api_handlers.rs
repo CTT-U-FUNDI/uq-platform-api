@@ -789,10 +789,15 @@ pub async fn account_create(
         })),
     }
 }
-pub async fn account_verify() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.create_account("verified_user", &[0u8; 32]);
-    HttpResponse::Ok().json(json!({"status":"success","kyc_verified":true}))
+pub async fn account_verify(req: actix_web::HttpRequest) -> HttpResponse {
+    // Retourne le VRAI statut KYC — ne valide jamais automatiquement.
+    let claims = match crate::auth_guard::exiger_auth(&req) { Ok(c)=>c, Err(r)=>return r };
+    let deverrouille = crate::kyc::cadenas::est_deverrouille(&claims.sub);
+    HttpResponse::Ok().json(json!({
+        "status":"success",
+        "kyc_verified": deverrouille,
+        "cadenas_deverrouille": deverrouille
+    }))
 }
 pub async fn account_get(path: web::Path<String>) -> HttpResponse {
     HttpResponse::Ok().json(json!({"account_id":path.into_inner()}))
@@ -807,10 +812,19 @@ pub async fn account_balance(path: web::Path<String>) -> HttpResponse {
 // BULLES (7)
 // ==========================================================
 pub async fn bubble_create(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<GlobalState>>,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let owner = body.get("owner").and_then(|v| v.as_str()).unwrap_or("UQ-00000001");
+    // JWT + KYC obligatoires : personne ne crée de bulle sans identité vérifiée.
+    let claims = match crate::auth_guard::exiger_auth(&req) { Ok(c)=>c, Err(r)=>return r };
+    if !crate::kyc::cadenas::est_deverrouille(&claims.sub) {
+        return HttpResponse::Forbidden().json(json!({
+            "status":"error","code":"KYC_REQUIS",
+            "message":"KYC verifie requis pour le wallet BORB"
+        }));
+    }
+    let owner = body.get("owner").and_then(|v| v.as_str()).unwrap_or(&claims.sub);
     let amount = body.get("amount_micro").and_then(|v| v.as_u64()).unwrap_or(0);
     
     // Creer une bulle dans BubbleRegistry
@@ -1438,25 +1452,25 @@ pub async fn bubble_transfer(
         "message": "Transfert effectue et persiste dans les tables"
     }))
 }
-pub async fn bubble_freeze() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.publish_offer("freezer", "Bulle gelée", 0, 0);
-    HttpResponse::Ok().json(json!({"status":"success","frozen":true}))
+pub async fn bubble_freeze(req: actix_web::HttpRequest) -> HttpResponse {
+    // Endpoint de maintenance — réservé owner, ne publie rien de réel.
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    HttpResponse::Ok().json(json!({"status":"success","note":"stub_desactive"}))
 }
-pub async fn bubble_unfreeze() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.publish_offer("unfreezer", "Bulle dégelée", 0, 0);
-    HttpResponse::Ok().json(json!({"status":"success","unfrozen":true}))
+pub async fn bubble_unfreeze(req: actix_web::HttpRequest) -> HttpResponse {
+    // Endpoint de maintenance — réservé owner, ne publie rien de réel.
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    HttpResponse::Ok().json(json!({"status":"success","note":"stub_desactive"}))
 }
-pub async fn bubble_burn() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.publish_offer("burner", "Bulle brûlée", 0, 0);
-    HttpResponse::Ok().json(json!({"status":"success","burned":true}))
+pub async fn bubble_burn(req: actix_web::HttpRequest) -> HttpResponse {
+    // Endpoint de maintenance — réservé owner, ne publie rien de réel.
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    HttpResponse::Ok().json(json!({"status":"success","note":"stub_desactive"}))
 }
-pub async fn bubble_lend() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.publish_offer("lender", "Bulle prêtée", 0, 0);
-    HttpResponse::Ok().json(json!({"status":"success","lent":true}))
+pub async fn bubble_lend(req: actix_web::HttpRequest) -> HttpResponse {
+    // Endpoint de maintenance — réservé owner, ne publie rien de réel.
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    HttpResponse::Ok().json(json!({"status":"success","note":"stub_desactive"}))
 }
 pub async fn bubble_get(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : JWT obligatoire
@@ -1866,7 +1880,16 @@ pub async fn escrow_refund() -> HttpResponse { trading_not_ready() }
 // IDENTITÉ + GOUVERNANCE (10)
 // ==========================================================
 pub async fn identity_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("identity_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","identity_created":true})) }
-pub async fn identity_kyc() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("kyc_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","kyc_verified":true})) }
+pub async fn identity_kyc(req: actix_web::HttpRequest) -> HttpResponse {
+    // KYC réel uniquement via /api/kyc/* — cet endpoint ne fait que lire le statut.
+    let claims = match crate::auth_guard::exiger_auth(&req) { Ok(c)=>c, Err(r)=>return r };
+    let deverrouille = crate::kyc::cadenas::est_deverrouille(&claims.sub);
+    HttpResponse::Ok().json(json!({
+        "status":"success",
+        "kyc_verified": deverrouille,
+        "prochaines_etapes": if deverrouille { json!([]) } else { json!(["/api/kyc/live/session","/api/kyc/auto/validate"]) }
+    }))
+}
 pub async fn identity_get(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : JWT obligatoire
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
