@@ -33,6 +33,29 @@ pub struct TransferRequest {
     pub public_key: Option<String>,      // hex de la clé publique
 }
 
+
+/// Vérifie une vraie signature Ed25519 sur le message canonique de transaction.
+/// La clé publique de référence vient de uq_index (enregistrée au compte/KYC) —
+/// jamais de la clé fournie par le client (sinon n'importe qui signe avec sa clé).
+fn verifier_signature_tx(uq: &str, sender: &str, recipient: &str, amount: u64, fee: u64, signature_hex: &str) -> Result<(), String> {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let pubkey_bytes = index.get_public_key(uq)
+        .ok_or_else(|| format!("Aucune clé publique enregistrée pour {}", uq))?;
+    let pubkey_arr: [u8; 32] = pubkey_bytes.as_slice().try_into()
+        .map_err(|_| "Clé publique invalide (taille)".to_string())?;
+    let vk = VerifyingKey::from_bytes(&pubkey_arr)
+        .map_err(|e| format!("Clé publique illisible: {}", e))?;
+    let sig_bytes = hex::decode(signature_hex.trim())
+        .map_err(|_| "Signature non-hex".to_string())?;
+    let sig_arr: [u8; 64] = sig_bytes.as_slice().try_into()
+        .map_err(|_| "Signature invalide (taille != 64)".to_string())?;
+    let signature = Signature::from_bytes(&sig_arr);
+    let message = format!("UQ_TX_V1|{}|{}|{}|{}", sender, recipient, amount, fee);
+    vk.verify(message.as_bytes(), &signature)
+        .map_err(|_| "SIGNATURE_INVALIDE".to_string())
+}
+
 // ====================
 // 🚪 PORTE BORB — cadenas structurel exigé à TOUTE entrée d'argent
 // ====================
@@ -960,6 +983,27 @@ pub async fn bubble_transfer(
     let os = body.os.clone().unwrap_or_default();
     let browser = body.browser.clone().unwrap_or_default();
     let client_public_key = body.public_key.clone().unwrap_or_default();
+
+    // ===== Signature Ed25519 réelle — exigée au-dessus du seuil =====
+    // En dessous : acceptée si présente et valide, ignorée sinon (UX).
+    // Au-dessus : obligatoire, sinon la transaction est refusée.
+    const SEUIL_SIGNATURE_POINTS: u64 = 10_000_000; // 100 000 BORB (1pt = 0.01)
+    let sig_fournie = body.signature.as_deref().unwrap_or("").trim();
+    if sig_fournie.is_empty() {
+        if body.amount_points >= SEUIL_SIGNATURE_POINTS {
+            return HttpResponse::Forbidden().json(json!({
+                "status":"error","code":"SIGNATURE_REQUISE",
+                "message":"Signature Ed25519 requise pour les transactions >= 100 000 BORB"
+            }));
+        }
+    } else {
+        if let Err(e) = verifier_signature_tx(&sender, &body.sender, &body.recipient, body.amount_points, body.fee_points, sig_fournie) {
+            eprintln!("🚨 SIGNATURE REJETÉE pour {}: {}", sender, e);
+            return HttpResponse::Forbidden().json(json!({
+                "status":"error","code":"SIGNATURE_INVALIDE","message":e
+            }));
+        }
+    }
 
     let client_ip = req.headers().get("X-Forwarded-For")
         .and_then(|h| h.to_str().ok())
