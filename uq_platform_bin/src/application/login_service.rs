@@ -77,7 +77,18 @@ pub fn get_login_config(uq_number: &str) -> Result<LoginConfig, String> {
     let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
 
     if !std::path::Path::new(&db_path).exists() {
-        return Err("Compte introuvable".to_string());
+        // Comptes servis par Firestore (uq_index) n'ont pas de DB locale :
+        // la config login est DERIVEE de l'index — le serveur ne garde
+        // que les preuves, pas de fichier par compte.
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let is_owner = idx.get_account(uq_number)
+            .map(|a| a.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false))
+            .unwrap_or(uq_number == crate::auth_guard::OWNER_UQ);
+        return Ok(if is_owner {
+            LoginConfig::default_owner(uq_number)
+        } else {
+            LoginConfig::default_user(uq_number)
+        });
     }
 
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
