@@ -477,11 +477,16 @@ tokio::spawn(async move {
     let allowed_origins = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| {
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,https://uqplatform.com,https://www.uqplatform.com,https://borb.uqplatform.com".to_string()
     });
-    let allowed_roots: Vec<String> = allowed_origins
+    let mut allowed_roots: Vec<String> = allowed_origins
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
+    // Origines Capacitor (APK Android/iOS) — toujours autorisees, meme si
+    // ALLOWED_ORIGINS est defini : sans elles l'app ne peut pas appeler l'API.
+    for o in ["https://localhost", "http://localhost", "capacitor://localhost"] {
+        if !allowed_roots.iter().any(|r| r == o) { allowed_roots.push(o.to_string()); }
+    }
 
     println!("🌐 Serveur sur http://{}", bind_addr);
     println!("🔒 Allowed origins: {:?}", allowed_roots);
