@@ -138,6 +138,10 @@ use dotenv::dotenv;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Dossiers runtime requis (sessions owner/user DB, uploads KYC...)
+    let _ = std::fs::create_dir_all("data/users");
+    let _ = std::fs::create_dir_all("data");
+    let _ = std::fs::create_dir_all("kyc_uploads");
     // ====================
 // CHARGEMENT EXPLICITE DU .env (essaie PLUSIEURS chemins)
 // ====================
