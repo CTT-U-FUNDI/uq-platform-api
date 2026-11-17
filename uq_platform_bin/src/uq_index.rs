@@ -7,12 +7,15 @@ use rusqlite::{Connection, params};
 use std::sync::{Arc, Mutex, OnceLock};
 use serde_json::{json, Value};
 use sha2::{Sha256, Digest};
+use base64::Engine as _;
 
 static INDEX_INSTANCE: OnceLock<Arc<UqIndex>> = OnceLock::new();
 
 pub struct UqIndex {
     conn: Arc<Mutex<Connection>>,
     db_path: String,
+    /// Backend Firestore pour les methodes COMPTES (fallback SQLite sinon).
+    use_firestore: bool,
 }
 
 impl UqIndex {
@@ -26,9 +29,17 @@ impl UqIndex {
     /// Cree ou ouvre l'index
     pub fn new(db_path: &str) -> Self {
         let conn = Connection::open(db_path).expect("Failed to open uq_index.db");
+        let use_firestore = std::env::var("USE_FIRESTORE_INDEX")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+            || std::env::var("FIREBASE_SA_CLIENT_EMAIL").is_ok();
+        if use_firestore {
+            eprintln!("[uq_index] Backend comptes : FIRESTORE (fallback SQLite pour le reste)");
+        }
         let idx = Self {
             conn: Arc::new(Mutex::new(conn)),
             db_path: db_path.to_string(),
+            use_firestore,
         };
         idx.init_tables().expect("Failed to init tables");
         idx
@@ -282,6 +293,94 @@ impl UqIndex {
         hex::encode(hasher.finalize())
     }
 
+    // ====================
+    // BACKEND FIRESTORE — helpers comptes (docs `accounts/{uq_number}`)
+    // ====================
+
+    fn fs_str(fields: &Value, key: &str) -> String {
+        fields.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+    }
+
+    fn fs_bool(fields: &Value, key: &str) -> bool {
+        fields.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    fn fs_i64(fields: &Value, key: &str) -> i64 {
+        fields.get(key).and_then(|v| v.as_i64()).unwrap_or(0)
+    }
+
+    /// Normalisation identique a SQLite (email / pseudo).
+    fn normalize_email(email: &str) -> String {
+        email.to_lowercase().replace(".", "").replace("-", "").replace("_", "")
+    }
+
+    fn normalize_pseudo(pseudo: &str) -> String {
+        pseudo.to_lowercase()
+            .replace(".", "").replace("-", "").replace("_", "")
+            .replace("uq@", "")
+    }
+
+    /// Champs Firestore complets d'un compte (schema uq_index + colonnes profil).
+    fn account_fields(
+        uq_number: &str,
+        uq_email: &str,
+        uq_pseudo: &str,
+        hash_identity: &str,
+        hash_password: &str,
+        salt: &str,
+        public_key_b64: &str,
+        is_owner: bool,
+        db_path: &str,
+    ) -> Value {
+        json!({
+            "uq_number": uq_number,
+            "uq_email": uq_email,
+            "uq_pseudo": uq_pseudo,
+            "hash_identity": hash_identity,
+            "hash_password": hash_password,
+            "salt": salt,
+            "public_key": public_key_b64,
+            "is_owner": is_owner,
+            "created_at": chrono::Utc::now().timestamp(),
+            "db_path": db_path,
+            "normalized_email": Self::normalize_email(uq_email),
+            "normalized_pseudo": Self::normalize_pseudo(uq_pseudo),
+            // Colonnes profil (schema complet pour la prochaine etape)
+            "sexe": "",
+            "ville_provenance": "",
+            "ville_actuelle": "",
+            "statut_marital": "",
+            "photo_url": "",
+            "description": "",
+            "emploi": "",
+            "mobile_money_number": "",
+            "mobile_money_operator": "",
+            "date_naissance": 0,
+            "kyc_verified": false,
+            "recovery_email": "",
+            "recovery_phone": "",
+            "phone_verified": false,
+            "email_verified": false,
+            "display_currency": "CDF",
+            "receive_currency": "CDF",
+        })
+    }
+
+    /// JSON identique a verify_credentials a partir des champs Firestore.
+    fn verify_result_from_fields(f: &Value) -> Value {
+        let number = Self::fs_str(f, "uq_number");
+        let is_owner = Self::fs_bool(f, "is_owner");
+        json!({
+            "uq_number": number,
+            "uq_email": Self::fs_str(f, "uq_email"),
+            "uq_pseudo": Self::fs_str(f, "uq_pseudo"),
+            "is_owner": is_owner,
+            "db_path": Self::fs_str(f, "db_path"),
+            "kyc": crate::kyc::cadenas::est_deverrouille(&number),
+            "next_step": if is_owner { "unlock" } else { "2fa" }
+        })
+    }
+
     /// Ajoute un compte dans l'index
     pub fn insert_account(
         &self,
@@ -295,8 +394,6 @@ impl UqIndex {
         is_owner: bool,
         db_path: &str,
     ) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
-
         // Normaliser email et pseudo pour les collisions
         let normalized_email = uq_email.to_lowercase()
             .replace(".", "")
@@ -307,6 +404,17 @@ impl UqIndex {
             .replace("-", "")
             .replace("_", "")
             .replace("uq@", "");
+
+        if self.use_firestore {
+            let public_key_b64 = base64::engine::general_purpose::STANDARD.encode(public_key);
+            let fields = Self::account_fields(
+                uq_number, uq_email, uq_pseudo, hash_identity,
+                hash_password, salt, &public_key_b64, is_owner, db_path,
+            );
+            return crate::firestore_index::fs_set_doc("accounts", uq_number, &fields);
+        }
+
+        let conn = self.conn.lock().unwrap();
 
         conn.execute(
             "INSERT OR REPLACE INTO uq_index
@@ -339,6 +447,18 @@ impl UqIndex {
         uq_email: &str,
         password: &str,
     ) -> Option<Value> {
+        if self.use_firestore {
+            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
+            if Self::fs_str(&f, "uq_email") != uq_email {
+                return None;
+            }
+            let stored_hash = Self::fs_str(&f, "hash_password");
+            let salt = Self::fs_str(&f, "salt");
+            if Self::hash_password(password, &salt) != stored_hash {
+                return None;
+            }
+            return Some(Self::verify_result_from_fields(&f));
+        }
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uq_number, uq_email, uq_pseudo, hash_password, salt, is_owner, db_path
@@ -385,6 +505,24 @@ impl UqIndex {
         uq_email: &str,
         password: &str,
     ) -> Option<Value> {
+        if self.use_firestore {
+            let normalized = Self::normalize_email(uq_email);
+            let lowered = uq_email.to_lowercase();
+            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
+                let stored_norm = Self::fs_str(&f, "normalized_email");
+                let stored_email = Self::fs_str(&f, "uq_email").to_lowercase();
+                if stored_norm != normalized && stored_email != lowered {
+                    continue;
+                }
+                let stored_hash = Self::fs_str(&f, "hash_password");
+                let salt = Self::fs_str(&f, "salt");
+                if Self::hash_password(password, &salt) != stored_hash {
+                    return None;
+                }
+                return Some(Self::verify_result_from_fields(&f));
+            }
+            return None;
+        }
         let conn = self.conn.lock().unwrap();
 
         // Normaliser l'email comme get_account_by_email
@@ -443,6 +581,20 @@ impl UqIndex {
     /// vers le uq_number du compte dont uq_email = "jean@zando.uq".
     /// Utilisé par /api/mail/in pour router le courrier entrant.
     pub fn get_uq_by_email_localpart(&self, localpart: &str) -> Option<String> {
+        if self.use_firestore {
+            let local = localpart.to_lowercase();
+            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
+                let email = Self::fs_str(&f, "uq_email").to_lowercase();
+                let lp = email.split('@').next().unwrap_or("");
+                if lp == local {
+                    let uq = Self::fs_str(&f, "uq_number");
+                    if !uq.is_empty() {
+                        return Some(uq);
+                    }
+                }
+            }
+            return None;
+        }
         let conn = self.conn.lock().ok()?;
         let local = localpart.to_lowercase();
         // uq_email = "localpart@domaine_uq" — on matche le localpart exact
@@ -490,6 +642,16 @@ impl UqIndex {
     }
 
     pub fn get_account(&self, uq_number: &str) -> Option<Value> {
+        if self.use_firestore {
+            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
+            return Some(json!({
+                "uq_number": Self::fs_str(&f, "uq_number"),
+                "uq_email": Self::fs_str(&f, "uq_email"),
+                "uq_pseudo": Self::fs_str(&f, "uq_pseudo"),
+                "is_owner": Self::fs_bool(&f, "is_owner"),
+                "db_path": Self::fs_str(&f, "db_path")
+            }));
+        }
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uq_number, uq_email, uq_pseudo, is_owner, db_path FROM uq_index WHERE uq_number = ?1"
@@ -511,6 +673,11 @@ impl UqIndex {
     /// Email associe a un numero UQ — resolution interne pour le login
     /// « UQ + mot de passe » (l'utilisateur ne saisit jamais son email).
     pub fn get_email(&self, uq_number: &str) -> Option<String> {
+        if self.use_firestore {
+            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
+            let email = Self::fs_str(&f, "uq_email");
+            return if email.is_empty() { None } else { Some(email) };
+        }
         let conn = self.conn.lock().ok()?;
         conn.query_row(
             "SELECT uq_email FROM uq_index WHERE uq_number = ?1",
@@ -520,6 +687,14 @@ impl UqIndex {
     }
 
     pub fn get_public_key(&self, uq_number: &str) -> Option<Vec<u8>> {
+        if self.use_firestore {
+            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
+            let b64 = Self::fs_str(&f, "public_key");
+            if b64.is_empty() {
+                return None;
+            }
+            return base64::engine::general_purpose::STANDARD.decode(b64).ok();
+        }
         let conn = self.conn.lock().ok()?;
         conn.query_row(
             "SELECT public_key FROM uq_index WHERE uq_number = ?1",
@@ -531,6 +706,10 @@ impl UqIndex {
     /// Migration : Ajouter les colonnes normalized_email et normalized_pseudo
     /// a la table uq_index si elles n'existent pas
     pub fn migrate_uq_index(&self) -> Result<(), String> {
+        if self.use_firestore {
+            // Backend Firestore : pas de migration SQLite a faire.
+            return Ok(());
+        }
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         // Verifier si les colonnes existent deja
@@ -583,6 +762,22 @@ impl UqIndex {
     // Jamais de soustraction. Persiste. Ne recule jamais.
     // ====================
     pub fn next_position(&self) -> u64 {
+        if self.use_firestore {
+            // Compteur dans `meta/uq_counter`. NB : read-modify-write non
+            // atomique (pas de transaction REST) — suffisant pour
+            // l'allocation de positions UQ en attendant une V2 transactionnelle.
+            let current = Self::current_position_fs();
+            let new_position = current + 1;
+            let _ = crate::firestore_index::fs_set_doc(
+                "meta",
+                "uq_counter",
+                &json!({
+                    "last_position": new_position,
+                    "updated_at": chrono::Utc::now().timestamp(),
+                }),
+            );
+            return new_position;
+        }
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
 
@@ -605,8 +800,19 @@ impl UqIndex {
         new_position
     }
 
+    /// Lit le compteur Firestore `meta/uq_counter` (helper partage).
+    fn current_position_fs() -> u64 {
+        crate::firestore_index::fs_get_doc("meta", "uq_counter")
+            .and_then(|f| f.get("last_position").and_then(|v| v.as_i64()))
+            .unwrap_or(0)
+            .max(0) as u64
+    }
+
     /// Lire la position actuelle sans l'incrémenter
     pub fn current_position(&self) -> u64 {
+        if self.use_firestore {
+            return Self::current_position_fs();
+        }
         let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT COALESCE(last_position, 0) FROM uq_counter WHERE id = 1",
@@ -651,6 +857,9 @@ impl UqIndex {
     }
 
     pub fn count(&self) -> u64 {
+        if self.use_firestore {
+            return crate::firestore_index::fs_list_docs("accounts").len() as u64;
+        }
         let conn = self.conn.lock().unwrap();
         conn.query_row("SELECT COUNT(*) FROM uq_index", [], |r| r.get(0)).unwrap_or(0)
     }
@@ -1703,6 +1912,22 @@ impl UqIndex {
     // ====================
 
     pub fn get_account_by_email(&self, email: &str) -> Option<Value> {
+        if self.use_firestore {
+            let normalized = Self::normalize_email(email);
+            let lowered = email.to_lowercase();
+            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
+                if Self::fs_str(&f, "normalized_email") == normalized
+                    || Self::fs_str(&f, "uq_email").to_lowercase() == lowered
+                {
+                    return Some(serde_json::json!({
+                        "uq_number": Self::fs_str(&f, "uq_number"),
+                        "email": Self::fs_str(&f, "uq_email"),
+                        "pseudo": Self::fs_str(&f, "uq_pseudo"),
+                    }));
+                }
+            }
+            return None;
+        }
         let conn = self.conn.lock().ok()?;
 
         // Normaliser l'email
@@ -1730,6 +1955,23 @@ impl UqIndex {
 
     /// Liste tous les comptes de l'index
     pub fn list_all(&self) -> Vec<Value> {
+        if self.use_firestore {
+            let mut result: Vec<Value> = crate::firestore_index::fs_list_docs("accounts")
+                .into_iter()
+                .map(|(_id, f)| {
+                    json!({
+                        "uq_number": Self::fs_str(&f, "uq_number"),
+                        "uq_email": Self::fs_str(&f, "uq_email"),
+                        "uq_pseudo": Self::fs_str(&f, "uq_pseudo"),
+                        "is_owner": Self::fs_bool(&f, "is_owner"),
+                        "db_path": Self::fs_str(&f, "db_path"),
+                        "created_at": Self::fs_i64(&f, "created_at"),
+                    })
+                })
+                .collect();
+            result.sort_by_key(|v| v.get("created_at").and_then(|c| c.as_i64()).unwrap_or(0));
+            return result;
+        }
         let conn = self.conn.lock().unwrap();
         let mut result = Vec::new();
 
@@ -1756,6 +1998,22 @@ impl UqIndex {
         result
     }
     pub fn get_account_by_pseudo(&self, pseudo: &str) -> Option<Value> {
+        if self.use_firestore {
+            let normalized = Self::normalize_pseudo(pseudo);
+            let lowered = pseudo.to_lowercase();
+            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
+                if Self::fs_str(&f, "normalized_pseudo") == normalized
+                    || Self::fs_str(&f, "uq_pseudo").to_lowercase() == lowered
+                {
+                    return Some(serde_json::json!({
+                        "uq_number": Self::fs_str(&f, "uq_number"),
+                        "email": Self::fs_str(&f, "uq_email"),
+                        "pseudo": Self::fs_str(&f, "uq_pseudo"),
+                    }));
+                }
+            }
+            return None;
+        }
         let conn = self.conn.lock().ok()?;
 
         // Normaliser le pseudo
@@ -1824,11 +2082,23 @@ impl UqIndex {
     }
 
     pub fn update_password(&self, uq_number: &str, new_password: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-
         // Generer un nouveau salt
         let salt = format!("uq_{}_salt_{}", uq_number.to_lowercase().replace("-", "_"), chrono::Utc::now().timestamp());
         let new_hash = Self::hash_password(new_password, &salt);
+
+        if self.use_firestore {
+            // Comme SQLite : OK meme si le compte n'existe pas (0 ligne affectee).
+            if let Some(mut f) = crate::firestore_index::fs_get_doc("accounts", uq_number) {
+                if let Some(obj) = f.as_object_mut() {
+                    obj.insert("hash_password".to_string(), json!(new_hash));
+                    obj.insert("salt".to_string(), json!(salt));
+                    crate::firestore_index::fs_set_doc("accounts", uq_number, &f)?;
+                }
+            }
+            return Ok(());
+        }
+
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         conn.execute(
             "UPDATE uq_index SET hash_password = ?1, salt = ?2 WHERE uq_number = ?3",

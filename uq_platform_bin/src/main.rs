@@ -64,6 +64,7 @@ mod contestation;
 mod contestation_routes;
 mod database;
 mod uq_index;
+mod firestore_index;
 mod uq_public_alias;
 mod reserved_usernames;
 mod username_utils;
