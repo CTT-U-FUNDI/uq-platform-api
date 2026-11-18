@@ -1923,7 +1923,6 @@ pub async fn escrow_refund() -> HttpResponse { trading_not_ready() }
 // ==========================================================
 // IDENTITÉ + GOUVERNANCE (10)
 // ==========================================================
-pub async fn identity_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("identity_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","identity_created":true})) }
 pub async fn identity_kyc(req: actix_web::HttpRequest) -> HttpResponse {
     // KYC réel uniquement via /api/kyc/* — cet endpoint ne fait que lire le statut.
     let claims = match crate::auth_guard::exiger_auth(&req) { Ok(c)=>c, Err(r)=>return r };
@@ -1941,7 +1940,6 @@ pub async fn identity_get(req: actix_web::HttpRequest, path: web::Path<String>) 
     // propriété de l'objet {id} reste à la charge du handler)
     if let Err(r) = crate::auth_guard::exiger_auth(&req) { return r; }
  HttpResponse::Ok().json(json!({"id":path.into_inner()})) }
-pub async fn identity_certificate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("cert_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","certificate_created":true})) }
 pub async fn identity_verify(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : JWT obligatoire
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
