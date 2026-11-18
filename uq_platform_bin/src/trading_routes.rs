@@ -2355,6 +2355,7 @@ fn commande_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "created_at": row.get::<_, i64>(12)?,
         "updated_at": row.get::<_, i64>(13)?,
         "escrow_points": points,
+        "proof_code": row.get::<_, String>(18).unwrap_or_default(),
         "borb_amount": points as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64,
         "rate_base": row.get::<_, String>(15)?,
         "buyer_phone": row.get::<_, String>(16)?,
@@ -2369,7 +2370,7 @@ const COLONNES_COMMANDE: &str = "id, offer_id, buyer, seller, currency, amount, 
      phone, operator, status, chat_group_id, created_at, updated_at, COALESCE(escrow_points, 0),
      (SELECT COALESCE(rate_base, '') FROM p2p_offers
        WHERE p2p_offers.id = p2p_orders.offer_id),
-     COALESCE(buyer_phone, ''), COALESCE(seller_phone, '')";
+     COALESCE(buyer_phone, ''), COALESCE(seller_phone, ''), COALESCE(proof_code, '')";
 
 // ====================
 // GET /api/p2p/market/offers
