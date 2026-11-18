@@ -38,6 +38,12 @@ fn db() -> Result<Connection, HttpResponse> {
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_escrow_product ON escrow_orders(product_id, status);
+        CREATE TABLE IF NOT EXISTS escrow_analytics (
+            order_id INTEGER PRIMARY KEY,
+            product_id INTEGER, buyer TEXT, seller TEXT,
+            price_borb REAL, status TEXT,
+            duree_secs INTEGER, cree_le INTEGER, clos_le INTEGER
+        );
     "#).map_err(|_| HttpResponse::InternalServerError().finish())?;
     Ok(c)
 }
@@ -227,6 +233,8 @@ pub async fn escrow_confirm(req: HttpRequest, path: web::Path<i64>, body: web::J
         conn.execute("UPDATE escrow_orders SET status='confirme', updated_at=?2 WHERE id=?1", params![id, now()]).ok();
         // le produit disparait du flux Zando une fois vendu
         let _ = conn.execute("UPDATE marketplace_items SET status='sold' WHERE id=?1", params![conn.query_row("SELECT product_id FROM escrow_orders WHERE id=?2",params![id],|r|r.get::<_,i64>(0)).unwrap_or(0)]);
+        // PURGE post-evenement : historique chat efface, seule synthese analytics conservee
+        purge_et_analytics(&conn, id);
         liberer_escrow(&seller, &buyer, price, id);
         return HttpResponse::Ok().json(json!({"status":"success","message":"VENTE CONFIRMEE — escrow libere","sold":true}));
     }
@@ -246,5 +254,32 @@ fn liberer_escrow(seller: &str, buyer: &str, montant: f64, commande_id: i64) {
     let t = now();
     if crate::p2p_escrow::liberer(seller, buyer, points, commande_id, t).is_err() {
         eprintln!("🚨 ESCROW liberer echoue {} -> {} ({} pts)", seller, buyer, points);
+    }
+}
+
+/// Purge le chat d'une commande cloturee et garde une fiche analytics minimale.
+fn purge_et_analytics(conn: &Connection, id: i64) {
+    let Ok((pid, buyer, seller, price, created)) = conn.query_row(
+        "SELECT product_id,buyer,seller,price_borb,created_at FROM escrow_orders WHERE id=?1",
+        params![id], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,
+                            r.get::<_,f64>(3)?,r.get::<_,i64>(4)?))) else { return };
+    let _ = conn.execute("DELETE FROM escrow_chat WHERE order_id=?1", params![id]);
+    let duree = (now() - created).max(0) as i64;
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO escrow_analytics (order_id,product_id,buyer,seller,price_borb,status,duree_secs,cree_le,clos_le)
+         VALUES (?1,?2,?3,?4,?5,'confirme',?6,?7,?8)",
+        params![id,pid,buyer,seller,price,duree,created,now()]);
+}
+
+/// Purge aussi les commandes annulees/expirees (nettoyage periodique).
+pub fn purge_cloturees() {
+    if let Ok(conn) = db() {
+        // commandes non actives depuis +24h -> purge chat + analytics
+        let vieux = now() - 86400;
+        let ids: Vec<i64> = conn.prepare(
+            "SELECT id FROM escrow_orders WHERE status IN ('confirme','annule') AND updated_at<?1")
+            .and_then(|mut s| s.query_map(params![vieux], |r| r.get(0)).map(|rows| rows.flatten().collect()))
+            .unwrap_or_default();
+        for id in ids { purge_et_analytics(&conn, id); }
     }
 }
