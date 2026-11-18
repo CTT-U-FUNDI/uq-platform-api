@@ -42,6 +42,7 @@ mod mail_store;
 mod capsule_routes;
 mod mail_routes;
 mod contact_routes;
+mod escrow_routes;
 mod escrow_reconcile;
 mod media_routes;
 mod sms_store;

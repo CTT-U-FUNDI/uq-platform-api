@@ -59,6 +59,15 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         // ===== CONTACT PUBLIC (site vitrine) =====
         .route("/api/contact", web::post().to(crate::contact_routes::contact_envoyer))
         .route("/api/media/upload", web::post().to(crate::media_routes::media_upload))
+        .route("/api/escrow/buy", web::post().to(crate::escrow_routes::escrow_buy))
+        .route("/api/escrow/my-orders", web::get().to(crate::escrow_routes::escrow_my_orders))
+        .route("/api/escrow/clients", web::get().to(crate::escrow_routes::escrow_clients))
+        .route("/api/escrow/{id}/select", web::post().to(crate::escrow_routes::escrow_select))
+        .route("/api/escrow/{id}/sell", web::post().to(crate::escrow_routes::escrow_sell))
+        .route("/api/escrow/{id}/chat", web::post().to(crate::escrow_routes::escrow_chat_send))
+        .route("/api/escrow/{id}/chat", web::get().to(crate::escrow_routes::escrow_chat_get))
+        .route("/api/escrow/{id}/position", web::post().to(crate::escrow_routes::escrow_position))
+        .route("/api/escrow/{id}/confirm", web::post().to(crate::escrow_routes::escrow_confirm))
         // ====================
         // UQ SMS — relais OTP (vieux Android → /inbound ; signature Ed25519 user)
         // ====================
