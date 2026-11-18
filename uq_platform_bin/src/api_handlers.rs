@@ -2566,9 +2566,12 @@ pub async fn micro_credit_request() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","request_created":true}))
 }
 pub async fn micro_credit_voucher() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Non implemente"})) }
-pub async fn offline_apply() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.record_transaction("offline_sender", "offline_recipient", 500, 5); HttpResponse::Ok().json(json!({"status":"success","applied":true})) }
-pub async fn offline_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("offline_user", "Transaction hors ligne", 0, 0); HttpResponse::Ok().json(json!({"status":"success","offline_tx_created":true})) }
-pub async fn offline_verify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verifier", "offline_user", "Transaction vérifiée"); HttpResponse::Ok().json(json!({"status":"success","verified":true})) }
+// Honnêteté : ces routes étaient des stubs qui écrivaient des transactions
+// codées en dur sans effet réel. Le vrai mode hors-ligne = file locale
+// rejouée au retour réseau (client), chaque POST re-validé par le serveur.
+pub async fn offline_apply() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Mode hors-ligne : utiliser la file locale de l'app, rejouée puis re-validée par le serveur."})) }
+pub async fn offline_create() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Mode hors-ligne : utiliser la file locale de l'app."})) }
+pub async fn offline_verify() -> HttpResponse { HttpResponse::NotImplemented().json(json!({"status":"error","message":"Mode hors-ligne : utiliser la file locale de l'app."})) }
 // GET /api/oracle/current — le prix interne du BORB tel que le régulateur l'a
 // fixé, avec son horodatage. Plus le « price: 2000 » codé en dur qui affirmait
 // un cours que personne n'avait mesuré.
