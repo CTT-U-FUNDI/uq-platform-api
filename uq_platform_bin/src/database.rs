@@ -215,11 +215,15 @@ impl Database {
             Database::default_data()
         };
 
-        let sqlite_path = if file_path.ends_with(".json") {
-            file_path.trim_end_matches(".json").to_string() + ".db"
-        } else {
-            file_path.to_string() + ".db"
-        };
+        // UQ_DB_PATH : chemin absolu du fichier SQLite (disque persistant Render).
+        // Sans la variable, on derive du chemin JSON historique.
+        let sqlite_path = std::env::var("UQ_DB_PATH").unwrap_or_else(|_| {
+            if file_path.ends_with(".json") {
+                file_path.trim_end_matches(".json").to_string() + ".db"
+            } else {
+                file_path.to_string() + ".db"
+            }
+        });
 
         // create r2d2 pool for sqlite
         let manager = SqliteConnectionManager::file(&sqlite_path);

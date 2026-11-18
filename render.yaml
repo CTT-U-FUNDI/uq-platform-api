@@ -6,14 +6,20 @@ services:
   - type: web
     name: uq-platform-api
     runtime: docker
-    plan: free
+    plan: starter
     region: frankfurt
     healthCheckPath: /api/health
+    disk:
+      name: uq-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: RUST_HOST
         value: 0.0.0.0
       - key: ALLOWED_ORIGINS
         value: https://uqplatform.com,https://www.uqplatform.com,http://localhost:5173
+      - key: UQ_DB_PATH
+        value: /data/uq_platform.db
       # ---- Secrets : à renseigner dans le dashboard Render ----
       - key: JWT_SECRET
         sync: false
