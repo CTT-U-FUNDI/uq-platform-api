@@ -61,6 +61,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/media/upload", web::post().to(crate::media_routes::media_upload))
         .route("/api/escrow/buy", web::post().to(crate::escrow_routes::escrow_buy))
         .route("/api/escrow/my-orders", web::get().to(crate::escrow_routes::escrow_my_orders))
+        .route("/api/escrow/{id}", web::get().to(crate::escrow_routes::escrow_get))
         .route("/api/escrow/clients", web::get().to(crate::escrow_routes::escrow_clients))
         .route("/api/escrow/{id}/select", web::post().to(crate::escrow_routes::escrow_select))
         .route("/api/escrow/{id}/sell", web::post().to(crate::escrow_routes::escrow_sell))

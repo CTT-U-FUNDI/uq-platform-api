@@ -283,3 +283,22 @@ pub fn purge_cloturees() {
         for id in ids { purge_et_analytics(&conn, id); }
     }
 }
+
+// GET /api/escrow/{id} — detail commande + positions GPS (pour suivi)
+pub async fn escrow_get(req: HttpRequest, path: web::Path<i64>) -> HttpResponse {
+    let id = path.into_inner();
+    let Some(uq) = auth_uq(&req) else { return HttpResponse::Unauthorized().finish() };
+    let conn = match db() { Ok(c)=>c, Err(r)=>return r };
+    if !est_participant(&conn, id, &uq) { return HttpResponse::Forbidden().finish(); }
+    let row = conn.query_row(
+        "SELECT buyer,seller,status,price_borb,buyer_lat,buyer_lng,seller_lat,seller_lng,locked_until,temp_code
+         FROM escrow_orders WHERE id=?1", params![id],
+        |r| Ok(json!({
+            "buyer": r.get::<_,String>(0)?, "seller": r.get::<_,String>(1)?,
+            "status": r.get::<_,String>(2)?, "price_borb": r.get::<_,f64>(3)?,
+            "buyer_pos": [r.get::<_,Option<f64>>(4)?, r.get::<_,Option<f64>>(5)?],
+            "seller_pos": [r.get::<_,Option<f64>>(6)?, r.get::<_,Option<f64>>(7)?],
+            "locked_until": r.get::<_,i64>(8)?, "temp_code": r.get::<_,Option<String>>(9)?
+        }))).ok();
+    match row { Some(v) => HttpResponse::Ok().json(json!({"status":"success","order":v})), None => HttpResponse::NotFound().finish() }
+}
