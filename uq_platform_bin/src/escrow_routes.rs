@@ -85,6 +85,7 @@ pub async fn escrow_buy(req: HttpRequest, body: web::Json<Value>) -> HttpRespons
         "INSERT INTO escrow_orders (product_id,buyer,seller,price_borb,status,locked_until,created_at,updated_at)
          VALUES (?1,?2,?3,?4,'interest',?5,?6,?6)",
         params![product_id,buyer,seller,price,t+verrou_selon_prix(price),t]).unwrap_or(0);
+    crate::trading_routes::push_notification(&seller,"zando","Nouveau client interesse","Un acheteur veut ton produit — ouvre Mes clients pour choisir.", &format!("escrow:{}",id));
     HttpResponse::Ok().json(json!({"status":"success","order_id":id,"verrou_jusqua":t+verrou_selon_prix(price)}))
 }
 
@@ -235,6 +236,8 @@ pub async fn escrow_confirm(req: HttpRequest, path: web::Path<i64>, body: web::J
         let _ = conn.execute("UPDATE marketplace_items SET status='sold' WHERE id=?1", params![conn.query_row("SELECT product_id FROM escrow_orders WHERE id=?2",params![id],|r|r.get::<_,i64>(0)).unwrap_or(0)]);
         // PURGE post-evenement : historique chat efface, seule synthese analytics conservee
         purge_et_analytics(&conn, id);
+        crate::trading_routes::push_notification(&buyer,"zando","Vente confirmee","Ton achat est confirme — BORB credites.", &format!("escrow:{}",id));
+        crate::trading_routes::push_notification(&seller,"zando","Vente confirmee","Ta vente est confirmee — BORB credites.", &format!("escrow:{}",id));
         liberer_escrow(&seller, &buyer, price, id);
         return HttpResponse::Ok().json(json!({"status":"success","message":"VENTE CONFIRMEE — escrow libere","sold":true}));
     }
