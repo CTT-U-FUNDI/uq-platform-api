@@ -3007,6 +3007,10 @@ pub async fn p2p_offer_take(
         return echec(format!("Création de la commande impossible ({})", e));
     }
     let commande_id = conn.last_insert_rowid();
+    // Notification vendeur : un acheteur est interesse — defi chrono lance
+    notifier(&conn, &vendeur, "p2p", "Nouvelle demande d'achat",
+        "Un acheteur s'interesse a ton offre — tu as 1h pour conclure le paiement.",
+        &format!("p2p_order:{}", commande_id));
 
     let groupe = ouvrir_canal_p2p(
         &acheteur,

@@ -458,6 +458,7 @@ tokio::spawn(async move {
                 interval.tick().await;
                 escrow_reconcile::reconcilier();
                 escrow_routes::purge_cloturees();
+                escrow_reconcile::expirer_p2p();
             }
         });
     }

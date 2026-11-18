@@ -49,3 +49,28 @@ pub fn reconcilier() {
         }
     }
 }
+
+/// Defi chrono P2P : commande pending_payment de plus de 1h -> annulee,
+/// fonds vendeur degeles, quantite offre restauree.
+pub fn expirer_p2p() {
+    let Ok(index) = Connection::open("uq_index.db") else { return };
+    let limite = chrono::Utc::now().timestamp() - 3600;
+    let vieux: Vec<(i64, String, i64)> = index.prepare(
+        "SELECT id, seller, offer_id FROM p2p_orders WHERE status='pending_payment' AND created_at<?1")
+        .and_then(|mut s| s.query_map([limite], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map(|rows| rows.flatten().collect()))
+        .unwrap_or_default();
+    for (id, vendeur, offre_id) in vieux {
+        // degeler les points du vendeur
+        let pts: i64 = index.query_row("SELECT COALESCE(escrow_points,0) FROM p2p_orders WHERE id=?1", [id], |r| r.get(0)).unwrap_or(0);
+        if pts > 0 {
+            let _ = crate::p2p_escrow::degeler(&vendeur, pts, chrono::Utc::now().timestamp());
+        }
+        // restaurer la quantite sur l'offre
+        let _ = index.execute(
+            "UPDATE p2p_offers SET taken_amount = MAX(0, COALESCE(taken_amount,0) - (SELECT COALESCE(amount,0) FROM p2p_orders WHERE id=?1)) WHERE id=?2",
+            rusqlite::params![id, offre_id]);
+        let _ = index.execute("UPDATE p2p_orders SET status='expired', updated_at=?2 WHERE id=?1",
+            rusqlite::params![id, chrono::Utc::now().timestamp()]);
+        eprintln!("⏰ P2P expiré : commande {} vendeur {} — {} pts rendus", id, vendeur, pts);
+    }
+}
