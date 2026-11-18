@@ -3255,13 +3255,15 @@ struct CommandeP2P {
     /// Numéro que l'acheteur doit payer : la ligne mobile money du vendeur.
     telephone_vendeur: String,
     cree_le: i64,
+    /// Code 4 chiffres de cette commande : l'acheteur l'ecrit sur sa preuve papier.
+    proof_code: String,
 }
 
 fn charger_commande(conn: &Connection, identifiant: i64) -> Result<CommandeP2P, String> {
     conn.query_row(
         "SELECT buyer, seller, currency, amount, status, chat_group_id,
                 offer_id, COALESCE(escrow_points, 0), COALESCE(phone, ''), created_at,
-                COALESCE(buyer_phone, ''), COALESCE(seller_phone, '')
+                COALESCE(buyer_phone, ''), COALESCE(seller_phone, ''), COALESCE(proof_code, '')
          FROM p2p_orders WHERE id = ?1",
         params![identifiant],
         |row| {
@@ -3277,6 +3279,7 @@ fn charger_commande(conn: &Connection, identifiant: i64) -> Result<CommandeP2P, 
                 telephone_acheteur: premier_non_vide(row.get(10)?, row.get(8)?),
                 telephone_vendeur: row.get(11)?,
                 cree_le: row.get(9)?,
+                proof_code: row.get(12)?,
             })
         },
     )
@@ -3602,6 +3605,25 @@ pub async fn p2p_order_confirm(
     }
     if commande.statut != "pending_payment" {
         return refus("Cette commande n'attend pas de paiement", "STATUT_INVALIDE");
+    }
+
+    // Code de preuve : l'acheteur doit saisir le code 4 chiffres de CETTE
+    // commande (celui qu'il devait ecrire sur sa preuve papier). Sans lui,
+    // n'importe quelle vieille capture pourrait servir.
+    let code_saisi = texte(&body, "proof_code").trim().to_string();
+    if !commande.proof_code.is_empty() {
+        if code_saisi.is_empty() {
+            return refus(
+                "Saisis le code a 4 chiffres affiche pour cette commande — tu aurais du l'ecrire sur ta preuve papier.",
+                "CODE_REQUIS",
+            );
+        }
+        if code_saisi != commande.proof_code {
+            return refus(
+                "Code incorrect : ce n'est pas le code de cette transaction. Verifie celui affiche dans ta commande.",
+                "CODE_INCORRECT",
+            );
+        }
     }
 
     // « J'ai payé » ne s'ouvre qu'avec une preuve analysée. Le moteur tranche,
