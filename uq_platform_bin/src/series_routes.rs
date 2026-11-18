@@ -323,7 +323,7 @@ pub async fn trading_performance(
 /// La base d'index du module trading, ouverte en lecture/écriture comme ailleurs.
 fn ouvrir_index() -> Result<Connection, String> {
     let conn =
-        Connection::open("uq_index.db").map_err(|e| format!("Index indisponible ({})", e))?;
+        Connection::open(crate::uq_index::uq_index_path()).map_err(|e| format!("Index indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     crate::trading_routes::ensure_tables(&conn).map_err(|e| e.to_string())?;
     Ok(conn)

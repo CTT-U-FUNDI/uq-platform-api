@@ -13,7 +13,7 @@ use crate::mail_store::{shared as mail_store, detecter_otp};
 use crate::uq_index::UqIndex;
 
 fn index() -> std::sync::Arc<UqIndex> {
-    UqIndex::shared("uq_index.db")
+    UqIndex::shared(&crate::uq_index::uq_index_path())
 }
 
 fn ok(v: serde_json::Value) -> HttpResponse { HttpResponse::Ok().json(v) }

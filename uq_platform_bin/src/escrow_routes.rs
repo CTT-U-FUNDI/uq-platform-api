@@ -12,7 +12,7 @@ fn verrou_selon_prix(price_borb: f64) -> i64 {
 }
 
 fn db() -> Result<Connection, HttpResponse> {
-    let c = Connection::open("uq_index.db").map_err(|_| HttpResponse::InternalServerError().finish())?;
+    let c = Connection::open(crate::uq_index::uq_index_path()).map_err(|_| HttpResponse::InternalServerError().finish())?;
     c.execute_batch(r#"
         CREATE TABLE IF NOT EXISTS escrow_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

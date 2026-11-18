@@ -194,7 +194,7 @@ impl AuthManager {
         };
 
         // 2. Vérifier que is_owner = true dans uq_index
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         let account = idx.get_account(&claims.sub);
 
         match account {
@@ -232,7 +232,7 @@ impl AuthManager {
         }
 
         // Sinon, vérifier si owner
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         let account = idx.get_account(&claims.sub);
 
         match account {

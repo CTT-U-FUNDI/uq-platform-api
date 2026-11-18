@@ -280,7 +280,7 @@ pub async fn account_public_identity(path: web::Path<String>) -> HttpResponse {
     let (pseudo, nom) = crate::uq_public_alias::get_public_identity(&uq);
     // Le wallet BORB vérifie l'existence du compte UQ avant d'ouvrir
     // un wallet — `existe` reflète la vraie DB uq_index, pas le nœud.
-    let existe = crate::uq_index::UqIndex::shared("uq_index.db")
+    let existe = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path())
         .get_account(&uq)
         .is_some();
     // Statut KYC : le wallet BORB exige un compte vérifié pour s'ouvrir.

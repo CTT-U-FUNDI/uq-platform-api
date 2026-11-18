@@ -65,7 +65,7 @@ pub fn compute_permissions(uq_number: &str) -> Permissions {
     let mut perms = Permissions::default();
 
     // 1. uq_index (is_owner)
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     if let Some(account) = idx.get_account(uq_number) {
         perms.is_owner = account.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false);
     }

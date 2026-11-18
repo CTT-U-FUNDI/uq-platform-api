@@ -39,7 +39,7 @@ pub fn excédent_escrow(index: &Connection) -> Vec<(String, i64)> {
 
 /// Degèle les excédents trouves. A appeler au demarrage + periodiquement.
 pub fn reconcilier() {
-    let index_path = "uq_index.db";
+    let index_path = crate::uq_index::uq_index_path();
     let Ok(index) = Connection::open(index_path) else { return };
     for (uq, points) in excédent_escrow(&index) {
         let now = chrono::Utc::now().timestamp();
@@ -53,7 +53,7 @@ pub fn reconcilier() {
 /// Defi chrono P2P : commande pending_payment de plus de 1h -> annulee,
 /// fonds vendeur degeles, quantite offre restauree.
 pub fn expirer_p2p() {
-    let Ok(index) = Connection::open("uq_index.db") else { return };
+    let Ok(index) = Connection::open(crate::uq_index::uq_index_path()) else { return };
     let limite = chrono::Utc::now().timestamp() - 3600;
     let vieux: Vec<(i64, String, i64)> = index.prepare(
         "SELECT id, seller, offer_id FROM p2p_orders WHERE status='pending_payment' AND created_at<?1")

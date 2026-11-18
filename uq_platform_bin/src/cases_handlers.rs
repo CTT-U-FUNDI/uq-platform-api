@@ -8,7 +8,7 @@ use serde_json::json;
 
 /// GET /api/cases/seven
 pub async fn cases_seven() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -70,7 +70,7 @@ pub async fn cases_seven() -> HttpResponse {
 
 /// GET /api/cases/bridges
 pub async fn cases_bridges() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -127,7 +127,7 @@ fn default_bridges() -> Vec<serde_json::Value> {
 
 /// GET /api/cases/anomalies
 pub async fn cases_anomalies() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -180,7 +180,7 @@ pub async fn cases_anomalies() -> HttpResponse {
 
 /// GET /api/cases/optimizations
 pub async fn cases_optimizations() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({

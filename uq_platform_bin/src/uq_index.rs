@@ -11,6 +11,12 @@ use base64::Engine as _;
 
 static INDEX_INSTANCE: OnceLock<Arc<UqIndex>> = OnceLock::new();
 
+
+/// Chemin de l'index UQ : UQ_INDEX_PATH (disque persistant) ou defaut local.
+pub fn uq_index_path() -> String {
+    std::env::var("UQ_INDEX_PATH").unwrap_or_else(|_| crate::uq_index::uq_index_path().to_string())
+}
+
 pub struct UqIndex {
     conn: Arc<Mutex<Connection>>,
     db_path: String,
@@ -869,7 +875,7 @@ impl UqIndex {
         json!({
             "total_users": self.count(),
             "db_path": self.db_path,
-            "storage": "uq_index.db"
+            "storage": crate::uq_index::uq_index_path()
         })
     }
 
@@ -2220,7 +2226,7 @@ pub fn open_encrypted_index() -> Result<rusqlite::Connection, String> {
         .ok_or_else(|| "Système verrouillé".to_string())?;
     let key_hex = crate::security::master_key::key_to_hex(&master);
     
-    let conn = rusqlite::Connection::open("uq_index.db")
+    let conn = rusqlite::Connection::open(crate::uq_index::uq_index_path())
         .map_err(|e| format!("Ouverture uq_index échouée: {}", e))?;
     
     conn.pragma_update(None, "key", &key_hex)

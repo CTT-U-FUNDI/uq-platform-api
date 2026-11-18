@@ -97,7 +97,7 @@ fn scanner_tous_les_soldes() -> u128 {
     let mut total: u128 = 0;
     
     // 1. Lire uq_index.db pour avoir la liste des comptes
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     
     // Pour chaque compte, ouvrir sa DB et lire balance
     let accounts_dir = "data/users";

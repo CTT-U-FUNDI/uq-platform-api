@@ -15,12 +15,14 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use rusqlite::{params, Connection};
 use serde_json::json;
 
-const ANCRE: &str = "uq_index.db";
-const CHEMIN_ANCRE_ABSOLU: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db");
-
 /// Le relatif d'abord, comme partout dans ce projet : un bac de test isole peut
 /// lire sa propre copie du registre sans jamais toucher a celui de la prod.
-const CHEMINS: [&str; 2] = [ANCRE, CHEMIN_ANCRE_ABSOLU];
+fn chemins_index() -> [String; 2] {
+    [
+        crate::uq_index::uq_index_path(),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db").to_string(),
+    ]
+}
 
 const TABLE_SQL: &str = "
 CREATE TABLE IF NOT EXISTS chat_reports (
@@ -45,11 +47,11 @@ const DESCRIPTION_MAX_CAR: usize = 1000;
 const PREUVE_MAX_CHARS: usize = 900_000;
 
 fn ouvrir() -> Result<Connection, HttpResponse> {
-    for chemin in CHEMINS {
-        if !std::path::Path::new(chemin).exists() {
+    for chemin in chemins_index() {
+        if !std::path::Path::new(&chemin).exists() {
             continue;
         }
-        match Connection::open(chemin) {
+        match Connection::open(&chemin) {
             Ok(conn) => {
                 let _ = conn.execute_batch(TABLE_SQL);
                 return Ok(conn);

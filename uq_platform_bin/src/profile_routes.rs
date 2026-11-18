@@ -45,13 +45,16 @@ const PLAFOND_SIGNALEMENTS: u32 = 30;
 const SEUIL_SIGNALEMENTS_ABUSIFS: i64 = 3;
 const POINTS_PAR_ABUS: u32 = 5;
 const PLAFOND_ABUS: u32 = 15;
-const INDEX_ANCRE: &str = "uq_index.db";
-const CHEMIN_INDEX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db");
+fn chemins_index() -> [String; 2] {
+    [
+        crate::uq_index::uq_index_path(),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db").to_string(),
+    ]
+}
 /// Ordre de recherche du registre : le répertoire courant du serveur d'abord
 /// (comme `data/users/*.db` et `uq_platform_db.db`), l'emplacement d'origine en
 /// repli. Le relatif-d'abord permet à un bac de test isolé de lire sa propre
 /// copie sans jamais toucher au registre de production.
-const CHEMINS_REGISTRE: [&str; 2] = [INDEX_ANCRE, CHEMIN_INDEX];
 const ANCIENNETE_CERTIFICATION_SECS: i64 = 12 * 30 * 24 * 3600;
 
 fn normaliser(uq: &str) -> String {
@@ -91,8 +94,8 @@ fn inscriptions(uqs: &[&str]) -> std::collections::HashMap<String, i64> {
     if uqs.is_empty() {
         return sortie;
     }
-    for chemin in CHEMINS_REGISTRE {
-        let Ok(conn) = rusqlite::Connection::open(chemin) else {
+    for chemin in chemins_index() {
+        let Ok(conn) = rusqlite::Connection::open(&chemin) else {
             continue;
         };
         let bruts = lire_inscriptions(&conn, uqs);
@@ -106,10 +109,10 @@ fn inscriptions(uqs: &[&str]) -> std::collections::HashMap<String, i64> {
 
 /// Ouvre le registre sans le créer : un chemin absent est ignoré.
 fn connexion_registre() -> Option<rusqlite::Connection> {
-    CHEMINS_REGISTRE
+    chemins_index()
         .into_iter()
-        .filter(|chemin| std::path::Path::new(chemin).exists())
-        .find_map(|chemin| rusqlite::Connection::open(chemin).ok())
+        .filter(|chemin| std::path::Path::new(&chemin).exists())
+        .find_map(|chemin| rusqlite::Connection::open(&chemin).ok())
 }
 
 /// Ventes reçues par compte, en une passe. Deux sources, disjointes : les
@@ -626,7 +629,7 @@ pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpRes
             }
     };
     let profile_fields =
-        crate::uq_index::UqIndex::shared("uq_index.db").get_full_profile(&uq);
+        crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path()).get_full_profile(&uq);
     let public_alias = rusqlite::Connection::open(&preferences_path)
         .and_then(|connection| {
             connection.query_row(

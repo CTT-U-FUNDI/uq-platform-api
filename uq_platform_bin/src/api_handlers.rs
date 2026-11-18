@@ -39,7 +39,7 @@ pub struct TransferRequest {
 /// jamais de la clé fournie par le client (sinon n'importe qui signe avec sa clé).
 fn verifier_signature_tx(uq: &str, sender: &str, recipient: &str, amount: u64, fee: u64, signature_hex: &str) -> Result<(), String> {
     use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let pubkey_bytes = index.get_public_key(uq)
         .ok_or_else(|| format!("Aucune clé publique enregistrée pour {}", uq))?;
     let pubkey_arr: [u8; 32] = pubkey_bytes.as_slice().try_into()
@@ -435,7 +435,7 @@ async fn transfer_converted_currency(
     let now = chrono::Utc::now().timestamp();
     let transfer_id = format!("wtx_{}", uuid::Uuid::new_v4());
 
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(conn) => conn,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -748,7 +748,7 @@ pub async fn account_create(
     // Un code promo de parrain saisi doit exister : on ne cree pas de lien
     // fantome et on ne laisse pas l'utilisateur croire qu'il est fille.
     if let Some(code) = input.code_promo_parrain.clone() {
-        let index = crate::uq_index::UqIndex::shared("uq_index.db");
+        let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         if index.get_uq_by_code_promo(&code).is_none() {
             return HttpResponse::BadRequest().json(json!({
                 "status": "error",
@@ -2295,7 +2295,7 @@ pub async fn chat_groups_list(
         Ok(claims) => claims,
         Err(response) => return response,
     };
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.list_chat_groups(&claims.sub) {
         Ok(groups) => HttpResponse::Ok().json(json!({
             "status": "success",
@@ -2337,7 +2337,7 @@ pub async fn chat_group_create(
             "message": "Type de groupe ou visibilité invalide."
         }));
     }
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.create_chat_group(name, description, group_type, visibility, &claims.sub) {
         Ok(group) => HttpResponse::Created().json(json!({
             "status": "success",
@@ -2358,7 +2358,7 @@ pub async fn chat_group_join(req: HttpRequest, path: web::Path<String>) -> HttpR
         Ok(claims) => claims,
         Err(response) => return response,
     };
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.join_chat_group(&path.into_inner(), &claims.sub) {
         Ok(()) => HttpResponse::Ok().json(json!({"status": "success", "joined": true})),
         Err(error) => HttpResponse::Forbidden().json(json!({
@@ -2373,7 +2373,7 @@ pub async fn chat_group_leave(req: HttpRequest, path: web::Path<String>) -> Http
         Ok(claims) => claims,
         Err(response) => return response,
     };
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.leave_chat_group(&path.into_inner(), &claims.sub) {
         Ok(()) => HttpResponse::Ok().json(json!({"status": "success", "left": true})),
         Err(error) => HttpResponse::BadRequest().json(json!({
@@ -2388,7 +2388,7 @@ pub async fn chat_group_delete(req: HttpRequest, path: web::Path<String>) -> Htt
         Ok(claims) => claims,
         Err(response) => return response,
     };
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.delete_chat_group(&path.into_inner(), &claims.sub) {
         Ok(()) => HttpResponse::Ok().json(json!({"status": "success", "deleted": true})),
         Err(error) => HttpResponse::Forbidden().json(json!({
@@ -2414,7 +2414,7 @@ pub async fn chat_group_invite(
             "message": "Un identifiant UQ valide est requis."
         }));
     }
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.invite_chat_group_member(&path.into_inner(), &claims.sub, member_id) {
         Ok(()) => HttpResponse::Ok().json(json!({"status": "success", "invited": true})),
         Err(error) => HttpResponse::Forbidden().json(json!({
@@ -2432,7 +2432,7 @@ pub async fn chat_group_messages(
         Ok(claims) => claims,
         Err(response) => return response,
     };
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.chat_group_messages(&path.into_inner(), &claims.sub) {
         Ok(messages) => HttpResponse::Ok().json(json!({
             "status": "success",
@@ -2461,7 +2461,7 @@ pub async fn chat_group_send(
             "message": "Le message doit contenir entre 1 et 4000 caractères."
         }));
     }
-    let index = uq_index::UqIndex::shared("uq_index.db");
+    let index = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match index.send_chat_group_message(&path.into_inner(), &claims.sub, content) {
         Ok(message_id) => HttpResponse::Created().json(json!({
             "status": "success",
@@ -2831,7 +2831,7 @@ pub async fn distribution_treasury_status(req: actix_web::HttpRequest) -> HttpRe
     // Le frontend resout le profil vise via les champs `uq`/`email` : on
     // expose les identifiants reels pour que la bascule ne dépende pas du
     // localStorage du terminal.
-    if let Ok(idx) = rusqlite::Connection::open("uq_index.db") {
+    if let Ok(idx) = rusqlite::Connection::open(crate::uq_index::uq_index_path()) {
         let email_owner: String = idx
             .query_row(
                 "SELECT COALESCE(uq_email, '') FROM uq_index WHERE uq_number = ?1",
@@ -2857,7 +2857,7 @@ pub async fn distribution_delis_status(req: actix_web::HttpRequest) -> HttpRespo
     // Le membre actif du cercle owner est LE profil 2 : on expose son UQ
     // et son email pour que la bascule cible le bon compte sans deviner
     // ni mémoriser.
-    if let Ok(idx) = rusqlite::Connection::open("uq_index.db") {
+    if let Ok(idx) = rusqlite::Connection::open(crate::uq_index::uq_index_path()) {
         if let Ok((member, email)) = idx.query_row(
             "SELECT cm.member_uq, COALESCE(ui.uq_email, '')
              FROM circle_members cm
@@ -2915,7 +2915,7 @@ pub async fn distribution_claim(body: web::Json<serde_json::Value>) -> HttpRespo
         .unwrap_or("UQ-230354360");
 
     // 2. Ouvrir la DB pour verifier le solde multi_wallets
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -4203,7 +4203,7 @@ pub async fn verify_account_exists(body: web::Json<serde_json::Value>) -> HttpRe
     let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
 
     // Chercher dans uq_index.db (P2P)
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
 
     // Login « email seul » : si pas de number mais un email, on vérifie
     // directement par email (le UQ est résolu en interne).
@@ -4265,7 +4265,7 @@ pub async fn account_infos(req: actix_web::HttpRequest, path: web::Path<String>)
     }
     
     // 1. Chercher dans uq_index
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     
     let account = match idx.get_account(&uq_number) {
         Some(acc) => acc,
@@ -4277,7 +4277,7 @@ pub async fn account_infos(req: actix_web::HttpRequest, path: web::Path<String>)
     
     // 2. Chercher le code_promo dans generated_patterns
     let code_promo = {
-        let conn = match rusqlite::Connection::open("uq_index.db") {
+        let conn = match rusqlite::Connection::open(crate::uq_index::uq_index_path()) {
             Ok(c) => c,
             Err(_) => return HttpResponse::InternalServerError().json(json!({
                 "status": "error",
@@ -4397,8 +4397,8 @@ pub async fn dev_regen_keys(
 
     // Mettre à jour la clé publique dans uq_index
     {
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
-        if let Ok(uq_index_conn) = rusqlite::Connection::open("uq_index.db") {
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+        if let Ok(uq_index_conn) = rusqlite::Connection::open(crate::uq_index::uq_index_path()) {
             let _ = uq_index_conn.execute(
                 "UPDATE uq_index SET public_key = ?1 WHERE uq_number = ?2",
                 rusqlite::params![wallet_keys.public_key, uq_number],
@@ -4428,7 +4428,7 @@ pub async fn account_me(req: actix_web::HttpRequest) -> HttpResponse {
     let uq_number = &claims.sub;
 
     // Chercher dans uq_index.db
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
 
     match idx.get_account(uq_number) {
         Some(account) => HttpResponse::Ok().json(json!({
@@ -4974,7 +4974,7 @@ pub async fn get_user_wallets(
     let borb_reserve = points.max(0) as f64 / 100.0;
     let borb_available = (points - frozen_points).max(0) as f64 / 100.0;
     
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -5103,7 +5103,7 @@ pub async fn get_wallet_currencies(
         return response;
     }
 
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(conn) => conn,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -5176,7 +5176,7 @@ pub async fn wallet_transfers(
         return response;
     }
 
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(conn) => conn,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -5274,7 +5274,7 @@ pub async fn allocate_wallets(body: web::Json<serde_json::Value>) -> HttpRespons
         None => return HttpResponse::BadRequest().json(json!({"status":"error","message":"allocations requises"})),
     };
     
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e.to_string()})),
     };
@@ -5310,7 +5310,7 @@ pub async fn set_currency_preferences(body: web::Json<serde_json::Value>) -> Htt
         return HttpResponse::BadRequest().json(json!({"status":"error","message":"uq_number requis"}));
     }
     
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e.to_string()})),
     };
@@ -5587,7 +5587,7 @@ pub async fn convert_wallets(
         return response;
     }
 
-    let mut conn = match Connection::open("uq_index.db") {
+    let mut conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e.to_string()})),
     };
@@ -5901,7 +5901,7 @@ pub async fn withdraw_wallet(
     let frais = frais_minor as f64 / 100.0;
     let net = net_minor as f64 / 100.0;
 
-    let conn = match Connection::open("uq_index.db") {
+    let conn = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e.to_string()})),
     };
@@ -7688,7 +7688,7 @@ pub async fn account_pin_remove_v2(body: web::Json<serde_json::Value>) -> HttpRe
     }
 
     // Verifier mot de passe
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account_info = idx.get_account(uq_number);
 
     if let Some(info) = account_info {
@@ -7754,7 +7754,7 @@ pub async fn account_pin_verify_password(body: web::Json<serde_json::Value>) -> 
         }));
     }
 
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account_info = idx.get_account(uq_number);
 
     match account_info {
@@ -8656,7 +8656,7 @@ pub async fn webauthn_remove(body: web::Json<serde_json::Value>) -> HttpResponse
     }
 
     // Verifier le mot de passe
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account_info = idx.get_account(uq_number);
 
     if let Some(info) = account_info {
@@ -8723,7 +8723,7 @@ pub async fn account_password_change(body: web::Json<serde_json::Value>) -> Http
     }
 
     // 1. Verifier l'ancien mot de passe
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account_info = idx.get_account(uq_number);
 
     let email = match account_info {
@@ -8772,7 +8772,7 @@ pub async fn account_pseudo_set(body: web::Json<serde_json::Value>) -> HttpRespo
     }
 
     // Verifier le mot de passe
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account_info = idx.get_account(uq_number);
 
     let email = match account_info {
@@ -8985,7 +8985,7 @@ pub async fn verification_submit(body: web::Json<serde_json::Value>) -> HttpResp
 
             // 4. Mettre à jour la clé publique dans uq_index
             {
-                if let Ok(uq_index_conn) = rusqlite::Connection::open("uq_index.db") {
+                if let Ok(uq_index_conn) = rusqlite::Connection::open(crate::uq_index::uq_index_path()) {
                     let _ = uq_index_conn.execute(
                         "UPDATE uq_index SET public_key = ?1 WHERE uq_number = ?2",
                         rusqlite::params![wallet_keys.public_key, uq_number],
@@ -9088,7 +9088,7 @@ pub async fn api_me(req: actix_web::HttpRequest) -> HttpResponse {
     let perms = crate::permissions::compute_permissions(uq_number);
 
     // Récupérer le compte
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account = idx.get_account(uq_number);
     let code_promo = idx.get_code_promo(uq_number);
 
@@ -9304,7 +9304,7 @@ pub async fn uq_search_pseudos(query: web::Query<std::collections::HashMap<Strin
         return HttpResponse::Ok().json(json!({ "status": "success", "pseudos": [] }));
     }
     
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     // La priorité aux certifiés doit se décider AVANT la troncature : on récupère
     // un volant plus large, on trie, puis on rend les 10 premiers.
     let mut all = idx.search_pseudos(&search, 50);
@@ -9359,7 +9359,7 @@ pub async fn account_profile_update(
     if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, uq) {
         return response;
     }
-    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let r = index.update_profile_full(uq,
         body.get("ville_provenance").and_then(|v| v.as_str()),
         body.get("ville_actuelle").and_then(|v| v.as_str()),
@@ -9434,7 +9434,7 @@ pub async fn account_recovery_update(
     let telephone_verifie = jeton_telephone
         .and_then(|jeton| crate::verify_routes::valeur_verifiee(jeton, crate::verify_routes::Portee::Telephone));
 
-    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let avant = index.get_recovery_contacts(uq).unwrap_or(json!({}));
 
     // Un contact deja verifie ne se laisse en vie que si on ne le touche pas.
@@ -10212,7 +10212,7 @@ pub async fn distribution_claim_with_pin(body: web::Json<serde_json::Value>) -> 
     ).unwrap_or(0);
 
     // 11. Sync multi_wallets
-    let conn_idx = match Connection::open("uq_index.db") {
+    let conn_idx = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -10277,7 +10277,7 @@ pub async fn distribution_auto_validate_kyc(req: actix_web::HttpRequest, body: w
     }
 
     // 2. Verifier email owner (double securite)
-    let conn_idx = match Connection::open("uq_index.db") {
+    let conn_idx = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "status": "error",
@@ -10402,7 +10402,7 @@ pub async fn can_reclaim(req: actix_web::HttpRequest) -> HttpResponse {
     }
 
     // 4. Verifier le lien circle_members
-    let conn_idx = match Connection::open("uq_index.db") {
+    let conn_idx = match Connection::open(crate::uq_index::uq_index_path()) {
         Ok(c) => c,
         Err(_) => return HttpResponse::Ok().json(json!({
             "status": "success",

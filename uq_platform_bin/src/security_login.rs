@@ -265,7 +265,7 @@ pub fn hash_pin(pin: &str, salt: &str) -> String {
 // VÉRIFIER SI UN COMPTE EXISTE (user normal)
 // ====================
 pub fn check_user_exists(uq: &str, email: &str, password: &str) -> bool {
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     idx.verify_credentials(uq, email, password).is_some()
 }
 

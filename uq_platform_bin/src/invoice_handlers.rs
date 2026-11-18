@@ -10,7 +10,7 @@ use printpdf::*;
 
 /// GET /api/invoices
 pub async fn invoices_list() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -65,7 +65,7 @@ pub async fn invoice_get(req: actix_web::HttpRequest, path: web::Path<String>) -
     if let Err(r) = crate::auth_guard::exiger_auth(&req) { return r; }
 
     let invoice_id = path.into_inner();
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -132,7 +132,7 @@ pub async fn invoice_pdf(req: actix_web::HttpRequest, path: web::Path<String>) -
     if let Err(r) = crate::auth_guard::exiger_auth(&req) { return r; }
 
     let invoice_id = path.into_inner();
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -236,7 +236,7 @@ pub async fn invoices_by_user(req: actix_web::HttpRequest, path: web::Path<Strin
     if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
 
     let uq_number = path.into_inner();
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({

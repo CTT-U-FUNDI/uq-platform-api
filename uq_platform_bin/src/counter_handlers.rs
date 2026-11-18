@@ -8,7 +8,7 @@ use serde_json::json;
 
 /// GET /api/counter/status
 pub async fn counter_status() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -139,7 +139,7 @@ pub async fn counter_calculate(body: web::Json<serde_json::Value>) -> HttpRespon
 
 /// GET /api/counter/transactions
 pub async fn counter_transactions() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -188,7 +188,7 @@ pub async fn counter_transactions() -> HttpResponse {
 
 /// GET /api/counter/rights
 pub async fn counter_rights() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({

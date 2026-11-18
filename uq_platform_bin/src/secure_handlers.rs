@@ -128,7 +128,7 @@ pub async fn secure_step1(
     // Résolution : si l'input ressemble à un email (contient '@' et ne
     // commence pas par "UQ-"), on cherche le compte par email.
     let uq = if input.contains('@') && !input.starts_with("UQ-") {
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         match idx.get_uq_by_email(&input) {
             Some(uq) => uq,
             None => return bad_data(),
@@ -244,7 +244,7 @@ pub async fn secure_step2(
     // Email absent -> resolution interne par numero UQ (login mobile).
     let email_resolu;
     let email = if email.trim().is_empty() {
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         match idx.get_email(&uq) {
             Some(e) if !e.trim().is_empty() => { email_resolu = e; &email_resolu }
             _ => return bad_data(),
@@ -521,7 +521,7 @@ pub async fn secure_finalize_user(
         body.get("credential_id").and_then(|v| v.as_str()).unwrap_or(""),
     );
 
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account_info = idx.get_account(&uq);
 
     // ====================
@@ -575,7 +575,7 @@ pub async fn debug_account_check(body: web::Json<serde_json::Value>) -> HttpResp
     let uq = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     if uq.is_empty() { return bad_data(); }
 
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account = idx.get_account(&uq);
     let exists = account.is_some();
     let is_owner = account.as_ref()

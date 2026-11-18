@@ -81,7 +81,7 @@ pub fn est_retirable(code: &str) -> bool {
 /// settings.frais_taux_crypto dans uq_index.db) — modifiables sans redeploy.
 /// Fallback : les constantes historiques.
 fn lire_taux_db(cle: &str, defaut: f64) -> f64 {
-    rusqlite::Connection::open("uq_index.db")
+    rusqlite::Connection::open(crate::uq_index::uq_index_path())
         .ok()
         .and_then(|c| c.query_row(
             "SELECT value FROM settings WHERE key = ?1",
@@ -118,7 +118,7 @@ pub fn definir_taux(cle: &str, valeur: f64) -> Result<(), String> {
         "crypto" => "frais_taux_crypto",
         _ => return Err("Cle inconnue (fiat|crypto)".to_string()),
     };
-    let conn = rusqlite::Connection::open("uq_index.db").map_err(|e| e.to_string())?;
+    let conn = rusqlite::Connection::open(crate::uq_index::uq_index_path()).map_err(|e| e.to_string())?;
     conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)", []).map_err(|e| e.to_string())?;
     conn.execute("INSERT INTO settings (key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         rusqlite::params![cle, valeur.to_string()]).map_err(|e| e.to_string())?;

@@ -48,7 +48,7 @@ fn maintenant() -> i64 {
 }
 
 fn ouvrir_index() -> Result<Connection, String> {
-    let conn = Connection::open("uq_index.db")
+    let conn = Connection::open(crate::uq_index::uq_index_path())
         .map_err(|e| format!("Index indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     assurer_table(&conn)?;

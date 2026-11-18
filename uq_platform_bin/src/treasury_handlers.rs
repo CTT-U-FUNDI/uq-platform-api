@@ -11,7 +11,7 @@ pub async fn treasury_status(req: actix_web::HttpRequest) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — OWNER uniquement
     if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
 
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -70,7 +70,7 @@ pub async fn treasury_status(req: actix_web::HttpRequest) -> HttpResponse {
 
 /// GET /api/treasury/sales
 pub async fn treasury_sales() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -109,7 +109,7 @@ pub async fn treasury_sales() -> HttpResponse {
 
 /// GET /api/treasury/revenue
 pub async fn treasury_revenue() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -158,7 +158,7 @@ pub async fn treasury_revenue() -> HttpResponse {
 
 /// GET /api/treasury/system/profiles
 pub async fn treasury_system_profiles() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -216,7 +216,7 @@ fn default_profiles() -> Vec<serde_json::Value> {
 
 /// GET /api/treasury/system/messages
 pub async fn treasury_system_messages() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -255,7 +255,7 @@ pub async fn treasury_system_messages() -> HttpResponse {
 
 /// GET /api/treasury/dev/ads
 pub async fn treasury_dev_ads() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -306,7 +306,7 @@ pub async fn treasury_dev_ads_create(body: web::Json<serde_json::Value>) -> Http
         }));
     }
 
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -344,7 +344,7 @@ pub async fn treasury_dev_ads_delete(body: web::Json<serde_json::Value>) -> Http
         }));
     }
 
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -367,7 +367,7 @@ pub async fn treasury_dev_ads_delete(body: web::Json<serde_json::Value>) -> Http
 
 /// GET /api/treasury/wallets
 pub async fn treasury_wallets() -> HttpResponse {
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
@@ -418,7 +418,7 @@ pub async fn treasury_wallets_add(req: actix_web::HttpRequest, body: web::Json<s
         }));
     }
 
-    let db_path = "uq_index.db";
+    let db_path = crate::uq_index::uq_index_path();
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => return HttpResponse::InternalServerError().json(json!({

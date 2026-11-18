@@ -227,7 +227,7 @@ if std::env::var("OWNER_UNLOCK_CODE").is_err() {
     // MIGRATION UQ_INDEX (ajout colonnes normalized_email/pseudo)
     // ====================
     {
-        let idx = uq_index::UqIndex::shared("uq_index.db");
+        let idx = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         match idx.migrate_uq_index() {
             Ok(_) => eprintln!("✅ Migration uq_index OK"),
             Err(e) => eprintln!("⚠️  Migration uq_index : {}", e),

@@ -267,7 +267,7 @@ fn ajouter_colonne_manquante(
 }
 
 fn ouvrir_index() -> Result<Connection, String> {
-    let conn = Connection::open("uq_index.db")
+    let conn = Connection::open(crate::uq_index::uq_index_path())
         .map_err(|e| format!("Index indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     ensure_tables(&conn)?;
@@ -2292,7 +2292,7 @@ fn ouvrir_canal_p2p(
     taux: f64,
     telephone_vendeur: &str,
 ) -> String {
-    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let nom = format!("P2P {} #{}", devise, commande);
     let description = format!(
         "Commande P2P mobile : {} BORB contre {:.2} {} (1 BORB = {:.2} {}).",
@@ -3329,7 +3329,7 @@ fn message_canal(groupe: &str, expediteur: &str, texte: &str) {
     if groupe.is_empty() {
         return;
     }
-    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     if let Err(e) = index.send_chat_group_message(groupe, expediteur, texte) {
         eprintln!("P2P : message de suivi impossible ({})", e);
     }

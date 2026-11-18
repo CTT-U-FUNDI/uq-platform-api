@@ -78,7 +78,7 @@ pub async fn guardian_login(body: web::Json<serde_json::Value>) -> HttpResponse 
         }
     } else {
         // CAS 2 : Utilisateur normal -> verifier dans uq_index.db
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         if let Some(account) = idx.verify_credentials(number, email, password) {
             state.failed_attempts = 0;
             state.session_active = true;

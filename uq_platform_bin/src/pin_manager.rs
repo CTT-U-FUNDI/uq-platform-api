@@ -236,7 +236,7 @@ mod tests {
 // VÉRIFIER LE MOT DE PASSE DU COMPTE (uq_index.db)
 // ====================
 pub fn verify_account_password(uq_number: &str, password: &str) -> bool {
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match idx.get_account(uq_number) {
         Some(info) => {
             let email = info.get("uq_email").and_then(|v| v.as_str()).unwrap_or("");

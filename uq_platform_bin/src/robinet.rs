@@ -107,7 +107,7 @@ pub struct Prelevement<'a> {
 pub fn prelever(p: &Prelevement) -> Result<(), String> {
     let chemin = chemin_base_compte(p.uq);
     let mut conn =
-        Connection::open("uq_index.db").map_err(|e| format!("Index inaccessible: {}", e))?;
+        Connection::open(crate::uq_index::uq_index_path()).map_err(|e| format!("Index inaccessible: {}", e))?;
     if conn
         .execute("ATTACH DATABASE ?1 AS user_account", rusqlite::params![chemin])
         .is_err()

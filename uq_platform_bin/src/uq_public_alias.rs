@@ -12,7 +12,7 @@
 ///   pseudo    : « uq@jean »
 ///   nom_court : « Jean M. » (prénom + initiale du nom), ou "" si inconnu
 pub fn get_public_identity(uq: &str) -> (String, String) {
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let account = idx.get_account(uq);
 
     let mut pseudo = String::new();
@@ -244,7 +244,7 @@ pub fn resoudre_destinataire(saisie: &str) -> Option<String> {
     }
 
     // Pseudo (avec ou sans « uq@ »)
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     let candidats = [
         s.to_string(),
         format!("uq@{}", s.trim_start_matches("uq@")),

@@ -31,7 +31,7 @@ pub fn is_owner_path(path: &str) -> bool {
 
 /// Vérifie si l'utilisateur est owner (via uq_index)
 pub fn check_is_owner(uq_number: &str) -> bool {
-    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
     match idx.get_account(uq_number) {
         Some(acc) => acc.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false),
         None => false,

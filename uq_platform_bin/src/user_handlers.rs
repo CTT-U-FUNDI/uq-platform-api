@@ -192,7 +192,7 @@ pub async fn shop_create(req: actix_web::HttpRequest, body: web::Json<serde_json
 
     if mode_24_7 {
         // Regle des 6 mois : pas de 24/7 pour les comptes recents.
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
         let age_ok = idx.get_account(&claims.sub)
             .and_then(|a| a.get("created_at").and_then(|v| v.as_i64()))
             .map(|ts| chrono::Utc::now().timestamp() - ts >= 183 * 86_400)
