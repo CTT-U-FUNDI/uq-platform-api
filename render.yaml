@@ -22,6 +22,8 @@ services:
         value: /data/uq_platform.db
       - key: UQ_INDEX_PATH
         value: /data/uq_index.db
+      - key: UQ_DATA_DIR
+        value: /data/data
       # ---- Secrets : à renseigner dans le dashboard Render ----
       - key: JWT_SECRET
         sync: false

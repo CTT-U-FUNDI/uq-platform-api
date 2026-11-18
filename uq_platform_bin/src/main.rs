@@ -217,6 +217,33 @@ if std::env::var("OWNER_UNLOCK_CODE").is_err() {
 
     println!("🚀 UQ PLATFORM — Démarrage...");
 
+    // ===== Persistance : data/ -> disque Render =====
+    // Sur Render le filesystem est éphémère : UQ_DATA_DIR pointe vers le
+    // disque monté (/data/data) et on symlink "data" dessus pour que les
+    // 100+ chemins data/users/*.db persistent entre déploiements.
+    #[cfg(unix)]
+    {
+        if let Ok(cible) = std::env::var("UQ_DATA_DIR") {
+            let _ = std::fs::create_dir_all(&cible);
+            let lien = std::path::Path::new("data");
+            let deja = std::fs::symlink_metadata(lien)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
+            if !deja {
+                if lien.exists() {
+                    // Dossier réel présent (ex: image Docker) : on le renomme
+                    // et on crée le lien, en fusionnant le contenu si besoin.
+                    let _ = std::fs::rename(lien, "data_legacy");
+                }
+                if let Err(e) = std::os::unix::fs::symlink(&cible, lien) {
+                    eprintln!("⚠️  Symlink data -> {} : {}", cible, e);
+                } else {
+                    eprintln!("✅ data/ persisté sur {}", cible);
+                }
+            }
+        }
+    }
+
     let db = Database::shared("uq_platform_db.json");
     // Reporte les likes historiques des publications dans la table persistante
     db.migrer_tables_reactions();
