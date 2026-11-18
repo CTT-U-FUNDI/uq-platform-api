@@ -42,6 +42,7 @@ mod mail_store;
 mod capsule_routes;
 mod mail_routes;
 mod contact_routes;
+mod escrow_reconcile;
 mod media_routes;
 mod sms_store;
 mod sms_routes;
@@ -447,6 +448,17 @@ tokio::spawn(async move {
     println!("📦 Base JSON initialisée");
     println!("🎵 PlayerState initialisé");
     println!("🔐 MiniServerState initialisé");
+    // Reconciliation escrow : degel des fonds orphelins (crash entre geler et insert)
+    {
+        escrow_reconcile::reconcilier();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                escrow_reconcile::reconcilier();
+            }
+        });
+    }
     let udp_port = std::env::var("UDP_PORT").unwrap_or_else(|_| "8080".to_string());
     println!("🌐 P2pState initialisé (UDP sur 0.0.0.0:{})", udp_port);
 
