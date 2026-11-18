@@ -215,6 +215,7 @@ pub fn ensure_tables(conn: &Connection) -> Result<(), String> {
         ("p2p_offers", "rate_base", "TEXT DEFAULT ''"),
         ("p2p_offers", "amount_unit", "TEXT DEFAULT 'DEVISE'"),
         ("p2p_orders", "escrow_points", "INTEGER DEFAULT 0"),
+        ("p2p_orders", "proof_code", "TEXT"),
         // Une commande met deux lignes face a face : celle que l'acheteur doit
         // payer, et la sienne d'ou part le paiement. Les deux preuves se
         // controlent chacune contre la bonne.
@@ -2976,8 +2977,8 @@ pub async fn p2p_offer_take(
         "INSERT INTO p2p_orders
             (offer_id, buyer, seller, currency, amount, usd_amount, rate, phone, operator,
              status, escrow_points, chat_group_id, created_at, updated_at,
-             buyer_phone, seller_phone)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, 'pending_payment', ?9, '', ?10, ?10, ?11, ?12)",
+             buyer_phone, seller_phone, proof_code)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, 'pending_payment', ?9, '', ?10, ?10, ?11, ?12, ?13)",
         params![
             offre_id,
             acheteur,
@@ -2990,7 +2991,8 @@ pub async fn p2p_offer_take(
             points,
             horodatage,
             telephone_acheteur,
-            telephone_vendeur
+            telephone_vendeur,
+            &format!("{:04}", (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos() as u64 % 10000) as u32)
         ],
     );
     if let Err(e) = insertion {
