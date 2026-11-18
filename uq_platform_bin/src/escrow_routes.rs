@@ -4,7 +4,12 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 
-const VERROU_SECS: i64 = 2 * 3600; // verrou 2h
+fn verrou_selon_prix(price_borb: f64) -> i64 {
+    // Verrou proportionnel au prix : plus cher = plus de temps pour negocier
+    if price_borb >= 1000.0 { 24 * 3600 }
+    else if price_borb >= 100.0 { 6 * 3600 }
+    else { 2 * 3600 }
+}
 
 fn db() -> Result<Connection, HttpResponse> {
     let c = Connection::open("uq_index.db").map_err(|_| HttpResponse::InternalServerError().finish())?;
@@ -73,8 +78,8 @@ pub async fn escrow_buy(req: HttpRequest, body: web::Json<Value>) -> HttpRespons
     let id = conn.execute(
         "INSERT INTO escrow_orders (product_id,buyer,seller,price_borb,status,locked_until,created_at,updated_at)
          VALUES (?1,?2,?3,?4,'interest',?5,?6,?6)",
-        params![product_id,buyer,seller,price,t+VERROU_SECS,t]).unwrap_or(0);
-    HttpResponse::Ok().json(json!({"status":"success","order_id":id,"verrou_jusqua":t+VERROU_SECS}))
+        params![product_id,buyer,seller,price,t+verrou_selon_prix(price),t]).unwrap_or(0);
+    HttpResponse::Ok().json(json!({"status":"success","order_id":id,"verrou_jusqua":t+verrou_selon_prix(price)}))
 }
 
 // GET /api/escrow/my-orders — commandes de l'user connecte
@@ -220,6 +225,8 @@ pub async fn escrow_confirm(req: HttpRequest, path: web::Path<i64>, body: web::J
         |r| Ok((r.get(0)?, r.get(1)?))).unwrap_or((0, 0));
     if bc == 1 && sc == 1 {
         conn.execute("UPDATE escrow_orders SET status='confirme', updated_at=?2 WHERE id=?1", params![id, now()]).ok();
+        // le produit disparait du flux Zando une fois vendu
+        let _ = conn.execute("UPDATE marketplace_items SET status='sold' WHERE id=?1", params![conn.query_row("SELECT product_id FROM escrow_orders WHERE id=?2",params![id],|r|r.get::<_,i64>(0)).unwrap_or(0)]);
         liberer_escrow(&seller, &buyer, price, id);
         return HttpResponse::Ok().json(json!({"status":"success","message":"VENTE CONFIRMEE — escrow libere","sold":true}));
     }
