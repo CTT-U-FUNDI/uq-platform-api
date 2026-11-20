@@ -19,6 +19,7 @@ mod chat_reports;
 mod security_login;
 mod security_helpers;
 mod secure_handlers;
+mod p2p_signal;
 mod api_routes;
 mod ai_routes;
 mod trading_routes;
