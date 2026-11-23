@@ -1,0 +1,205 @@
+﻿// ═══════════════════════════════════════════════════════════════
+// 📦 PERSISTENCE — Charger/Sauvegarder BlockOrb
+// ═══════════════════════════════════════════════════════════════
+//
+// « L'eau circule. Elle se persiste. »
+//
+// Ce module gère la persistance :
+// - Charger le BlockOrb global (40 Md)
+// - Sauvegarder le BlockOrb global
+// - Charger/Sauvegarder le BlockOrb d'un utilisateur
+// - Charger/Sauvegarder le prix (Regulateur)
+//
+// ═══════════════════════════════════════════════════════════════
+
+use crate::block_orb::BlockOrb;
+use crate::regulateur::RegulateurState;
+use std::fs;
+use std::path::Path;
+
+const DATA_DIR: &str = "data";
+const USERS_DIR: &str = "data/users";
+const GLOBAL_ORB: &str = "data/block_orb_global.json";
+const PRIX_FILE: &str = "data/prix.json";
+
+// ═══════════════════════════════════════════════════════════════
+// INITIALISATION DES DOSSIERS
+// ═══════════════════════════════════════════════════════════════
+
+pub fn init_dirs() -> Result<(), String> {
+    fs::create_dir_all(DATA_DIR).map_err(|e| e.to_string())?;
+    fs::create_dir_all(USERS_DIR).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BLOCKORB GLOBAL
+// ═══════════════════════════════════════════════════════════════
+
+/// Charge le BlockOrb global (ou le crée s'il n'existe pas)
+pub fn load_global_orb() -> BlockOrb {
+    if Path::new(GLOBAL_ORB).exists() {
+        match fs::read_to_string(GLOBAL_ORB) {
+            Ok(content) => {
+                match serde_json::from_str::<BlockOrb>(&content) {
+                    Ok(orb) => {
+                        eprintln!("✅ BlockOrb global chargé : {} comptes", orb.comptes.len());
+                        return orb;
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ Erreur parsing BlockOrb : {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("⚠️ Erreur lecture BlockOrb : {}", e);
+            }
+        }
+    }
+
+    // Créer nouveau
+    eprintln!("📦 Création nouveau BlockOrb global (40 Md FXB)");
+    let orb = BlockOrb::new();
+    let _ = save_global_orb(&orb);
+    orb
+}
+
+/// Sauvegarde le BlockOrb global
+pub fn save_global_orb(orb: &BlockOrb) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(orb).map_err(|e| e.to_string())?;
+    fs::write(GLOBAL_ORB, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRIX (REGULATEUR)
+// ═══════════════════════════════════════════════════════════════
+
+/// Charge l'état du régulateur (ou le crée)
+pub fn load_prix() -> RegulateurState {
+    if Path::new(PRIX_FILE).exists() {
+        if let Ok(content) = fs::read_to_string(PRIX_FILE) {
+            if let Ok(state) = serde_json::from_str::<RegulateurState>(&content) {
+                return state;
+            }
+        }
+    }
+
+    // Créer nouveau
+    let state = RegulateurState {
+        prix_actuel: "1.000000000000000000000000000000000000000000000000000000000000".to_string(),
+        demande: 0,
+        rarete: "0".to_string(),
+        vitesse: "0".to_string(),
+        dernier_ajustement: chrono::Utc::now().timestamp(),
+    };
+    let _ = save_prix(&state);
+    state
+}
+
+/// Sauvegarde l'état du régulateur
+pub fn save_prix(state: &RegulateurState) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    fs::write(PRIX_FILE, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BLOCKORB UTILISATEUR (personnel)
+// ═══════════════════════════════════════════════════════════════
+
+fn user_orb_path(uq_number: &str) -> String {
+    let clean = uq_number.replace("-", "_").to_lowercase();
+    format!("{}/{}.json", USERS_DIR, clean)
+}
+
+/// Charge le BlockOrb personnel d'un utilisateur
+pub fn load_user_orb(uq_number: &str) -> Option<BlockOrb> {
+    let path = user_orb_path(uq_number);
+    if Path::new(&path).exists() {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(orb) = serde_json::from_str::<BlockOrb>(&content) {
+                return Some(orb);
+            }
+        }
+    }
+    None
+}
+
+/// Sauvegarde le BlockOrb personnel d'un utilisateur
+pub fn save_user_orb(uq_number: &str, orb: &BlockOrb) -> Result<(), String> {
+    let path = user_orb_path(uq_number);
+    let json = serde_json::to_string_pretty(orb).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🚀 CACHE BLOCKORB — Évite load/save à chaque transaction
+// ═══════════════════════════════════════════════════════════════
+
+use std::sync::{Arc, Mutex, OnceLock};
+use crate::block_orb::{BlockOrb, TxFxb};
+
+static ORB_CACHE: OnceLock<Arc<Mutex<Option<BlockOrb>>>> = OnceLock::new();
+static PENDING_TRACES: OnceLock<Arc<Mutex<Vec<(String, String, TxFxb)>>>> = OnceLock::new();
+
+fn get_orb_cache() -> &'static Arc<Mutex<Option<BlockOrb>>> {
+    ORB_CACHE.get_or_init(|| Arc::new(Mutex::new(None)))
+}
+
+fn get_pending_traces() -> &'static Arc<Mutex<Vec<(String, String, TxFxb)>>> {
+    PENDING_TRACES.get_or_init(|| Arc::new(Mutex::new(Vec::new())))
+}
+
+/// Ajoute une trace au cache (rapide, pas d'écriture disque)
+pub fn add_trace_cached(sender: &str, recipient: &str, trace: TxFxb) {
+    // Ajouter au pending
+    if let Ok(mut pending) = get_pending_traces().lock() {
+        pending.push((sender.to_string(), recipient.to_string(), trace));
+        
+        // Sauvegarder tous les 10 traces
+        if pending.len() >= 10 {
+            flush_traces();
+        }
+    }
+}
+
+/// Écrit les traces accumulées dans le BlockOrb (appelé périodiquement)
+pub fn flush_traces() {
+    let traces = {
+        if let Ok(mut pending) = get_pending_traces().lock() {
+            let t = pending.clone();
+            pending.clear();
+            t
+        } else {
+            return;
+        }
+    };
+    
+    if traces.is_empty() { return; }
+    
+    // Charger l'orbe
+    let mut orb = load_global_orb();
+    
+    // Appliquer les traces
+    for (sender, recipient, trace) in traces {
+        if let Some(pf) = orb.comptes.get_mut(&sender) {
+            let mut t = trace.clone();
+            t.prev_hash = pf.last_tx_hash.clone().unwrap_or_default();
+            pf.add_trace(t);
+        }
+        if let Some(pf) = orb.comptes.get_mut(&recipient) {
+            let mut t = trace.clone();
+            t.prev_hash = pf.last_tx_hash.clone().unwrap_or_default();
+            pf.add_trace(t);
+        }
+    }
+    
+    // Sauvegarder une seule fois
+    if let Err(e) = save_global_orb(&orb) {
+        eprintln!("⚠️  Erreur flush BlockOrb: {}", e);
+    } else {
+        eprintln!("🧬 BlockOrb flush: {} traces sauvegardees", traces.len());
+    }
+}

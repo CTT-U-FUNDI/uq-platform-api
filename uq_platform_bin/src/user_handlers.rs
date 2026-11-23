@@ -1,7 +1,7 @@
 use crate::database::Database;
+use crate::user_models::*;
 use actix_web::{web, HttpResponse};
 use serde_json::json;
-use crate::user_models::*;
 
 // ==========================================================
 // HANDLERS BOUTIQUES
@@ -32,7 +32,11 @@ fn sections_depuis(body: &serde_json::Value) -> Vec<ShopSection> {
                 .iter()
                 .enumerate()
                 .filter_map(|(index, section)| {
-                    let titre = section.get("titre").and_then(|v| v.as_str()).unwrap_or("").trim();
+                    let titre = section
+                        .get("titre")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim();
                     if titre.is_empty() {
                         return None;
                     }
@@ -45,8 +49,14 @@ fn sections_depuis(body: &serde_json::Value) -> Vec<ShopSection> {
                     Some(ShopSection::new(
                         &id,
                         titre,
-                        section.get("type").and_then(|v| v.as_str()).unwrap_or("texte"),
-                        section.get("contenu").and_then(|v| v.as_str()).unwrap_or(""),
+                        section
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("texte"),
+                        section
+                            .get("contenu")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(""),
                         section.get("media").and_then(|v| v.as_str()).unwrap_or(""),
                     ))
                 })
@@ -96,21 +106,28 @@ fn appliquer_contenu(shop: &mut Shop, body: &serde_json::Value) {
 /// Visuels de la vitrine dans le flux : l'accroche d'abord, la galerie ensuite.
 /// Sans présentation, on montre les trois premiers visuels du catalogue publié.
 fn medias_vitrine(db: &Database, shop: &Shop) -> String {
-    let candidats = [shop.presentation_video.clone(), shop.presentation_photo.clone()]
-        .into_iter()
-        .chain(shop.gallery.iter().cloned())
-        .map(|media| media.trim().to_string())
-        .filter(|media| !media.is_empty())
-        .collect::<Vec<String>>();
+    let candidats = [
+        shop.presentation_video.clone(),
+        shop.presentation_photo.clone(),
+    ]
+    .into_iter()
+    .chain(shop.gallery.iter().cloned())
+    .map(|media| media.trim().to_string())
+    .filter(|media| !media.is_empty())
+    .collect::<Vec<String>>();
     let mut medias: Vec<String> = candidats.into_iter().take(4).collect();
 
     if medias.is_empty() {
         for item in db.get_shop_items(&shop.owner) {
-            if item["type"].as_str() == Some("boutique") || item["published"].as_bool() == Some(false) {
+            if item["type"].as_str() == Some("boutique")
+                || item["published"].as_bool() == Some(false)
+            {
                 continue;
             }
             let brut = item["media_urls"].as_str().unwrap_or("[]");
-            if let Ok(serde_json::Value::Array(tableau)) = serde_json::from_str::<serde_json::Value>(brut) {
+            if let Ok(serde_json::Value::Array(tableau)) =
+                serde_json::from_str::<serde_json::Value>(brut)
+            {
                 for media in tableau.iter().filter_map(|v| v.as_str()) {
                     if media.starts_with("data:") || media.starts_with("http") {
                         medias.push(media.to_string());
@@ -135,14 +152,33 @@ fn ecrire_vitrine(db: &Database, shop: &mut Shop, en_ligne: bool) -> Result<(), 
     let medias = medias_vitrine(db, shop);
     if shop.vitrine_item_id.is_empty() {
         let cree = db.create_shop_item(
-            &shop.owner, "boutique", &medias, &shop.name, "", &shop.description,
-            0, 0.0, &shop.category, false, 0,
+            &shop.owner,
+            "boutique",
+            &medias,
+            &shop.name,
+            "",
+            &shop.description,
+            0,
+            0.0,
+            &shop.category,
+            false,
+            0,
         )?;
         shop.vitrine_item_id = cree;
     } else {
         db.update_shop_item(
-            &shop.vitrine_item_id, &shop.owner, "boutique", &medias,
-            &shop.name, "", &shop.description, 0, 0.0, &shop.category, false, 0,
+            &shop.vitrine_item_id,
+            &shop.owner,
+            "boutique",
+            &medias,
+            &shop.name,
+            "",
+            &shop.description,
+            0,
+            0.0,
+            &shop.category,
+            false,
+            0,
         )?;
     }
 
@@ -156,7 +192,10 @@ fn ecrire_vitrine(db: &Database, shop: &mut Shop, en_ligne: bool) -> Result<(), 
 
 /// POST /api/shop/create — une identité, une galerie, des sections, et la
 /// présence en ligne est décomptée d'office (7 jours).
-pub async fn shop_create(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn shop_create(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let claims = match crate::auth_guard::exiger_auth(&req) {
         Ok(claims) => claims,
         Err(response) => return response,
@@ -172,56 +211,31 @@ pub async fn shop_create(req: actix_web::HttpRequest, body: web::Json<serde_json
     }
     let category = {
         let value = texte(&body, "category");
-        if value.is_empty() { "general".to_string() } else { value }
+        if value.is_empty() {
+            "general".to_string()
+        } else {
+            value
+        }
     };
     let lat = body.get("latitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let lon = body.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let lon = body
+        .get("longitude")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
 
-    // ====================
-    // REGLES BOUTIQUE (politique UQ)
-    // - Max 2 boutiques gratuites ; la 3e et suivantes coutent 10 BORB.
-    // - Le mode 24/7 exige un compte de +6 mois.
-    // - Le mode horaires (ex: 8h-17h) reste gratuit et illimite.
-    // ====================
-    let boutiques_existantes = db.get_all_shops().iter()
-        .filter(|sh| sh.get("owner").and_then(|v| v.as_str()) == Some(claims.sub.as_str()))
-        .count() as u64;
-
-    let mode_24_7 = body.get("mode_24_7").and_then(|v| v.as_bool()).unwrap_or(false)
-        || body.get("horaire").is_none();
-
-    if mode_24_7 {
-        // Regle des 6 mois : pas de 24/7 pour les comptes recents.
-        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
-        let age_ok = idx.get_account(&claims.sub)
-            .and_then(|a| a.get("created_at").and_then(|v| v.as_i64()))
-            .map(|ts| chrono::Utc::now().timestamp() - ts >= 183 * 86_400)
-            .unwrap_or(false);
-        if !age_ok {
-            return HttpResponse::Forbidden().json(json!({
-                "status":"error","code":"COMPTE_TROP_RECENT",
-                "message":"Le mode 24/7 est reserve aux comptes de plus de 6 mois. Choisis des horaires d'ouverture."
-            }));
-        }
-    }
-
-    if boutiques_existantes >= 2 {
-        // 3e boutique et + : 10 BORB (1000 points) debites du wallet.
-        const PRIX_BOUTIQUE_POINTS: u64 = 1000; // 10 BORB
-        let (_b, points) = db.get_balance(&claims.sub);
-        if points < PRIX_BOUTIQUE_POINTS {
-            return HttpResponse::PaymentRequired().json(json!({
-                "status":"error","code":"FRAIS_BOUTIQUE_REQUIS",
-                "message":"A partir de la 3e boutique, 10 BORB sont requis. Recharge ton wallet.",
-                "prix_borb": 10, "solde_points": points
-            }));
-        }
-        db.record_transaction(&claims.sub, "TREASURY", 0, PRIX_BOUTIQUE_POINTS);
-    }
-
-    let mut shop = Shop::new(&claims.sub, &name, &texte(&body, "description"), &category, lat, lon);
+    let mut shop = Shop::new(
+        &claims.sub,
+        &name,
+        &texte(&body, "description"),
+        &category,
+        lat,
+        lon,
+    );
     appliquer_contenu(&mut shop, &body);
-    shop.open = body.get("en_ligne").and_then(|v| v.as_bool()).unwrap_or(true);
+    shop.open = body
+        .get("en_ligne")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let en_ligne = shop.open;
 
     if let Err(error) = ecrire_vitrine(&db, &mut shop, en_ligne) {
@@ -282,9 +296,11 @@ pub async fn shop_update(
 
     let mut shop = match lire_boutique(&db, &shop_id) {
         Some(shop) => shop,
-        None => return HttpResponse::NotFound().json(json!({
-            "status": "error", "message": "Boutique introuvable"
-        })),
+        None => {
+            return HttpResponse::NotFound().json(json!({
+                "status": "error", "message": "Boutique introuvable"
+            }))
+        }
     };
     if shop.owner != claims.sub {
         return HttpResponse::Forbidden().json(json!({
@@ -293,11 +309,17 @@ pub async fn shop_update(
     }
 
     let nom = texte(&body, "name");
-    if !nom.is_empty() { shop.name = nom; }
+    if !nom.is_empty() {
+        shop.name = nom;
+    }
     let description = texte(&body, "description");
-    if body.get("description").is_some() { shop.description = description; }
+    if body.get("description").is_some() {
+        shop.description = description;
+    }
     let category = texte(&body, "category");
-    if !category.is_empty() { shop.category = category; }
+    if !category.is_empty() {
+        shop.category = category;
+    }
     appliquer_contenu(&mut shop, &body);
     if let Some(ligne) = body.get("en_ligne").and_then(|v| v.as_bool()) {
         shop.open = ligne;
@@ -372,8 +394,14 @@ pub async fn shop_list() -> HttpResponse {
 
 pub async fn product_add(body: web::Json<serde_json::Value>) -> HttpResponse {
     let shop_id = body.get("shop_id").and_then(|v| v.as_str()).unwrap_or("");
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Produit");
-    let price = body.get("price_points").and_then(|v| v.as_u64()).unwrap_or(0);
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Produit");
+    let price = body
+        .get("price_points")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     let stock = body.get("stock").and_then(|v| v.as_u64()).unwrap_or(1);
 
     let product = Product::new(shop_id, name, price, stock);
@@ -389,7 +417,8 @@ pub async fn product_add(body: web::Json<serde_json::Value>) -> HttpResponse {
 }
 
 pub async fn product_buy(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"status": "success", "message": "Produit acheté", "escrow_created": true}))
+    HttpResponse::Ok()
+        .json(json!({"status": "success", "message": "Produit acheté", "escrow_created": true}))
 }
 
 // ==========================================================
@@ -398,10 +427,22 @@ pub async fn product_buy(body: web::Json<serde_json::Value>) -> HttpResponse {
 
 pub async fn search(query: web::Query<std::collections::HashMap<String, String>>) -> HttpResponse {
     let q = query.get("q").cloned().unwrap_or_default();
-    let search_type = query.get("type").cloned().unwrap_or_else(|| "all".to_string());
-    let max_distance = query.get("distance").and_then(|d| d.parse::<f64>().ok()).unwrap_or(10.0);
-    let min_price = query.get("price_min").and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
-    let max_price = query.get("price_max").and_then(|p| p.parse::<u64>().ok()).unwrap_or(u64::MAX);
+    let search_type = query
+        .get("type")
+        .cloned()
+        .unwrap_or_else(|| "all".to_string());
+    let max_distance = query
+        .get("distance")
+        .and_then(|d| d.parse::<f64>().ok())
+        .unwrap_or(10.0);
+    let min_price = query
+        .get("price_min")
+        .and_then(|p| p.parse::<u64>().ok())
+        .unwrap_or(0);
+    let max_price = query
+        .get("price_max")
+        .and_then(|p| p.parse::<u64>().ok())
+        .unwrap_or(u64::MAX);
 
     let db = Database::shared("uq_platform_db.json");
     let offers = db.get_all_offers();
@@ -429,7 +470,9 @@ pub async fn search(query: web::Query<std::collections::HashMap<String, String>>
     }))
 }
 
-pub async fn search_nearby(query: web::Query<std::collections::HashMap<String, String>>) -> HttpResponse {
+pub async fn search_nearby(
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
     HttpResponse::Ok().json(json!({"results": [], "total": 0}))
 }
 
@@ -446,9 +489,15 @@ pub async fn location_distance(body: web::Json<serde_json::Value>) -> HttpRespon
 // ==========================================================
 
 pub async fn connect_sell(body: web::Json<serde_json::Value>) -> HttpResponse {
-    let seller = body.get("seller").and_then(|v| v.as_str()).unwrap_or("anonymous");
+    let seller = body
+        .get("seller")
+        .and_then(|v| v.as_str())
+        .unwrap_or("anonymous");
     let network_type = body.get("type").and_then(|v| v.as_str()).unwrap_or("4G");
-    let price_per_mb = body.get("price_per_mb").and_then(|v| v.as_u64()).unwrap_or(10);
+    let price_per_mb = body
+        .get("price_per_mb")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(10);
 
     HttpResponse::Ok().json(json!({
         "status": "success",
@@ -483,10 +532,15 @@ pub async fn referral_claim(body: web::Json<serde_json::Value>) -> HttpResponse 
 // HANDLERS NOTIFICATIONS + DASHBOARD
 // ==========================================================
 
-pub async fn notifications_list(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
+pub async fn notifications_list(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     let __cible = path.to_string();
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) {
+        return r;
+    }
 
     let uid = path.into_inner();
     let db = Database::shared("uq_platform_db.json");
@@ -501,7 +555,9 @@ pub async fn notifications_read(body: web::Json<serde_json::Value>) -> HttpRespo
 pub async fn dashboard(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     let __cible = path.to_string();
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) {
+        return r;
+    }
 
     let user_id = path.into_inner();
     let db = Database::shared("uq_platform_db.json");

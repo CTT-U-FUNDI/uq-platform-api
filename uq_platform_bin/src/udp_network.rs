@@ -1,4 +1,4 @@
-﻿use std::net::UdpSocket;
+use std::net::UdpSocket;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -66,7 +66,7 @@ impl UdpNetwork {
     pub fn prendre_reception(&self) -> Option<mpsc::Receiver<(String, String)>> {
         self.reception.lock().ok()?.take()
     }
-    
+
     /// Envoie un message à un pair
     pub fn send(&self, peer_addr: &str, message: &str) -> Result<(), String> {
         self.socket
@@ -81,29 +81,28 @@ impl UdpNetwork {
             peers.push(peer_addr.to_string());
         }
     }
-    
+
     /// Diffuse à TOUS les pairs connus
     pub fn broadcast(&self, message: &str) -> usize {
         let peers = self.peers.lock().unwrap();
         let mut sent = 0;
-        
+
         for peer in peers.iter() {
             if self.send(peer, message).is_ok() {
                 sent += 1;
             }
         }
-        
+
         sent
     }
-    
+
     /// Liste des pairs connus
     pub fn get_peers(&self) -> Vec<String> {
         self.peers.lock().unwrap().clone()
     }
-    
+
     /// Nombre de pairs
     pub fn peer_count(&self) -> usize {
         self.peers.lock().unwrap().len()
     }
 }
-

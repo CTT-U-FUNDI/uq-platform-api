@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // SUBUNIT UNLOCK — Déblocage progressif des sous-unités BORB
 // ====================
 //
@@ -25,25 +25,25 @@ pub struct Subunit {
 /// Les 6 sous-unités de BASE (toujours actives)
 /// Format : (unit, name, rate, exponent)
 pub const BASE_UNITS: &[(&str, &str, u128, u32)] = &[
-    ("BORB",  "BORB", 1,                 0),
-    ("borb",  "FIXO",   100,               2),
-    ("mborb", "MICRO",  10_000,            4),
-    ("nborb", "NANO",   1_000_000,         6),
-    ("pborb", "PICCO",  100_000_000,       8),
-    ("fborb", "FEMTO",  10_000_000_000,    10),
+    ("BORB", "BORB", 1, 0),
+    ("borb", "FIXO", 100, 2),
+    ("mborb", "MICRO", 10_000, 4),
+    ("nborb", "NANO", 1_000_000, 6),
+    ("pborb", "PICCO", 100_000_000, 8),
+    ("fborb", "FEMTO", 10_000_000_000, 10),
 ];
 
 /// Les sous-unités ÉTENDUES (déblocables, ×1000)
 /// Format : (unit, name, exponent)
 pub const EXTENDED_UNITS: &[(&str, &str, u32)] = &[
-    ("aborb", "ATTO",   15),
-    ("zborb", "ZEPTO",  18),
-    ("yborb", "YOCTO",  21),
-    ("rborb", "RONNA",  24),
+    ("aborb", "ATTO", 15),
+    ("zborb", "ZEPTO", 18),
+    ("yborb", "YOCTO", 21),
+    ("rborb", "RONNA", 24),
     ("qborb", "QUETTA", 27),
-    ("cborb", "CENTI",  30),
-    ("dborb", "DECI",   33),
-    ("hborb", "HECTO",  36),
+    ("cborb", "CENTI", 30),
+    ("dborb", "DECI", 33),
+    ("hborb", "HECTO", 36),
 ];
 
 /// Retourne TOUTES les sous-unités débloquées (base + débloquées)

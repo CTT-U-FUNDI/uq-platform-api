@@ -1,10 +1,10 @@
-﻿// ====================
+// ====================
 // WEBAUTHN MANAGER — Authentification par Passkey
 // Face ID / Empreinte / Windows Hello
 // ====================
 
 use chrono::Utc;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde_json::json;
 
 // ===== Types =====
@@ -39,7 +39,8 @@ pub fn init_webauthn_table(conn: &Connection) -> Result<(), String> {
             last_used_at INTEGER
         )",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS webauthn_challenges (
@@ -50,7 +51,8 @@ pub fn init_webauthn_table(conn: &Connection) -> Result<(), String> {
             created_at INTEGER NOT NULL
         )",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -79,13 +81,15 @@ pub fn store_challenge(
     conn.execute(
         "DELETE FROM webauthn_challenges WHERE created_at < ?1",
         params![cutoff],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     conn.execute(
         "INSERT INTO webauthn_challenges (challenge, user_id, action, created_at)
          VALUES (?1, ?2, ?3, ?4)",
         params![challenge, user_id, action, Utc::now().timestamp()],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -109,9 +113,10 @@ pub fn verify_challenge(
             conn.execute(
                 "DELETE FROM webauthn_challenges WHERE challenge = ?1",
                 params![challenge],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
             Ok(Some(r))
-        },
+        }
         Err(_) => Ok(None),
     }
 }
@@ -127,8 +132,14 @@ pub fn save_credential(
         "INSERT OR REPLACE INTO webauthn_credentials
          (credential_id, public_key, sign_count, device_name, created_at)
          VALUES (?1, ?2, 0, ?3, ?4)",
-        params![credential_id, public_key, device_name, Utc::now().timestamp()],
-    ).map_err(|e| e.to_string())?;
+        params![
+            credential_id,
+            public_key,
+            device_name,
+            Utc::now().timestamp()
+        ],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -174,11 +185,7 @@ pub fn credentials_autorisees(conn: &Connection) -> Result<Vec<String>, String> 
 ///
 /// Le compteur ne monte jamais a l'envers : c'est le signal de clonage de
 /// credential (le meme passkey physiquement duplique sur deux enclaves).
-pub fn marquer_usage(
-    conn: &Connection,
-    credential_id: &str,
-    compteur: u32,
-) -> Result<(), String> {
+pub fn marquer_usage(conn: &Connection, credential_id: &str, compteur: u32) -> Result<(), String> {
     conn.execute(
         "UPDATE webauthn_credentials
          SET sign_count = ?1, last_used_at = ?2
@@ -191,20 +198,24 @@ pub fn marquer_usage(
 
 // ===== Lister les credentials d'un utilisateur =====
 pub fn list_credentials(conn: &Connection) -> Result<Vec<serde_json::Value>, String> {
-    let mut stmt = conn.prepare(
-        "SELECT credential_id, device_name, created_at, last_used_at, sign_count
-         FROM webauthn_credentials ORDER BY created_at DESC"
-    ).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT credential_id, device_name, created_at, last_used_at, sign_count
+         FROM webauthn_credentials ORDER BY created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
 
-    let rows = stmt.query_map([], |row| {
-        Ok(json!({
-            "credential_id": row.get::<_, String>(0)?,
-            "device_name": row.get::<_, String>(1)?,
-            "created_at": row.get::<_, i64>(2)?,
-            "last_used_at": row.get::<_, Option<i64>>(3)?,
-            "sign_count": row.get::<_, i64>(4)?,
-        }))
-    }).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(json!({
+                "credential_id": row.get::<_, String>(0)?,
+                "device_name": row.get::<_, String>(1)?,
+                "created_at": row.get::<_, i64>(2)?,
+                "last_used_at": row.get::<_, Option<i64>>(3)?,
+                "sign_count": row.get::<_, i64>(4)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
 
     let mut result = Vec::new();
     for row in rows {
@@ -218,11 +229,10 @@ pub fn list_credentials(conn: &Connection) -> Result<Vec<serde_json::Value>, Str
 
 // ===== Compter les credentials =====
 pub fn count_credentials(conn: &Connection) -> i64 {
-    conn.query_row(
-        "SELECT COUNT(*) FROM webauthn_credentials",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0)
+    conn.query_row("SELECT COUNT(*) FROM webauthn_credentials", [], |row| {
+        row.get(0)
+    })
+    .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -245,7 +255,9 @@ mod tests {
         // le round-trip doit retrouver les 32 octets : c'est ce que compare
         // la verification d'assertion
         assert_eq!(
-            crate::webauthn_verify::decodage_base64url(&c1).unwrap().len(),
+            crate::webauthn_verify::decodage_base64url(&c1)
+                .unwrap()
+                .len(),
             32
         );
     }
@@ -256,11 +268,17 @@ mod tests {
         init_webauthn_table(&conn).unwrap();
         save_credential(&conn, "cred-1", &[0x04, 0x01], "PC").unwrap();
         marquer_usage(&conn, "cred-1", 12).unwrap();
-        assert_eq!(lire_credential(&conn, "cred-1").unwrap(), Some((vec![0x04u8, 0x01], 12)));
+        assert_eq!(
+            lire_credential(&conn, "cred-1").unwrap(),
+            Some((vec![0x04u8, 0x01], 12))
+        );
         // un compteur plus petit est ignore (la clause sign_count <= ?1)
         marquer_usage(&conn, "cred-1", 5).unwrap();
         assert_eq!(lire_credential(&conn, "cred-1").unwrap().unwrap().1, 12);
-        assert_eq!(credentials_autorisees(&conn).unwrap(), vec!["cred-1".to_string()]);
+        assert_eq!(
+            credentials_autorisees(&conn).unwrap(),
+            vec!["cred-1".to_string()]
+        );
         assert_eq!(lire_credential(&conn, "inconnue").unwrap(), None);
     }
 
@@ -269,9 +287,12 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_webauthn_table(&conn).unwrap();
         let c = generate_challenge();
-        store_challenge(&conn, &c, "UQ-996697110", "login").unwrap();
+        store_challenge(&conn, &c, "UQ-00000001", "login").unwrap();
         let premier = verify_challenge(&conn, &c).unwrap();
-        assert_eq!(premier, Some(("UQ-996697110".to_string(), "login".to_string())));
+        assert_eq!(
+            premier,
+            Some(("UQ-00000001".to_string(), "login".to_string()))
+        );
         // rejoue : le challenge a ete supprime
         assert_eq!(verify_challenge(&conn, &c).unwrap(), None);
     }

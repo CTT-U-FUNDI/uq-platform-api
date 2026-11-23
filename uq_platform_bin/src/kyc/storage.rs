@@ -1,11 +1,11 @@
-﻿// ====================
+// ====================
 // 💾 STORAGE KYC — Sauvegarde/Chargement
 // ====================
 
-use std::fs;
-use std::path::Path;
 use crate::kyc::queue::KycQueue;
 use crate::kyc::training::TrainingRecord;
+use std::fs;
+use std::path::Path;
 
 const QUEUE_FILE: &str = "data/kyc/queue.json";
 const TRAINING_FILE: &str = "data/kyc/training.json";
@@ -49,20 +49,32 @@ impl KycStore {
     }
 
     pub fn save_photo(uq_number: &str, data: &[u8]) -> Result<String, String> {
-        let filename = format!("{}/{}_photo.jpg", PHOTOS_DIR, uq_number.replace("-", "_").to_lowercase());
+        let filename = format!(
+            "{}/{}_photo.jpg",
+            PHOTOS_DIR,
+            uq_number.replace("-", "_").to_lowercase()
+        );
         ecrire(&filename, data)?;
         Ok(filename)
     }
 
     pub fn save_video(uq_number: &str, data: &[u8]) -> Result<String, String> {
-        let filename = format!("{}/{}_video.mp4", VIDEOS_DIR, uq_number.replace("-", "_").to_lowercase());
+        let filename = format!(
+            "{}/{}_video.mp4",
+            VIDEOS_DIR,
+            uq_number.replace("-", "_").to_lowercase()
+        );
         ecrire(&filename, data)?;
         Ok(filename)
     }
 
     /// Selfie guide du parcours KYC : meme repertoire que la photo, nom distinct.
     pub fn save_selfie(uq_number: &str, data: &[u8]) -> Result<String, String> {
-        let filename = format!("{}/{}_selfie.jpg", PHOTOS_DIR, uq_number.replace("-", "_").to_lowercase());
+        let filename = format!(
+            "{}/{}_selfie.jpg",
+            PHOTOS_DIR,
+            uq_number.replace("-", "_").to_lowercase()
+        );
         ecrire(&filename, data)?;
         Ok(filename)
     }
@@ -84,13 +96,19 @@ impl KycStore {
     /// Supprime un dossier ET ses fichiers apres decision
     pub fn supprimer_dossier(uq_number: &str) -> Result<(), String> {
         // 1. Supprimer la photo
-        let photo = format!("{}/{}_photo.jpg",
-            PHOTOS_DIR, uq_number.replace("-", "_").to_lowercase());
+        let photo = format!(
+            "{}/{}_photo.jpg",
+            PHOTOS_DIR,
+            uq_number.replace("-", "_").to_lowercase()
+        );
         let _ = fs::remove_file(&photo);
 
         // 2. Supprimer la video
-        let video = format!("{}/{}_video.mp4",
-            VIDEOS_DIR, uq_number.replace("-", "_").to_lowercase());
+        let video = format!(
+            "{}/{}_video.mp4",
+            VIDEOS_DIR,
+            uq_number.replace("-", "_").to_lowercase()
+        );
         let _ = fs::remove_file(&video);
 
         // 3. Supprimer de la file

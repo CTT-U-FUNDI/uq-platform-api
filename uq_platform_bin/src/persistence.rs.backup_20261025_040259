@@ -1,0 +1,429 @@
+﻿use serde::{Serialize, Deserialize};
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ðŸ“¦ PERSISTENCE â€” Charger/Sauvegarder BlockOrb
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//
+// Â« L'eau circule. Elle se persiste. Â»
+//
+// Ce module gÃ¨re la persistance :
+// - Charger le BlockOrb global (40 Md)
+// - Sauvegarder le BlockOrb global
+// - Charger/Sauvegarder le BlockOrb d'un utilisateur
+// - Charger/Sauvegarder le prix (Regulateur)
+//
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+use crate::block_orb::BlockOrb;
+use crate::regulateur::RegulateurState;
+use std::fs;
+use std::path::Path;
+
+const DATA_DIR: &str = "data";
+const USERS_DIR: &str = "data/users";
+// Chemin absolu basé sur le répertoire de l'exécutable
+fn global_orb_path() -> std::path::PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("data/block_orb_global.json")
+}
+const PRIX_FILE: &str = "data/prix.json";
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// INITIALISATION DES DOSSIERS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+pub fn init_dirs() -> Result<(), String> {
+    fs::create_dir_all(DATA_DIR).map_err(|e| e.to_string())?;
+    fs::create_dir_all(USERS_DIR).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// BLOCKORB GLOBAL
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+/// Charge le BlockOrb global (ou le crÃ©e s'il n'existe pas)
+pub fn load_global_orb() -> BlockOrb {
+    if global_orb_path().exists() {
+        match fs::read_to_string(global_orb_path()) {
+            Ok(content) => {
+                match serde_json::from_str::<BlockOrb>(&content) {
+                    Ok(orb) => {
+                        eprintln!("âœ… BlockOrb global chargÃ© : {} comptes", orb.comptes.len());
+                        return orb;
+                    }
+                    Err(e) => {
+                        eprintln!("âš ï¸ Erreur parsing BlockOrb : {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("âš ï¸ Erreur lecture BlockOrb : {}", e);
+            }
+        }
+    }
+
+    // CrÃ©er nouveau
+    eprintln!("ðŸ“¦ CrÃ©ation nouveau BlockOrb global (40 Md FXB)");
+    let orb = BlockOrb::new();
+    let _ = save_global_orb(&orb);
+    orb
+}
+
+/// Sauvegarde le BlockOrb global.
+///
+/// ðŸ“ SPÃ‰CIFICATION Â« TAILLE FIXE Â» : on refuse d'Ã©crire un BlockOrb qui
+/// dÃ©passe MAX_BLOCKORB_BYTES (50 KB). Comme l'historique n'y est plus
+/// stockÃ©, la taille ne dÃ©pend que du nombre de comptes ; le garde-fou
+/// Ã©vite qu'un champ non bornÃ© ne rÃ©introduise une croissance silencieuse.
+pub fn save_global_orb(orb: &BlockOrb) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(orb).map_err(|e| e.to_string())?;
+
+    if json.len() > crate::blockchain_lib::MAX_BLOCKORB_BYTES {
+        return Err(format!(
+            "BlockOrb trop gros : {} octets > {} octets (taille fixe violee)",
+            json.len(),
+            crate::blockchain_lib::MAX_BLOCKORB_BYTES
+        ));
+    }
+
+    fs::write(global_orb_path(), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PRIX (REGULATEUR)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+/// Charge l'Ã©tat du rÃ©gulateur (ou le crÃ©e)
+pub fn load_prix() -> RegulateurState {
+    if Path::new(PRIX_FILE).exists() {
+        if let Ok(content) = fs::read_to_string(PRIX_FILE) {
+            if let Ok(state) = serde_json::from_str::<RegulateurState>(&content) {
+                return state;
+            }
+        }
+    }
+
+    // CrÃ©er nouveau
+    let state = RegulateurState {
+        prix_actuel: "1.000000000000000000000000000000000000000000000000000000000000".to_string(),
+        demande: 0,
+        rarete: "0".to_string(),
+        vitesse: "0".to_string(),
+        dernier_ajustement: chrono::Utc::now().timestamp(),
+    };
+    let _ = save_prix(&state);
+    state
+}
+
+/// Sauvegarde l'Ã©tat du rÃ©gulateur
+pub fn save_prix(state: &RegulateurState) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    fs::write(PRIX_FILE, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// BLOCKORB UTILISATEUR (personnel)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+fn user_orb_path(uq_number: &str) -> String {
+    let clean = uq_number.replace("-", "_").to_lowercase();
+    format!("{}/{}.json", USERS_DIR, clean)
+}
+
+/// Charge le BlockOrb personnel d'un utilisateur
+pub fn load_user_orb(uq_number: &str) -> Option<BlockOrb> {
+    let path = user_orb_path(uq_number);
+    if Path::new(&path).exists() {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(orb) = serde_json::from_str::<BlockOrb>(&content) {
+                return Some(orb);
+            }
+        }
+    }
+    None
+}
+
+/// Sauvegarde le BlockOrb personnel d'un utilisateur
+pub fn save_user_orb(uq_number: &str, orb: &BlockOrb) -> Result<(), String> {
+    let path = user_orb_path(uq_number);
+    let json = serde_json::to_string_pretty(orb).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ðŸš€ CACHE BLOCKORB
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//
+// âš ï¸ SPÃ‰CIFICATION Â« BLOCKORB Ã€ TAILLE FIXE Â» : les anciennes fonctions
+// `add_trace_cached` / `flush_traces` (qui empilaient l'historique DANS le
+// BlockOrb) ont Ã©tÃ© supprimÃ©es. L'historique est dÃ©sormais Ã©crit dans la
+// DB LOCALE de chaque utilisateur par `local_history::enregistrer_transaction`.
+
+use std::sync::{Arc, Mutex, OnceLock};
+
+static ORB_CACHE: OnceLock<Arc<Mutex<Option<BlockOrb>>>> = OnceLock::new();
+
+fn get_orb_cache() -> &'static Arc<Mutex<Option<BlockOrb>>> {
+    ORB_CACHE.get_or_init(|| Arc::new(Mutex::new(None)))
+}
+
+/// Taille actuelle du BlockOrb sur disque (octets) â€” pour supervision
+pub fn taille_blockorb() -> usize {
+    fs::metadata(global_orb_path()).map(|m| m.len() as usize).unwrap_or(0)
+}
+
+use std::collections::HashMap;
+
+const FIXORB_REGISTRY: &str = "data/fixorb_registry.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FxbEntry {
+    pub fxb_id: String,
+    pub owner_uq: String,
+    pub from_uq: Option<String>,
+    pub amount: u128,
+    pub created_at: i64,
+    pub last_seen_at: i64,
+    pub status: String,
+}
+
+pub fn load_registry() -> HashMap<String, FxbEntry> {
+    if std::path::Path::new(FIXORB_REGISTRY).exists() {
+        if let Ok(content) = std::fs::read_to_string(FIXORB_REGISTRY) {
+            if let Ok(registry) = serde_json::from_str::<HashMap<String, FxbEntry>>(&content) {
+                return registry;
+            }
+        }
+    }
+    HashMap::new()
+}
+
+pub fn save_registry(registry: &HashMap<String, FxbEntry>) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(registry).map_err(|e| e.to_string())?;
+    std::fs::write(FIXORB_REGISTRY, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn register_fxb(fxb_id: &str, owner_uq: &str, from_uq: &str, amount: u128, now: i64) {
+    let mut registry = load_registry();
+    let entry = FxbEntry {
+        fxb_id: fxb_id.to_string(),
+        owner_uq: owner_uq.to_string(),
+        from_uq: if from_uq.is_empty() { None } else { Some(from_uq.to_string()) },
+        amount,
+        created_at: now,
+        last_seen_at: now,
+        status: "active".to_string(),
+    };
+    registry.insert(fxb_id.to_string(), entry);
+    if let Err(e) = save_registry(&registry) {
+        eprintln!("Erreur registre: {}", e);
+    } else {
+        // Troncature sÃ»re (jamais de panic sur un id court)
+        let court: String = fxb_id.chars().take(16).collect();
+        eprintln!("FXB enregistre: {}", court);
+    }
+}
+
+pub fn verify_fxb(fxb_id: &str) -> bool {
+    load_registry().contains_key(fxb_id)
+}
+
+pub fn count_fxb_by_owner(owner_uq: &str) -> usize {
+    load_registry().values().filter(|e| e.owner_uq == owner_uq).count()
+}
+
+pub fn sum_fxb_by_owner(owner_uq: &str) -> u128 {
+    load_registry().values().filter(|e| e.owner_uq == owner_uq).map(|e| e.amount).sum()
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ðŸªž MIROIR BLOCKORB â€” le disque dur suit la rÃ©alitÃ© SQLite
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//
+// Les soldes dÃ©pensables vivent dans `balance.points` (SQLite).
+// Le BlockOrb est le disque dur global : il doit reflÃ©ter les mÃªmes
+// montants, sinon les deux registres divergent (soldes BlockOrb Ã  0
+// alors que l'utilisateur a des FXB).
+//
+// RÃ¨gles :
+//   - dÃ©bit expÃ©diteur = montant + frais
+//   - crÃ©dit destinataire = montant
+//   - frais rÃ©partis dans les 6 Cases (distribuer_frais)
+//   - si l'expÃ©diteur n'a pas assez dans le BlockOrb (compte Â« historique Â»
+//     crÃ©ditÃ© avant la mise en place du miroir), la diffÃ©rence est
+//     prÃ©levÃ©e sur le TrÃ©sor (cases[0]) â†’ l'invariant 40 Md reste exact
+//   - BEST-EFFORT : ne bloque jamais le transfert dÃ©jÃ  validÃ© en SQLite
+pub fn mirroir_transfert(
+    sender: &str,
+    recipient: &str,
+    amount_points: u128,
+    fee_points: u128,
+) -> Result<(), String> {
+    let mut orb = load_global_orb();
+    let avant = orb.clone();
+
+    // femto-FXB par point (1 FXB = 100 points)
+    let femto_par_point = crate::montant::FEMTO_PAR_FXB / 100;
+    let total = (amount_points + fee_points) * femto_par_point;
+    let recu = amount_points * femto_par_point;
+    let frais = fee_points * femto_par_point;
+
+    if !orb.comptes.contains_key(sender) {
+        return Err(format!("portefeuille {} absent du BlockOrb", sender));
+    }
+    if !orb.comptes.contains_key(recipient) {
+        return Err(format!("portefeuille {} absent du BlockOrb", recipient));
+    }
+
+    // 1. RÃ©conciliation Ã©ventuelle depuis le TrÃ©sor
+    let solde_sender = orb.comptes.get(sender).map(|p| p.solde).unwrap_or(0);
+    if solde_sender < total {
+        let manque = total - solde_sender;
+        if orb.cases[0] < manque {
+            return Err(format!(
+                "Tresor insuffisant pour reconciler {} (manque {} femto)",
+                sender, manque
+            ));
+        }
+        orb.cases[0] -= manque;
+        if let Some(p) = orb.comptes.get_mut(sender) {
+            p.solde = total;
+        }
+        eprintln!(
+            "ðŸªž Reconcilie {} : +{} femto preleves sur le Tresor",
+            sender, manque
+        );
+    }
+
+    // 2. DÃ©bit / crÃ©dit
+    if let Some(p) = orb.comptes.get_mut(sender) {
+        p.solde = p.solde.saturating_sub(total);
+    }
+    if let Some(p) = orb.comptes.get_mut(recipient) {
+        p.solde = p.solde.saturating_add(recu);
+    }
+
+    // 3. Frais â†’ 6 Cases (30/40/15/10/5/0)
+    if frais > 0 {
+        if let Err(e) = orb.distribuer_frais(frais) {
+            orb = avant;
+            return Err(e);
+        }
+    }
+
+    // 4. Invariant
+    if !orb.verifier() {
+        orb = avant;
+        return Err("invariant casse par le miroir â€” BlockOrb inchange".to_string());
+    }
+
+    // 5. Sceller le bloc (numÃ©ro + horodatage + hash de chaÃ®nage)
+    orb.sceller_bloc();
+
+    save_global_orb(&orb)
+}
+
+/// ðŸªž RÃ‰CONCILIATION â€” aligne le BlockOrb sur les soldes SQLite.
+///
+/// Pour chaque portefeuille visÃ© possÃ©dant une DB :
+///   cible = balance.points * FEMTO_PAR_FXB / 100
+/// La diffÃ©rence est prÃ©levÃ©e sur le TrÃ©sor (cases[0]) ou lui est rendue,
+/// ce qui prÃ©serve exactement l'invariant des 40 Md FXB.
+/// Les comptes prÃ©sents dans data/users mais absents du BlockOrb sont crÃ©Ã©s.
+///
+/// `seulement` = Some(uq) pour ne traiter qu'un compte (cas non-admin).
+/// Retourne (uq, delta_femto, applique) par compte modifiÃ©.
+pub fn reconcilier_blockorb(seulement: Option<&str>) -> Result<Vec<(String, i128, bool)>, String> {
+    let mut orb = load_global_orb();
+    let femto_par_point = crate::montant::FEMTO_PAR_FXB / 100;
+
+    // â”€â”€â”€ DÃ©terminer les comptes Ã  traiter â”€â”€â”€
+    let mut uqs: Vec<String> = match seulement {
+        Some(uq) => vec![uq.to_string()],
+        None => {
+            let mut v: Vec<String> = orb.comptes.keys().cloned().collect();
+
+            // Comptes prÃ©sents sur disque mais absents du BlockOrb
+            if let Ok(entries) = std::fs::read_dir(USERS_DIR) {
+                for entry in entries.flatten() {
+                    let nom = entry.file_name().to_string_lossy().to_string();
+                    if !nom.starts_with("uq_") || !nom.ends_with(".db") {
+                        continue;
+                    }
+                    let brut = &nom[3..nom.len() - 3]; // entre "uq_" et ".db"
+                    if brut.is_empty() || !brut.chars().all(|c| c.is_ascii_digit()) {
+                        continue; // ignore uq_xxx.db, .db, backups...
+                    }
+                    let uq = format!("UQ-{}", brut);
+                    if !v.contains(&uq) {
+                        v.push(uq);
+                    }
+                }
+            }
+            v
+        }
+    };
+
+    uqs.sort();
+    uqs.dedup();
+
+    let mut rapport: Vec<(String, i128, bool)> = Vec::new();
+
+    for uq in uqs {
+        let db_path = format!("data/users/{}.db", uq.replace("-", "_").to_lowercase());
+        if !std::path::Path::new(&db_path).exists() {
+            continue;
+        }
+
+        let points: i64 = match rusqlite::Connection::open(&db_path) {
+            Ok(conn) => conn
+                .query_row("SELECT points FROM balance WHERE id = 1", [], |r| r.get(0))
+                .unwrap_or(0),
+            Err(_) => continue,
+        };
+
+        let cible = (points.max(0) as u128) * femto_par_point;
+        let actuel = orb.comptes.get(&uq).map(|p| p.solde).unwrap_or(0);
+
+        // Rien Ã  faire si le solde est dÃ©jÃ  bon ET que le portefeuille existe
+        if actuel == cible && orb.comptes.contains_key(&uq) {
+            continue;
+        }
+
+        if cible > actuel {
+            let manque = cible - actuel;
+            if orb.cases[0] < manque {
+                rapport.push((uq.clone(), manque as i128, false)); // TrÃ©sor insuffisant
+                continue;
+            }
+            orb.cases[0] -= manque;
+            rapport.push((uq.clone(), manque as i128, true));
+        } else {
+            let surplus = actuel - cible;
+            orb.cases[0] += surplus;
+            rapport.push((uq.clone(), -(surplus as i128), true));
+        }
+
+        // CrÃ©e le portefeuille s'il n'existait pas encore dans le BlockOrb
+        let portefeuille = orb
+            .comptes
+            .entry(uq.clone())
+            .or_insert_with(crate::block_orb::Portefeuille::new);
+        portefeuille.solde = cible;
+    }
+
+    if !orb.verifier() {
+        return Err("Invariant casse â€” reconciliation annulee (aucune ecriture)".to_string());
+    }
+
+    save_global_orb(&orb)?;
+    Ok(rapport)
+}
+

@@ -57,9 +57,17 @@ impl Cote {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("Impossible de lancer le moteur de vision: {}", e))?;
-        let entree = processus.stdin.take().ok_or("Entree du moteur indisponible")?;
+        let entree = processus
+            .stdin
+            .take()
+            .ok_or("Entree du moteur indisponible")?;
         let sortie = processus.stdout.take().map(BufReader::new);
-        Ok(Cote { processus, entree, sortie, prochain: 0 })
+        Ok(Cote {
+            processus,
+            entree,
+            sortie,
+            prochain: 0,
+        })
     }
 
     /// Le lecteur tourne dans son thread : on peut donc abandonner la lecture si
@@ -111,7 +119,9 @@ impl Cote {
         objet.insert("cmd".to_string(), json!(commande));
 
         writeln!(self.entree, "{}", requete).map_err(|e| format!("Envoi impossible: {}", e))?;
-        self.entree.flush().map_err(|e| format!("Envoi impossible: {}", e))?;
+        self.entree
+            .flush()
+            .map_err(|e| format!("Envoi impossible: {}", e))?;
         self.lire(delai)
     }
 
@@ -130,7 +140,9 @@ struct Moteur {
 
 fn verrou() -> Result<std::sync::MutexGuard<'static, Moteur>, String> {
     let garde = MOTEUR.get_or_init(|| Mutex::new(Moteur::default()));
-    Ok(garde.lock().unwrap_or_else(|empoisonne| empoisonne.into_inner()))
+    Ok(garde
+        .lock()
+        .unwrap_or_else(|empoisonne| empoisonne.into_inner()))
 }
 
 /// Execute une commande : demarre le moteur au premier besoin, le relance s'il
@@ -140,7 +152,10 @@ pub fn moteur(commande: &str, args: &Value) -> Result<Value, String> {
     let mut etat = verrou()?;
 
     if etat.cote.is_some() {
-        let trop_vieux = etat.depuis.map(|t| t.elapsed() > INACTIVITE_RELANCE).unwrap_or(true);
+        let trop_vieux = etat
+            .depuis
+            .map(|t| t.elapsed() > INACTIVITE_RELANCE)
+            .unwrap_or(true);
         let vivant = etat.cote.as_mut().map(|cot| !cot.arrete()).unwrap_or(false);
 
         if !trop_vieux && vivant {
@@ -204,7 +219,9 @@ static SESSIONS: OnceLock<Mutex<HashMap<String, Session>>> = OnceLock::new();
 
 fn table_sessions() -> std::sync::MutexGuard<'static, HashMap<String, Session>> {
     let garde = SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
-    garde.lock().unwrap_or_else(|empoisonne| empoisonne.into_inner())
+    garde
+        .lock()
+        .unwrap_or_else(|empoisonne| empoisonne.into_inner())
 }
 
 fn nonce_aleatoire(longueur: usize) -> String {
@@ -220,8 +237,15 @@ pub fn creer_session(uq: &str) -> Result<Value, String> {
     let maintenant = chrono::Utc::now().timestamp();
     let texte = format!("UQ-{}-{}", nonce, maintenant);
     let gabarit = moteur("challenge", &json!({ "text": texte, "width": 640 }))?;
-    let jpeg = gabarit.get("jpeg").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let ratio = gabarit.get("ratio").and_then(|v| v.as_f64()).unwrap_or(0.22);
+    let jpeg = gabarit
+        .get("jpeg")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let ratio = gabarit
+        .get("ratio")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.22);
     let rect = gabarit
         .get("rect")
         .cloned()
@@ -286,13 +310,27 @@ fn session_en_cours(id: &str) -> Option<Empreinte> {
     })
 }
 
+fn session_pour_compte(id: &str, uq: &str) -> Option<Empreinte> {
+    let empreinte = session_en_cours(id)?;
+    if empreinte.uq != uq {
+        return None;
+    }
+    Some(empreinte)
+}
+
 /// Bilan enregistre par le moteur pour cette session, s'il est recent et au bon nom.
 pub fn valider_session(session: &str, uq: &str) -> Option<Value> {
     let garde = BILANS.get_or_init(|| Mutex::new(HashMap::new()));
-    let table = garde.lock().unwrap_or_else(|empoisonne| empoisonne.into_inner());
+    let table = garde
+        .lock()
+        .unwrap_or_else(|empoisonne| empoisonne.into_inner());
     let bilan = table.get(session)?;
     let age = chrono::Utc::now().timestamp() - bilan.horodatage;
-    if bilan.uq != uq || age < 0 || age > VIE_BILAN_SECS {
+    if bilan.uq != uq
+        || age < 0
+        || age > VIE_BILAN_SECS
+        || bilan.data.get("ok").and_then(Value::as_bool) != Some(true)
+    {
         return None;
     }
     Some(bilan.data.clone())
@@ -300,12 +338,18 @@ pub fn valider_session(session: &str, uq: &str) -> Option<Value> {
 
 fn enregistrer_bilan(session: &str, uq: &str, data: &Value) {
     let garde = BILANS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut table = garde.lock().unwrap_or_else(|empoisonne| empoisonne.into_inner());
+    let mut table = garde
+        .lock()
+        .unwrap_or_else(|empoisonne| empoisonne.into_inner());
     let maintenant = chrono::Utc::now().timestamp();
     table.retain(|_, b| maintenant - b.horodatage <= VIE_BILAN_SECS * 2);
     table.insert(
         session.to_string(),
-        Bilan { uq: uq.to_string(), horodatage: maintenant, data: data.clone() },
+        Bilan {
+            uq: uq.to_string(),
+            horodatage: maintenant,
+            data: data.clone(),
+        },
     );
 }
 
@@ -326,7 +370,9 @@ fn reponse(data: Result<Value, String>) -> HttpResponse {
 }
 
 /// `web::block` ajoute une couche d'erreur (le worker) sur celle du moteur : on aplatit.
-fn aplatir<E: std::fmt::Display>(deux_layers: Result<Result<Value, String>, E>) -> Result<Value, String> {
+fn aplatir<E: std::fmt::Display>(
+    deux_layers: Result<Result<Value, String>, E>,
+) -> Result<Value, String> {
     match deux_layers {
         Ok(interne) => interne,
         Err(erreur) => Err(format!("Worker de guidage indisponible: {}", erreur)),
@@ -369,28 +415,35 @@ fn image_brute(corps: &[u8]) -> Result<String, String> {
 
 /// POST /api/kyc/live/face?session=… — metrics du visage pour le guide temps reel.
 pub async fn suivre_visage(req: HttpRequest, corps: web::Bytes) -> HttpResponse {
-    if crate::auth_guard::exiger_auth(&req).is_err() {
-        return HttpResponse::Unauthorized().json(json!({
-            "status": "error", "message": "Authentification requise"
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(refus) => return refus,
+    };
+    let query = extraire_query(&req);
+    let session = query.get("session").cloned().unwrap_or_default();
+    if session_pour_compte(&session, &claims.sub).is_none() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error", "code": "SESSION_INVALIDE",
+            "message": "Session de guidage invalide ou appartenant à un autre compte"
         }));
     }
-    let query = extraire_query(&req);
     let brut = match image_brute(&corps) {
         Ok(brut) => brut,
-        Err(message) => return HttpResponse::BadRequest().json(json!({"status":"error","message":message})),
+        Err(message) => {
+            return HttpResponse::BadRequest().json(json!({"status":"error","message":message}))
+        }
     };
-    let session = query.get("session").cloned().unwrap_or_default();
-    let resultat = web::block(move || moteur("face", &json!({ "img": brut, "session": session }))).await;
+    let resultat =
+        web::block(move || moteur("face", &json!({ "img": brut, "session": session }))).await;
     reponse(aplatir(resultat))
 }
 
 /// POST /api/kyc/live/doc?session=…&warp=1 — quad du document + qualite de l'image.
 pub async fn suivre_document(req: HttpRequest, corps: web::Bytes) -> HttpResponse {
-    if crate::auth_guard::exiger_auth(&req).is_err() {
-        return HttpResponse::Unauthorized().json(json!({
-            "status": "error", "message": "Authentification requise"
-        }));
-    }
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(refus) => return refus,
+    };
     let query = extraire_query(&req);
     let session = match query.get("session") {
         Some(valeur) if !valeur.is_empty() => valeur.clone(),
@@ -398,16 +451,18 @@ pub async fn suivre_document(req: HttpRequest, corps: web::Bytes) -> HttpRespons
             "status": "error", "code": "SESSION_REQUISE", "message": "Session de guidage requise"
         })),
     };
-    if session_en_cours(&session).is_none() {
+    if session_pour_compte(&session, &claims.sub).is_none() {
         return HttpResponse::BadRequest().json(json!({
-            "status": "error", "code": "SESSION_EXPIREE",
-            "message": "Session expiree : relance la verification"
+            "status": "error", "code": "SESSION_INVALIDE",
+            "message": "Session de guidage invalide ou appartenant à un autre compte"
         }));
     }
     let warp = query.get("warp").map(|v| v == "1").unwrap_or(false);
     let brut = match image_brute(&corps) {
         Ok(brut) => brut,
-        Err(message) => return HttpResponse::BadRequest().json(json!({"status":"error","message":message})),
+        Err(message) => {
+            return HttpResponse::BadRequest().json(json!({"status":"error","message":message}))
+        }
     };
     let resultat = web::block(move || moteur("doc", &json!({ "img": brut, "warp": warp }))).await;
     reponse(aplatir(resultat))
@@ -421,11 +476,10 @@ pub struct Sequence {
 
 /// POST /api/kyc/live/check — la sequence a-t-elle vraiment contenu le defi ?
 pub async fn verifier_sequence(req: HttpRequest, corps: web::Json<Sequence>) -> HttpResponse {
-    if crate::auth_guard::exiger_auth(&req).is_err() {
-        return HttpResponse::Unauthorized().json(json!({
-            "status": "error", "message": "Authentification requise"
-        }));
-    }
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(refus) => return refus,
+    };
     let corps = corps.into_inner();
     if corps.frames.is_empty() || corps.frames.len() > SEQUENCE_MAX {
         return HttpResponse::BadRequest().json(json!({
@@ -433,12 +487,12 @@ pub async fn verifier_sequence(req: HttpRequest, corps: web::Json<Sequence>) -> 
             "message": format!("Sequence invalide : entre 1 et {} images", SEQUENCE_MAX)
         }));
     }
-    let empreinte = match session_en_cours(&corps.session) {
+    let empreinte = match session_pour_compte(&corps.session, &claims.sub) {
         Some(empreinte) => empreinte,
         None => {
             return HttpResponse::BadRequest().json(json!({
-                "status": "error", "code": "SESSION_EXPIREE",
-                "message": "Session expirée : recommence la vivacité"
+                "status": "error", "code": "SESSION_INVALIDE",
+                "message": "Session expirée ou appartenant à un autre compte"
             }))
         }
     };
@@ -452,7 +506,11 @@ pub async fn verifier_sequence(req: HttpRequest, corps: web::Json<Sequence>) -> 
         "ratio": empreinte.ratio,
         "rect": empreinte.rect,
     });
-    let attendant = (corps.session.clone(), empreinte.uq.clone(), empreinte.nonce.clone());
+    let attendant = (
+        corps.session.clone(),
+        empreinte.uq.clone(),
+        empreinte.nonce.clone(),
+    );
     let resultat = web::block(move || moteur("check", &args).map(|data| (data, attendant))).await;
     match resultat {
         Ok(Ok((mut data, (session, uq, nonce)))) => {
@@ -511,7 +569,7 @@ mod tests {
         table_sessions().insert(
             "kyc_test_une_fois".to_string(),
             Session {
-                uq: "UQ-996697110".to_string(),
+                uq: "UQ-00000001".to_string(),
                 nonce: "ABC234".to_string(),
                 cree_le: maintenant,
                 gabarit: "Zm9v".to_string(),
@@ -561,7 +619,11 @@ mod tests {
         let age = chrono::Utc::now().timestamp() - VIE_BILAN_SECS - 5;
         garde.lock().unwrap().insert(
             "kyc_test_vieux".to_string(),
-            Bilan { uq: "UQ-00000005".to_string(), horodatage: age, data: json!({ "ok": true }) },
+            Bilan {
+                uq: "UQ-00000005".to_string(),
+                horodatage: age,
+                data: json!({ "ok": true }),
+            },
         );
         assert!(valider_session("kyc_test_vieux", "UQ-00000005").is_none());
     }

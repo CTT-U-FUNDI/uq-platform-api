@@ -24,10 +24,10 @@ pub struct CleBinaire {
 /// Requête de déchiffrement.
 #[derive(Debug, Deserialize)]
 pub struct DemandeDecrypt {
-    pub binaire_id: String,      // "borb_node", "uq_platform", etc.
-    pub uq_owner: String,        // Doit être UQ-996697110
-    pub ts: u64,                 // Timestamp anti-rejeu
-    pub signature: String,       // Signature Ed25519 du owner
+    pub binaire_id: String, // "borb_node", "uq_platform", etc.
+    pub uq_owner: String,   // Doit être UQ-00000001
+    pub ts: u64,            // Timestamp anti-rejeu
+    pub signature: String,  // Signature Ed25519 du owner
 }
 
 /// Store des clés de binaires.
@@ -40,11 +40,17 @@ impl BinaireStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
         let _ = std::fs::create_dir_all(&dir);
-        Self { dir, cache: Mutex::new(HashMap::new()) }
+        Self {
+            dir,
+            cache: Mutex::new(HashMap::new()),
+        }
     }
 
     fn path(&self, id: &str) -> PathBuf {
-        self.dir.join(format!("bin_{}.json", id.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_")))
+        self.dir.join(format!(
+            "bin_{}.json",
+            id.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_")
+        ))
     }
 
     fn charger(&self, id: &str) -> Option<CleBinaire> {
@@ -108,14 +114,19 @@ impl BinaireStore {
     /// Liste tous les binaires protégés.
     pub fn lister(&self) -> Vec<serde_json::Value> {
         let cache = self.cache.lock().unwrap();
-        cache.values().map(|c| serde_json::json!({
-            "id": c.id,
-            "nom": c.nom,
-            "actif": c.actif,
-            "created_at": c.created_at,
-            "last_used": c.last_used,
-            "use_count": c.use_count,
-        })).collect()
+        cache
+            .values()
+            .map(|c| {
+                serde_json::json!({
+                    "id": c.id,
+                    "nom": c.nom,
+                    "actif": c.actif,
+                    "created_at": c.created_at,
+                    "last_used": c.last_used,
+                    "use_count": c.use_count,
+                })
+            })
+            .collect()
     }
 
     /// Révoque une clé (binaire ne peut plus démarrer).
@@ -129,14 +140,20 @@ impl BinaireStore {
 
 /// Vérifie la signature Ed25519 du owner.
 /// Message : UQ_BIN_V1|{binaire_id}|{uq}|{ts}
-pub fn signature_owner_valide(binaire_id: &str, uq: &str, ts: u64, signature_hex: &str, owner_vk_hex: &str) -> bool {
+pub fn signature_owner_valide(
+    binaire_id: &str,
+    uq: &str,
+    ts: u64,
+    signature_hex: &str,
+    owner_vk_hex: &str,
+) -> bool {
     // Anti-rejeu : 5 minutes max
     if ts.abs_diff(now_ts()) > 300 {
         return false;
     }
 
     // Vérifier que c'est bien le owner
-    if uq != "UQ-996697110" {
+    if uq != "UQ-00000001" {
         return false;
     }
 

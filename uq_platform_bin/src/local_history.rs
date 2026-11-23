@@ -14,8 +14,8 @@
 // Si quelqu'un modifie une ligne, `verifier_scelle` échoue.
 // ====================
 
-use rusqlite::{Connection, params};
 use crate::blockchain_lib::{self, TxRecord};
+use rusqlite::{params, Connection};
 
 // ====================
 // TABLES LOCALES
@@ -178,7 +178,10 @@ pub struct NouvelleTransaction<'a> {
 
 /// Insère une ligne d'historique local en calculant son `prev_hash`
 /// (chaînage local) et son `block_number`.
-pub fn enregistrer_transaction(conn: &Connection, tx: &NouvelleTransaction) -> Result<String, String> {
+pub fn enregistrer_transaction(
+    conn: &Connection,
+    tx: &NouvelleTransaction,
+) -> Result<String, String> {
     init_tables(conn)?;
 
     let prev_hash = dernier_borb_id(conn);

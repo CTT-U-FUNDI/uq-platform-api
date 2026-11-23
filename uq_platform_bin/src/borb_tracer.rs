@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // BORB TRACER — Stabilisateur / Traceur de BORB
 // ====================
 //
@@ -12,9 +12,9 @@
 //
 // ====================
 
-use sha2::{Sha256, Digest};
-use rusqlite::{Connection, params};
-use serde::{Serialize, Deserialize};
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Origine d'un BORB
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,10 +66,7 @@ pub fn calculer_trace_key(
 }
 
 /// Enregistre l'origine d'un BORB
-pub fn enregistrer_origine(
-    conn: &Connection,
-    origin: &BorbOrigin,
-) -> Result<(), String> {
+pub fn enregistrer_origine(conn: &Connection, origin: &BorbOrigin) -> Result<(), String> {
     conn.execute(
         "INSERT INTO borb_origins 
          (trace_key, timestamp, cadenas_owner, recipient_uq, amount_points, 
@@ -86,33 +83,35 @@ pub fn enregistrer_origine(
             &origin.signature,
             &origin.treasury_uq,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 /// Vérifie l'origine d'un BORB
-pub fn verifier_origine(
-    conn: &Connection,
-    trace_key: &str,
-) -> Result<BorbOrigin, String> {
-    let result = conn.query_row(
-        "SELECT trace_key, timestamp, cadenas_owner, recipient_uq, amount_points,
+pub fn verifier_origine(conn: &Connection, trace_key: &str) -> Result<BorbOrigin, String> {
+    let result = conn
+        .query_row(
+            "SELECT trace_key, timestamp, cadenas_owner, recipient_uq, amount_points,
                 tresor_before, tresor_after, signature, treasury_uq
          FROM borb_origins WHERE trace_key = ?1",
-        params![trace_key],
-        |row| Ok(BorbOrigin {
-            trace_key: row.get(0)?,
-            timestamp: row.get(1)?,
-            cadenas_owner: row.get(2)?,
-            recipient_uq: row.get(3)?,
-            amount_points: row.get::<_, i64>(4)? as u64,
-            tresor_before: row.get::<_, i64>(5)? as u64,
-            tresor_after: row.get::<_, i64>(6)? as u64,
-            signature: row.get(7)?,
-            treasury_uq: row.get(8)?,
-        }),
-    ).map_err(|e| format!("Origine introuvable: {}", e))?;
+            params![trace_key],
+            |row| {
+                Ok(BorbOrigin {
+                    trace_key: row.get(0)?,
+                    timestamp: row.get(1)?,
+                    cadenas_owner: row.get(2)?,
+                    recipient_uq: row.get(3)?,
+                    amount_points: row.get::<_, i64>(4)? as u64,
+                    tresor_before: row.get::<_, i64>(5)? as u64,
+                    tresor_after: row.get::<_, i64>(6)? as u64,
+                    signature: row.get(7)?,
+                    treasury_uq: row.get(8)?,
+                })
+            },
+        )
+        .map_err(|e| format!("Origine introuvable: {}", e))?;
 
     Ok(result)
 }
@@ -134,17 +133,20 @@ pub fn init_borb_origins_table(conn: &Connection) -> Result<(), String> {
             created_at INTEGER NOT NULL
         )",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_borb_origins_recipient ON borb_origins(recipient_uq)",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_borb_origins_timestamp ON borb_origins(timestamp)",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -185,8 +187,12 @@ pub fn tracer_emission(
 
     enregistrer_origine(conn, &origin)?;
 
-    eprintln!("🔐 BORB tracé : {} ({} points → {})",
-        &trace_key[..16], amount_points, recipient_uq);
+    eprintln!(
+        "🔐 BORB tracé : {} ({} points → {})",
+        &trace_key[..16],
+        amount_points,
+        recipient_uq
+    );
 
     Ok(trace_key)
 }
@@ -243,14 +249,8 @@ pub fn trace_with_usd_value(
     let amount_points = usd_to_points(amount_usd, prix_borb_usd);
     let timestamp = chrono::Utc::now().timestamp();
 
-    let trace_key = calculer_trace_key(
-        source_cadenas,
-        timestamp,
-        recipient_uq,
-        amount_points,
-        0,
-        0,
-    );
+    let trace_key =
+        calculer_trace_key(source_cadenas, timestamp, recipient_uq, amount_points, 0, 0);
 
     conn.execute(
         "INSERT INTO borb_origins 
@@ -271,10 +271,13 @@ pub fn trace_with_usd_value(
             signature_hex,
             source_uq,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
-    eprintln!("🎁 BORB tracé [{}] : {} USD = {} points → {}",
-        source_type, amount_usd, amount_points, recipient_uq);
+    eprintln!(
+        "🎁 BORB tracé [{}] : {} USD = {} points → {}",
+        source_type, amount_usd, amount_points, recipient_uq
+    );
 
     Ok(trace_key)
 }

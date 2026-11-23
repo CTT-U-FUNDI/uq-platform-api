@@ -177,9 +177,10 @@ fn purger(defis: &mut Defis) {
         }
     }
     defis.preuves.retain(|_, p| p.expire_at > maintenant);
-    defis
-        .debuts_humains
-        .retain(|_, v| v.iter().any(|t| maintenant - *t < HUMAIN_DEBUTS_FENETRE_SECS));
+    defis.debuts_humains.retain(|_, v| {
+        v.iter()
+            .any(|t| maintenant - *t < HUMAIN_DEBUTS_FENETRE_SECS)
+    });
     defis.penalites_humains.retain(|_, fin| *fin > maintenant);
 }
 
@@ -358,7 +359,10 @@ fn reponse_penalite(fin: i64) -> HttpResponse {
 fn consommer_quota_humain(empreinte: &str) -> Option<i64> {
     let mut garde = lock(defis());
     let maintenant = maintenant();
-    let entrees = garde.debuts_humains.entry(empreinte.to_string()).or_default();
+    let entrees = garde
+        .debuts_humains
+        .entry(empreinte.to_string())
+        .or_default();
     entrees.retain(|t| maintenant - *t < HUMAIN_DEBUTS_FENETRE_SECS);
     if entrees.len() >= HUMAIN_DEBUTS_MAX {
         let plus_ancienne = entrees.iter().copied().min().unwrap_or(maintenant);
@@ -366,16 +370,19 @@ fn consommer_quota_humain(empreinte: &str) -> Option<i64> {
     }
     entrees.push(maintenant);
     if garde.debuts_humains.len() > DEFIS_MAX {
-        garde
-            .debuts_humains
-            .retain(|_, v| v.iter().any(|t| maintenant - *t < HUMAIN_DEBUTS_FENETRE_SECS));
+        garde.debuts_humains.retain(|_, v| {
+            v.iter()
+                .any(|t| maintenant - *t < HUMAIN_DEBUTS_FENETRE_SECS)
+        });
     }
     None
 }
 
 fn infliger_penalite_humaine(empreinte: &str) -> i64 {
     let fin = maintenant() + HUMAIN_PENALITE_SECS;
-    lock(defis()).penalites_humains.insert(empreinte.to_string(), fin);
+    lock(defis())
+        .penalites_humains
+        .insert(empreinte.to_string(), fin);
     fin
 }
 
@@ -1086,10 +1093,7 @@ pub async fn human_begin(req: HttpRequest) -> HttpResponse {
     let defi = hex_aleatoire(24);
     // ?type=scene force la scène animée (clients qui n'implémentent que
     // ce rendu — ex. création de compte, appairage device).
-    let forcer_scene = req
-        .query_string()
-        .split('&')
-        .any(|p| p == "type=scene");
+    let forcer_scene = req.query_string().split('&').any(|p| p == "type=scene");
     let puzzle = if forcer_scene {
         generer_puzzle_scene(&mut rand::thread_rng())
     } else {

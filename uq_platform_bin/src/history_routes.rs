@@ -111,7 +111,10 @@ pub async fn history_status(req: HttpRequest, path: web::Path<String>) -> HttpRe
         || claims.role == "owner"
         || crate::owner_guard::check_is_owner(&claims.sub);
     if !est_admin && !claims.sub.eq_ignore_ascii_case(&uq) {
-        return err_json(403, "Tu ne peux consulter que ton propre historique".to_string());
+        return err_json(
+            403,
+            "Tu ne peux consulter que ton propre historique".to_string(),
+        );
     }
 
     let conn = match ouvrir_db(&uq) {
@@ -142,7 +145,10 @@ pub async fn history_verify(req: HttpRequest, path: web::Path<String>) -> HttpRe
         || claims.role == "owner"
         || crate::owner_guard::check_is_owner(&claims.sub);
     if !est_admin && !claims.sub.eq_ignore_ascii_case(&uq) {
-        return err_json(403, "Verification reservee au proprietaire du compte".to_string());
+        return err_json(
+            403,
+            "Verification reservee au proprietaire du compte".to_string(),
+        );
     }
 
     let conn = match ouvrir_db(&uq) {
@@ -258,10 +264,16 @@ pub async fn history_request_recovery(
     }
 
     // Bornes de dates : soit date_range, soit date_from/date_to
-    let (date_from, date_to) = if let Some(range) = body.get("date_range").and_then(|v| v.as_str()) {
+    let (date_from, date_to) = if let Some(range) = body.get("date_range").and_then(|v| v.as_str())
+    {
         match p2p_history::parser_date_range(range) {
             Some((f, t)) => (f, t),
-            None => return err_json(400, "date_range invalide (attendu : 'AAAA-MM-JJ to AAAA-MM-JJ')".to_string()),
+            None => {
+                return err_json(
+                    400,
+                    "date_range invalide (attendu : 'AAAA-MM-JJ to AAAA-MM-JJ')".to_string(),
+                )
+            }
         }
     } else {
         (
@@ -357,7 +369,10 @@ pub async fn history_provide_fragment(
         Err(resp) => return resp,
     };
 
-    let request_id = body.get("request_id").and_then(|v| v.as_str()).unwrap_or("");
+    let request_id = body
+        .get("request_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if request_id.is_empty() {
         return err_json(400, "request_id requis".to_string());
     }
@@ -497,7 +512,10 @@ pub async fn history_reconstruct(
         Err(resp) => return resp,
     };
 
-    let request_id = body.get("request_id").and_then(|v| v.as_str()).unwrap_or("");
+    let request_id = body
+        .get("request_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if request_id.is_empty() {
         return err_json(400, "request_id requis".to_string());
     }
@@ -508,7 +526,10 @@ pub async fn history_reconstruct(
 
     let est_admin = claims.role == "admin" || claims.role == "owner";
     if !est_admin && !claims.sub.eq_ignore_ascii_case(&demandeur_uq) {
-        return err_json(403, "Seul le demandeur peut reconstituer son historique".to_string());
+        return err_json(
+            403,
+            "Seul le demandeur peut reconstituer son historique".to_string(),
+        );
     }
 
     let conn = match Connection::open(&chemin) {
@@ -575,12 +596,18 @@ pub async fn history_validate_recovery(
         Err(resp) => return resp,
     };
 
-    let request_id = body.get("request_id").and_then(|v| v.as_str()).unwrap_or("");
+    let request_id = body
+        .get("request_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if request_id.is_empty() {
         return err_json(400, "request_id requis".to_string());
     }
 
-    let approuve = body.get("approved").and_then(|v| v.as_bool()).unwrap_or(true);
+    let approuve = body
+        .get("approved")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let commentaire = body.get("comment").and_then(|v| v.as_str()).unwrap_or("");
     let signature = body.get("signature").and_then(|v| v.as_str());
 

@@ -215,12 +215,19 @@ pub fn ensure_tables(conn: &Connection) -> Result<(), String> {
         ("p2p_offers", "rate_base", "TEXT DEFAULT ''"),
         ("p2p_offers", "amount_unit", "TEXT DEFAULT 'DEVISE'"),
         ("p2p_orders", "escrow_points", "INTEGER DEFAULT 0"),
-        ("p2p_orders", "proof_code", "TEXT"),
         // Une commande met deux lignes face a face : celle que l'acheteur doit
         // payer, et la sienne d'ou part le paiement. Les deux preuves se
         // controlent chacune contre la bonne.
         ("p2p_orders", "buyer_phone", "TEXT NOT NULL DEFAULT ''"),
         ("p2p_orders", "seller_phone", "TEXT NOT NULL DEFAULT ''"),
+        // Géolocalisation optionnelle : zone déclarée par le vendeur sur
+        // l'offre, point de rencontre proposé par l'acheteur sur la
+        // commande. NULL = non renseigné. Aucune logique métier ne dépend
+        // de ces champs — purement informatif (preuve de lieu).
+        ("p2p_offers", "latitude", "REAL"),
+        ("p2p_offers", "longitude", "REAL"),
+        ("p2p_orders", "meet_latitude", "REAL"),
+        ("p2p_orders", "meet_longitude", "REAL"),
     ] {
         ajouter_colonne_manquante(conn, table, colonne, definition)?;
     }
@@ -234,6 +241,7 @@ pub fn ensure_tables(conn: &Connection) -> Result<(), String> {
     // Les preuves de paiement (images + analyses + issues apprises) partagent
     // la base d'index, là où vivent déjà les commandes.
     crate::p2p_preuve::assurer_tables(conn)?;
+    crate::p2p_security::ensure_tables(conn)?;
 
     crate::frais_plateforme::assurer_tables(conn)
         .map_err(|e| format!("Trading : tables de frais impossibles ({})", e))
@@ -259,7 +267,10 @@ fn ajouter_colonne_manquante(
         return Ok(());
     }
     conn.execute(
-        &format!("ALTER TABLE {} ADD COLUMN {} {}", table, colonne, definition),
+        &format!(
+            "ALTER TABLE {} ADD COLUMN {} {}",
+            table, colonne, definition
+        ),
         [],
     )
     .map_err(|e| format!("Colonne {}.{} ajoutée impossible ({})", table, colonne, e))?;
@@ -267,8 +278,8 @@ fn ajouter_colonne_manquante(
 }
 
 fn ouvrir_index() -> Result<Connection, String> {
-    let conn = Connection::open(crate::uq_index::uq_index_path())
-        .map_err(|e| format!("Index indisponible ({})", e))?;
+    let conn =
+        Connection::open("uq_index.db").map_err(|e| format!("Index indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     ensure_tables(&conn)?;
     Ok(conn)
@@ -311,7 +322,7 @@ fn chemin_compte(uq: &str) -> String {
 }
 
 /// PIN configuré sur la base du compte ?
-fn pin_configure(uq: &str) -> bool {
+pub fn pin_configure(uq: &str) -> bool {
     let chemin = chemin_compte(uq);
     if !std::path::Path::new(&chemin).exists() {
         return false;
@@ -332,11 +343,12 @@ fn pin_configure(uq: &str) -> bool {
 
 /// Vérifie le PIN du compte. Un compte sans PIN configuré laisse passer,
 /// comme le fait déjà `/api/account/pin/verify`.
-fn verifier_pin(uq: &str, pin: &str) -> Result<bool, String> {
+pub fn verifier_pin_public(uq: &str, pin: &str) -> Result<bool, String> {
     let chemin = chemin_compte(uq);
     if !std::path::Path::new(&chemin).exists() {
         return Err("Compte introuvable".to_string());
     }
+
     let conn =
         Connection::open(&chemin).map_err(|e| format!("Base du compte illisible ({})", e))?;
     let _ = crate::pin_manager::init_pin_table(&conn);
@@ -344,6 +356,19 @@ fn verifier_pin(uq: &str, pin: &str) -> Result<bool, String> {
         return Ok(true);
     }
     crate::pin_manager::verify_pin(&conn, pin).map_err(|e| e.to_string())
+}
+
+fn verifier_pin(uq: &str, pin: &str) -> Result<bool, String> {
+    verifier_pin_public(uq, pin)
+}
+
+fn exiger_participant(req: &HttpRequest, uq: &str) -> Result<(), HttpResponse> {
+    let claims = crate::auth_guard::exiger_auth(req)?;
+    if claims.sub.eq_ignore_ascii_case(uq.trim()) {
+        Ok(())
+    } else {
+        Err(crate::auth_guard::refus())
+    }
 }
 
 // ====================
@@ -354,10 +379,7 @@ fn lire_taux(rates: &HashMap<String, f64>, code: &str) -> Option<f64> {
     if code.eq_ignore_ascii_case("USD") {
         return Some(1.0);
     }
-    rates
-        .get(code)
-        .copied()
-        .filter(|valeur| *valeur > 0.0)
+    rates.get(code).copied().filter(|valeur| *valeur > 0.0)
 }
 
 /// Contre-valeur USD d'un montant détenu ou échangé dans une devise.
@@ -706,7 +728,7 @@ pub async fn trading_markets() -> HttpResponse {
 
 pub async fn trading_context(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
     let uq = path.into_inner();
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -778,7 +800,7 @@ pub async fn trading_context(req: HttpRequest, path: web::Path<String>) -> HttpR
 /// réelles ; aucun rendement ni prix n'est inventé ici.
 pub async fn trading_overview(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
     let uq = path.into_inner();
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -966,9 +988,9 @@ pub async fn trading_overview(req: HttpRequest, path: web::Path<String>) -> Http
 
     let mut marches_trades_24h: i64 = 0;
     let mut marches_volume_usd_24h = 0.0;
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT pair, total FROM trading_trades WHERE created_at >= ?1",
-    ) {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT pair, total FROM trading_trades WHERE created_at >= ?1")
+    {
         if let Ok(rows) = stmt.query_map(params![depuis], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
         }) {
@@ -987,9 +1009,7 @@ pub async fn trading_overview(req: HttpRequest, path: web::Path<String>) -> Http
     };
     let total_usd = disponibles_usd + reserves_usd;
     let (devise_rendue, total_affiche) = match lire_taux(&taux.rates, &devise_affichage) {
-        Some(taux_devise) if taux_devise > 0.0 => {
-            (devise_affichage, total_usd * taux_devise)
-        }
+        Some(taux_devise) if taux_devise > 0.0 => (devise_affichage, total_usd * taux_devise),
         _ => ("USD".to_string(), total_usd),
     };
 
@@ -1158,7 +1178,11 @@ fn calcul_retrait(
     } else {
         0.0
     };
-    (anticipe, penalite, (principal - penalite + rewards).max(0.0))
+    (
+        anticipe,
+        penalite,
+        (principal - penalite + rewards).max(0.0),
+    )
 }
 
 /// Barème de service : 0,1 % fiat, 1 % crypto (source unique : frais_plateforme).
@@ -1389,9 +1413,8 @@ pub async fn trading_earn_context(req: HttpRequest, path: web::Path<String>) -> 
             ))
         }) {
             for (id, devise, principal, rewards, locked_at, unlock_at) in rows.flatten() {
-                let jours_restants = ((unlock_at - horodatage) as f64 / 86400.0)
-                    .ceil()
-                    .max(0.0) as i64;
+                let jours_restants =
+                    ((unlock_at - horodatage) as f64 / 86400.0).ceil().max(0.0) as i64;
                 let penalite = if horodatage < unlock_at {
                     principal * EARN_EARLY_PENALTY_PCT
                 } else {
@@ -1749,7 +1772,12 @@ pub async fn trading_earn_withdraw(req: HttpRequest, body: web::Json<Value>) -> 
         .ok();
     let (devise, principal, rewards, deverrouillage) = match position {
         Some(position) => position,
-        None => return refus("Position introuvable ou déjà retirée", "POSITION_INTROUVABLE"),
+        None => {
+            return refus(
+                "Position introuvable ou déjà retirée",
+                "POSITION_INTROUVABLE",
+            )
+        }
     };
 
     let (anticipe, penalite, retour) =
@@ -1794,7 +1822,10 @@ pub async fn trading_earn_withdraw(req: HttpRequest, body: web::Json<Value>) -> 
         } else {
             "Épargne retirée"
         },
-        &format!("{} {} crédités (pénalité {} {})", retour, devise, penalite, devise),
+        &format!(
+            "{} {} crédités (pénalité {} {})",
+            retour, devise, penalite, devise
+        ),
         &format!("earn:{}", position_id),
     );
 
@@ -2021,7 +2052,11 @@ pub async fn trading_order_create(req: HttpRequest, body: web::Json<Value>) -> H
         Err(e) => return echec(e),
     }
 
-    let statut = if type_ordre == "market" { "filled" } else { "open" };
+    let statut = if type_ordre == "market" {
+        "filled"
+    } else {
+        "open"
+    };
     let rempli = if statut == "filled" { montant } else { 0.0 };
     let paire = nom_paire(&base, &quote);
 
@@ -2031,19 +2066,8 @@ pub async fn trading_order_create(req: HttpRequest, body: web::Json<Value>) -> H
              status, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
-            uq,
-            paire,
-            base,
-            quote,
-            cote,
-            type_ordre,
-            prix,
-            montant,
-            rempli,
-            total,
-            statut,
-            horodatage,
-            horodatage
+            uq, paire, base, quote, cote, type_ordre, prix, montant, rempli, total, statut,
+            horodatage, horodatage
         ],
     ) {
         return echec(format!("Enregistrement de l'ordre impossible ({})", e));
@@ -2130,7 +2154,10 @@ pub async fn trading_order_create(req: HttpRequest, body: web::Json<Value>) -> H
 
     let ordre = conn
         .query_row(
-            &format!("SELECT {} FROM trading_orders WHERE id = ?1", COLONNES_ORDRE),
+            &format!(
+                "SELECT {} FROM trading_orders WHERE id = ?1",
+                COLONNES_ORDRE
+            ),
             params![identifiant],
             ordre_json,
         )
@@ -2292,7 +2319,7 @@ fn ouvrir_canal_p2p(
     taux: f64,
     telephone_vendeur: &str,
 ) -> String {
-    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+    let index = crate::uq_index::UqIndex::shared("uq_index.db");
     let nom = format!("P2P {} #{}", devise, commande);
     let description = format!(
         "Commande P2P mobile : {} BORB contre {:.2} {} (1 BORB = {:.2} {}).",
@@ -2355,7 +2382,6 @@ fn commande_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "created_at": row.get::<_, i64>(12)?,
         "updated_at": row.get::<_, i64>(13)?,
         "escrow_points": points,
-        "proof_code": row.get::<_, String>(18).unwrap_or_default(),
         "borb_amount": points as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64,
         "rate_base": row.get::<_, String>(15)?,
         "buyer_phone": row.get::<_, String>(16)?,
@@ -2363,6 +2389,11 @@ fn commande_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "seller_display": crate::uq_public_alias::get_public_display(
             &row.get::<_, String>(3)?
         ),
+        "receiving_method_id": row.get::<_, Option<i64>>(18)?,
+        "name_challenge_status": row.get::<_, String>(19)?,
+        "cross_code_status": row.get::<_, String>(20)?,
+        "version": row.get::<_, i64>(21)?,
+        "dispute_reason": row.get::<_, String>(22)?,
     }))
 }
 
@@ -2370,7 +2401,10 @@ const COLONNES_COMMANDE: &str = "id, offer_id, buyer, seller, currency, amount, 
      phone, operator, status, chat_group_id, created_at, updated_at, COALESCE(escrow_points, 0),
      (SELECT COALESCE(rate_base, '') FROM p2p_offers
        WHERE p2p_offers.id = p2p_orders.offer_id),
-     COALESCE(buyer_phone, ''), COALESCE(seller_phone, ''), COALESCE(proof_code, '')";
+     COALESCE(buyer_phone, ''), COALESCE(seller_phone, ''),
+     receiving_method_id, COALESCE(name_challenge_status, 'pending'),
+     COALESCE(cross_code_status, 'pending'), COALESCE(expected_version, 0),
+     COALESCE(dispute_reason, '')";
 
 // ====================
 // GET /api/p2p/market/offers
@@ -2403,17 +2437,132 @@ fn signal_taux(ecart: Option<f64>) -> Value {
     }
 }
 
+// ===== OFFRE OWNER PERMANENTE =====
+// Le owner vend du BORB en continu sur le marché escrow, au taux live
+// de l'oracle. Appelée à chaque liste d'offres : garantit l'existence
+// des moyens de réception et des offres, et MET À JOUR le taux —
+// l'offre owner affiche toujours le prix live, jamais un prix figé.
+const UQ_OWNER_P2P: &str = "UQ-00000001";
+const OWNER_NOM_P2P: &str = "Bulonza Nsarhaza Eliezer";
+const OWNER_MPTEL: &str = "827279672"; // M-Pesa
+const OWNER_AIRTEL: &str = "996697110"; // Airtel Money
+const OWNER_P2P_MIN_USD: f64 = 5.0;
+const OWNER_P2P_MAX_USD: f64 = 500.0;
+const OWNER_P2P_MAX_CDF: f64 = 1_000_000.0;
+
+async fn assurer_offre_owner(conn: &rusqlite::Connection) {
+    use rusqlite::params;
+    let _ = crate::p2p_security::ensure_tables(conn);
+    let ts = maintenant();
+
+    // 1. Moyens de réception owner : M-Pesa + Airtel Money (CDF).
+    //    hash du nom titulaire = même algorithme que receiving_method_create.
+    for (provider, numero) in [("M-PESA", OWNER_MPTEL), ("AIRTEL MONEY", OWNER_AIRTEL)] {
+        let existe: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM p2p_receiving_methods
+                 WHERE UPPER(uq) = UPPER(?1) AND provider = ?2 AND account_identifier = ?3",
+                params![UQ_OWNER_P2P, provider, numero],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if existe == 0 {
+            let hash = crate::p2p_security::secret_hash(OWNER_NOM_P2P);
+            let _ = conn.execute(
+                "INSERT INTO p2p_receiving_methods
+                 (uq, method_type, provider, currency, account_identifier,
+                  account_last4, holder_name_hash, verification_status,
+                  verified_at, enabled, is_default, created_at, updated_at)
+                 VALUES (?1, 'MOBILE_MONEY', ?2, 'CDF', ?3, ?4, ?5,
+                         'verified', ?6, 1, 0, ?6, ?6)",
+                params![
+                    UQ_OWNER_P2P,
+                    provider,
+                    numero,
+                    &numero[numero.len().saturating_sub(4)..],
+                    hash,
+                    ts,
+                ],
+            );
+        }
+    }
+
+    // 2. Offres de vente BORB : USD (5→500) et CDF (≈5 USD→1 000 000).
+    //    Le taux est RECALCULÉ à chaque appel = taux live de l'oracle.
+    let fiat = crate::public_routes::taux_du_jour().await;
+    let prix_borb_usd: f64 = crate::persistence::load_prix()
+        .prix_actuel
+        .parse()
+        .unwrap_or(0.0);
+    if !(prix_borb_usd.is_finite() && prix_borb_usd > 0.0) {
+        return;
+    }
+    for (devise, min, max) in [
+        ("USD", OWNER_P2P_MIN_USD, OWNER_P2P_MAX_USD),
+        (
+            "CDF",
+            OWNER_P2P_MIN_USD
+                * lire_taux(&fiat.rates, "CDF").unwrap_or(0.0),
+            OWNER_P2P_MAX_CDF,
+        ),
+    ] {
+        if !(min.is_finite() && min > 0.0 && max.is_finite() && max > min) {
+            continue;
+        }
+        let taux_devise = lire_taux(&fiat.rates, devise).unwrap_or(0.0);
+        if !(taux_devise.is_finite() && taux_devise > 0.0) {
+            continue;
+        }
+        let rate = prix_borb_usd * taux_devise;
+        let ouverte: i64 = conn
+            .query_row(
+                "SELECT id FROM p2p_offers
+                 WHERE UPPER(uq) = UPPER(?1) AND side = 'sell' AND UPPER(currency) = ?2
+                   AND status = 'open' LIMIT 1",
+                params![UQ_OWNER_P2P, devise],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if ouverte > 0 {
+            // Taux live : on met à jour le prix sans toucher au reste.
+            let _ = conn.execute(
+                "UPDATE p2p_offers SET rate = ?1, rate_base = ?2
+                 WHERE id = ?3",
+                params![rate, BASE_TAUX_P2P, ouverte],
+            );
+        } else {
+            let _ = conn.execute(
+                "INSERT INTO p2p_offers
+                 (uq, side, currency, rate, rate_base, min_amount, max_amount,
+                  operator, city, phone, status, created_at, amount_unit,
+                  receiving_method_id)
+                 VALUES (?1, 'sell', ?2, ?3, ?4, ?5, ?6, '', '', '',
+                         'open', ?7, 'DEVISE', 0)",
+                params![UQ_OWNER_P2P, devise, rate, BASE_TAUX_P2P, min, max, ts],
+            );
+        }
+    }
+}
+
 pub async fn p2p_offers_list(
     req: HttpRequest,
     query: web::Query<HashMap<String, String>>,
 ) -> HttpResponse {
-    if let Err(response) = crate::auth_guard::exiger_auth(&req) {
-        return response;
+    // Les offres sont des données publiques de marché : `?public=1`
+    // permet la lecture sans JWT (wallet BORB, storefronts).
+    // Sans ce flag, le JWT reste obligatoire comme avant.
+    let public = query.get("public").map(|v| v == "1").unwrap_or(false);
+    if !public {
+        if let Err(response) = crate::auth_guard::exiger_auth(&req) {
+            return response;
+        }
     }
     let conn = match ouvrir_index() {
         Ok(conn) => conn,
         Err(e) => return echec(e),
     };
+    // Offre owner permanente : existe toujours + taux live à jour.
+    assurer_offre_owner(&conn).await;
     let moi = query.get("uq").cloned().unwrap_or_default();
 
     // Référence du taux : 1 BORB dans la devise de l'offre, composée à partir du
@@ -2465,12 +2614,20 @@ pub async fn p2p_offers_list(
         // Une offre en unités BORB expose ses bornes dans les deux monnaies :
         // BORB pour la saisie de l'acheteur, devise pour le paiement hors app.
         let (min_borb, max_borb, restant_borb) = if en_borb {
-            (row.get::<_, f64>(6)?, maximum, (maximum - deja_pris).max(0.0))
+            (
+                row.get::<_, f64>(6)?,
+                maximum,
+                (maximum - deja_pris).max(0.0),
+            )
         } else {
             (0.0, 0.0, 0.0)
         };
         let (minimum_devise, maximum_devise, deja_pris_devise) = if en_borb {
-            (min_borb * taux_offre, max_borb * taux_offre, deja_pris * taux_offre)
+            (
+                min_borb * taux_offre,
+                max_borb * taux_offre,
+                deja_pris * taux_offre,
+            )
         } else {
             (row.get::<_, f64>(6)?, maximum, deja_pris)
         };
@@ -2527,7 +2684,7 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
     if uq.is_empty() {
         return refus("Compte requis", "UQ_REQUIS");
     }
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -2543,7 +2700,7 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
             }))
         }
     };
-    let telephone = profil.phone.trim().to_string();
+    let mut telephone = profil.phone.trim().to_string();
     if telephone.is_empty() {
         return refus(
             "Renseigne ton numéro mobile money dans ton profil avant de publier une offre P2P.",
@@ -2582,11 +2739,7 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
     let mut unite = "BORB";
     let mut minimum = nombre(&body, "min_borb");
     let mut maximum = nombre(&body, "max_borb");
-    if !minimum.is_finite()
-        || minimum <= 0.0
-        || !maximum.is_finite()
-        || maximum < minimum
-    {
+    if !minimum.is_finite() || minimum <= 0.0 || !maximum.is_finite() || maximum < minimum {
         unite = "DEVISE";
         minimum = nombre(&body, "min_amount");
         maximum = nombre(&body, "max_amount");
@@ -2600,7 +2753,7 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
             "BORNES_INVALIDES",
         );
     }
-    let operateur = {
+    let mut operateur = {
         let choisi = texte(&body, "operator");
         if choisi.is_empty() {
             profil.operator.clone()
@@ -2609,6 +2762,43 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
         }
     };
     let ville = texte(&body, "city");
+    // Zone GPS optionnelle de l'offre : informative uniquement,
+    // jamais bloquante — une coordonnée invalide devient NULL.
+    let (lat_offre, lng_offre) = match (
+        body.get("latitude").and_then(|v| v.as_f64()),
+        body.get("longitude").and_then(|v| v.as_f64()),
+    ) {
+        (Some(la), Some(lo))
+            if la.is_finite() && lo.is_finite() && la.abs() <= 90.0 && lo.abs() <= 180.0 =>
+        {
+            (Some(la), Some(lo))
+        }
+        _ => (None, None),
+    };
+    let receiving_method_id = if cote == "sell" {
+        let requested = body
+            .get("receiving_method_id")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        match crate::p2p_security::method_for_seller(&conn, &uq, 0, requested) {
+            Ok((id, account_identifier, provider, method_currency))
+                if method_currency.eq_ignore_ascii_case(&devise) =>
+            {
+                telephone = account_identifier;
+                operateur = provider;
+                id
+            }
+            Ok(_) => {
+                return refus(
+                    "Le moyen de réception sélectionné n'utilise pas la devise de l'offre.",
+                    "DEVISE_RECEPTION_INVALIDE",
+                )
+            }
+            Err(error) => return refus(&error, "MOYEN_RECEPTION_REQUIS"),
+        }
+    } else {
+        0
+    };
 
     // Référence : 1 BORB dans la devise, prix interne du BORB × taux oracle.
     let prix_borb_usd: f64 = crate::persistence::load_prix()
@@ -2618,31 +2808,12 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
     let reference = lire_taux(&taux.rates, &devise)
         .map(|par_usd| prix_borb_usd * par_usd)
         .filter(|valeur| valeur.is_finite() && *valeur > 0.0);
-    // Plancher P2P : jamais moins de 500 CDF (equivalent dans la devise de
-    // l'offre). Au-dessus, le vendeur configure librement ; le taux live UQ
-    // reste la reference affichee (reference_rate).
-    let plancher = {
-        let cdf = lire_taux(&taux.rates, "CDF");
-        let par_devise = lire_taux(&taux.rates, &devise);
-        match (cdf, par_devise) {
-            (Some(cdf_par_usd), Some(devise_par_usd)) if cdf_par_usd > 0.0 => {
-                // 500 CDF en USD, converti dans la devise de l'offre
-                Some(500.0 / cdf_par_usd * devise_par_usd)
-            }
-            _ => None,
-        }
-    };
-    if let Some(min) = plancher {
-        if cote_taux < min {
-            cote_taux = min;
-        }
-    }
     let ecart = reference.map(|valeur| (cote_taux - valeur) / valeur * 100.0);
 
     let insertion = conn.execute(
         "INSERT INTO p2p_offers
-            (uq, side, currency, rate, rate_base, min_amount, max_amount, operator, city, phone, status, created_at, amount_unit)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12)",
+            (uq, side, currency, rate, rate_base, min_amount, max_amount, operator, city, phone, status, created_at, amount_unit, receiving_method_id, latitude, longitude)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12, ?13, ?14, ?15)",
         params![
             uq,
             cote,
@@ -2655,7 +2826,10 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
             ville,
             telephone,
             maintenant(),
-            unite
+            unite,
+            receiving_method_id,
+            lat_offre,
+            lng_offre
         ],
     );
     if let Err(e) = insertion {
@@ -2697,7 +2871,8 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
             "city": ville,
             "phone": masquer_telephone(&telephone),
             "status": "open",
-            "created_at": maintenant()
+            "created_at": maintenant(),
+            "receiving_method_id": receiving_method_id
         }
     }))
 }
@@ -2736,7 +2911,7 @@ pub async fn p2p_offer_take(
     if uq.is_empty() {
         return refus("Compte requis", "UQ_REQUIS");
     }
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     // L'acheteur saisit une quantité de BORB (`borb_amount`) sur les offres
@@ -2793,8 +2968,7 @@ pub async fn p2p_offer_take(
         telephone_offre,
         statut,
         unite,
-    ) = match offre
-    {
+    ) = match offre {
         Ok(valeurs) => valeurs,
         Err(_) => {
             return HttpResponse::NotFound().json(json!({
@@ -2919,6 +3093,26 @@ pub async fn p2p_offer_take(
         (uq.clone(), createur.clone())
     };
 
+    let requested_method = body
+        .get("receiving_method_id")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let (receiving_method_id, telephone_vendeur, provider_vendeur, method_currency) =
+        match crate::p2p_security::method_for_seller(&conn, &vendeur, offre_id, requested_method) {
+            Ok(method) => method,
+            Err(error) => {
+                rendre_quantite(&conn, offre_id, borb, montant);
+                return refus(&error, "MOYEN_RECEPTION_REQUIS");
+            }
+        };
+    if !method_currency.eq_ignore_ascii_case(&devise) {
+        rendre_quantite(&conn, offre_id, borb, montant);
+        return refus(
+            "Le moyen de réception vérifié ne correspond pas à la devise de l'offre.",
+            "DEVISE_RECEPTION_INVALIDE",
+        );
+    }
+
     let profil_acheteur = lire_profil(&conn, &acheteur);
     let telephone_acheteur = profil_acheteur
         .as_ref()
@@ -2939,6 +3133,20 @@ pub async fn p2p_offer_take(
             "MOBILE_MONEY_MANQUANT",
         );
     }
+
+    // Point de rencontre GPS proposé par l'acheteur : optionnel,
+    // informatif uniquement — une coordonnée invalide devient NULL.
+    let (meet_lat, meet_lng) = match (
+        body.get("meet_latitude").and_then(|v| v.as_f64()),
+        body.get("meet_longitude").and_then(|v| v.as_f64()),
+    ) {
+        (Some(la), Some(lo))
+            if la.is_finite() && lo.is_finite() && la.abs() <= 90.0 && lo.abs() <= 180.0 =>
+        {
+            (Some(la), Some(lo))
+        }
+        _ => (None, None),
+    };
 
     // Consommation atomique : deux prises simultanées ne peuvent pas dépasser
     // le maximum de l'offre, même si la lecture du « restant » était faussée.
@@ -2969,17 +3177,13 @@ pub async fn p2p_offer_take(
         return refus(&e.message(), motif_gel(&e));
     }
 
-    let telephone_vendeur = match lire_profil(&conn, &vendeur) {
-        Some(profil) if !profil.phone.trim().is_empty() => profil.phone,
-        _ => telephone_offre,
-    };
-
     let insertion = conn.execute(
         "INSERT INTO p2p_orders
             (offer_id, buyer, seller, currency, amount, usd_amount, rate, phone, operator,
              status, escrow_points, chat_group_id, created_at, updated_at,
-             buyer_phone, seller_phone, proof_code)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, 'pending_payment', ?9, '', ?10, ?10, ?11, ?12, ?13)",
+             buyer_phone, seller_phone, receiving_method_id,
+             meet_latitude, meet_longitude)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, 'pending_payment', ?9, '', ?10, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             offre_id,
             acheteur,
@@ -2988,12 +3192,14 @@ pub async fn p2p_offer_take(
             montant,
             cote_taux,
             telephone_acheteur,
-            operateur_acheteur,
+            provider_vendeur,
             points,
             horodatage,
             telephone_acheteur,
             telephone_vendeur,
-            &format!("{:04}", (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos() as u64 % 10000) as u32)
+            receiving_method_id,
+            meet_lat,
+            meet_lng
         ],
     );
     if let Err(e) = insertion {
@@ -3008,10 +3214,21 @@ pub async fn p2p_offer_take(
         return echec(format!("Création de la commande impossible ({})", e));
     }
     let commande_id = conn.last_insert_rowid();
-    // Notification vendeur : un acheteur est interesse — defi chrono lance
-    notifier(&conn, &vendeur, "p2p", "Nouvelle demande d'achat",
-        "Un acheteur s'interesse a ton offre — tu as 1h pour conclure le paiement.",
-        &format!("p2p_order:{}", commande_id));
+    let initial_cross_code = match crate::p2p_security::initialize_order_security(
+        &conn,
+        commande_id,
+        &acheteur,
+        receiving_method_id,
+        horodatage,
+    ) {
+        Ok(code) => code,
+        Err(error) => {
+            let _ = conn.execute("DELETE FROM p2p_orders WHERE id = ?1", params![commande_id]);
+            let _ = crate::p2p_escrow::degeler(&vendeur, points, maintenant());
+            rendre_quantite(&conn, offre_id, borb, montant);
+            return echec(error);
+        }
+    };
 
     let groupe = ouvrir_canal_p2p(
         &acheteur,
@@ -3045,6 +3262,17 @@ pub async fn p2p_offer_take(
             borb_affiche, commande_id, nom_acheteur, montant, devise
         ),
         &format!("p2p:{}", commande_id),
+    );
+    notifier(
+        &conn,
+        &vendeur,
+        "trading",
+        "Code croisé P2P",
+        &format!(
+            "Commande #{} — code actif {}. Transmets-le uniquement dans le canal privé après la preuve et le défi bénéficiaire.",
+            commande_id, initial_cross_code
+        ),
+        &format!("p2p:{}:code", commande_id),
     );
     notifier(
         &conn,
@@ -3183,13 +3411,11 @@ pub async fn p2p_orders_list(req: HttpRequest, path: web::Path<String>) -> HttpR
                     // Le vendeur ne lit pas le numéro complet de son acheteur :
                     // ce qu'il recopie est confronté à la ligne enregistrée ici
                     // même, côté serveur, et non à une étiquette qu'on lui montre.
-                    masquer_telephone(
-                        &ligne_de_paiement(
-                            &conn,
-                            valeur_texte(&valeur, "buyer_phone").as_str(),
-                            &acheteur,
-                        )
-                    )
+                    masquer_telephone(&ligne_de_paiement(
+                        &conn,
+                        valeur_texte(&valeur, "buyer_phone").as_str(),
+                        &acheteur,
+                    ))
                 };
                 // La ligne privée de l'acheteur ne voyage pas en clair vers le
                 // vendeur : le contrôle du numéro se fait sur la valeur stockée.
@@ -3209,9 +3435,10 @@ pub async fn p2p_orders_list(req: HttpRequest, path: web::Path<String>) -> HttpR
                     .unwrap_or(None)
                     .unwrap_or(Value::Null);
                 let adverse_uq = if role == "buyer" { vendeur } else { acheteur };
-                let adverse = crate::p2p_preuve::derniere_preuve_de(&conn, identifiant, &adverse_uq)
-                    .unwrap_or(None)
-                    .unwrap_or(Value::Null);
+                let adverse =
+                    crate::p2p_preuve::derniere_preuve_de(&conn, identifiant, &adverse_uq)
+                        .unwrap_or(None)
+                        .unwrap_or(Value::Null);
                 if let Some(objet) = valeur.as_object_mut() {
                     if let Some((masque, sienne)) = prives_de_partie {
                         objet.insert("buyer_phone".to_string(), json!(masque));
@@ -3260,15 +3487,13 @@ struct CommandeP2P {
     /// Numéro que l'acheteur doit payer : la ligne mobile money du vendeur.
     telephone_vendeur: String,
     cree_le: i64,
-    /// Code 4 chiffres de cette commande : l'acheteur l'ecrit sur sa preuve papier.
-    proof_code: String,
 }
 
 fn charger_commande(conn: &Connection, identifiant: i64) -> Result<CommandeP2P, String> {
     conn.query_row(
         "SELECT buyer, seller, currency, amount, status, chat_group_id,
                 offer_id, COALESCE(escrow_points, 0), COALESCE(phone, ''), created_at,
-                COALESCE(buyer_phone, ''), COALESCE(seller_phone, ''), COALESCE(proof_code, '')
+                COALESCE(buyer_phone, ''), COALESCE(seller_phone, '')
          FROM p2p_orders WHERE id = ?1",
         params![identifiant],
         |row| {
@@ -3284,7 +3509,6 @@ fn charger_commande(conn: &Connection, identifiant: i64) -> Result<CommandeP2P, 
                 telephone_acheteur: premier_non_vide(row.get(10)?, row.get(8)?),
                 telephone_vendeur: row.get(11)?,
                 cree_le: row.get(9)?,
-                proof_code: row.get(12)?,
             })
         },
     )
@@ -3329,7 +3553,7 @@ fn message_canal(groupe: &str, expediteur: &str, texte: &str) {
     if groupe.is_empty() {
         return;
     }
-    let index = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+    let index = crate::uq_index::UqIndex::shared("uq_index.db");
     if let Err(e) = index.send_chat_group_message(groupe, expediteur, texte) {
         eprintln!("P2P : message de suivi impossible ({})", e);
     }
@@ -3341,7 +3565,10 @@ fn message_canal(groupe: &str, expediteur: &str, texte: &str) {
 fn passer_statut(conn: &Connection, identifiant: i64, attendus: &[&str], vers: &str) -> bool {
     let marques = attendus.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
-        "UPDATE p2p_orders SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status IN ({})",
+        "UPDATE p2p_orders
+         SET status = ?1, updated_at = ?2,
+             expected_version = COALESCE(expected_version, 0) + 1
+         WHERE id = ?3 AND status IN ({})",
         marques
     );
     let horodatage = maintenant();
@@ -3349,7 +3576,10 @@ fn passer_statut(conn: &Connection, identifiant: i64, attendus: &[&str], vers: &
     for attendu in attendus {
         valeurs.push(attendu);
     }
-    matches!(conn.execute(&sql, rusqlite::params_from_iter(valeurs.iter())), Ok(1))
+    matches!(
+        conn.execute(&sql, rusqlite::params_from_iter(valeurs.iter())),
+        Ok(1)
+    )
 }
 
 /// Remise en vente de la quantité d'une offre dont la commande saute. La
@@ -3379,7 +3609,7 @@ pub async fn p2p_proof_attach(
 ) -> HttpResponse {
     let identifiant = path.into_inner();
     let uq = texte(&body, "uq");
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -3403,10 +3633,77 @@ pub async fn p2p_proof_attach(
     if commande.statut != "pending_payment" && commande.statut != "paid" {
         return refus("Cette commande n'accepte plus de preuve", "STATUT_INVALIDE");
     }
+    let evidence_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM p2p_proofs
+             WHERE order_id = ?1 AND UPPER(uq) = UPPER(?2)",
+            params![identifiant, uq],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if evidence_count >= 5 {
+        return HttpResponse::TooManyRequests().json(json!({
+            "status": "error",
+            "code": "LIMITE_PREUVES",
+            "message": "La limite de cinq preuves est atteinte. Ouvre un litige pour continuer."
+        }));
+    }
+    match crate::p2p_security::name_challenge_passed(&conn, identifiant) {
+        Ok(true) => {}
+        Ok(false) => {
+            return refus(
+                "Valide d'abord le nom du bénéficiaire affiché par ton opérateur.",
+                "DEFI_NOM_REQUIS",
+            )
+        }
+        Err(error) => return echec(error),
+    }
 
-    let octets = match crate::p2p_preuve::decoder_image(&texte(&body, "image")) {
-        Ok(octets) => octets,
-        Err(e) => return refus(&e, "IMAGE_INVALIDE"),
+    // ===== FRAÎCHEUR CAPTURE (< 1 min, horloge SERVEUR) =====
+    // Le client extrait l'horodatage de la capture (EXIF/métadonnées)
+    // et le serveur le compare à SA propre horloge — jamais celle du
+    // client. Une capture de plus d'une minute est rejetée ; 3
+    // tentatives périmées max par commande, ensuite blocage.
+    let capture_ts = body
+        .get("capture_ts")
+        .or_else(|| body.get("horodatage"))
+        .and_then(|v| v.as_i64());
+    if let Some(ts) = capture_ts {
+        let ecart = (maintenant() - ts).abs();
+        if ecart > 60 {
+            crate::p2p_preuve::incr_tentative_stale(&conn, identifiant, &uq);
+            if crate::p2p_preuve::tentatives_stale(&conn, identifiant, &uq) >= 3 {
+                return HttpResponse::TooManyRequests().json(json!({
+                    "status": "error",
+                    "code": "CAPTURES_PERIMEES",
+                    "message": "3 captures périmées (> 1 min) déjà rejetées. Reprends une capture fraîche ou ouvre un litige."
+                }));
+            }
+            return refus(
+                "Capture périmée : elle doit avoir moins d'une minute. Reprends-la maintenant.",
+                "CAPTURE_PERIMEE",
+            );
+        }
+    }
+
+    // ===== MODE BAS DÉBIT =====
+    // Connexion faible : le client n'envoie QUE les données extraites
+    // de la capture (montant/devise/numéro/nom + capture_ts vérifié
+    // ci-dessus) — pas la photo entière. Le verdict reste "doute" :
+    // les données sont déclarées, la photo reste la preuve forte.
+    let image_brute = texte(&body, "image");
+    let mode_extrait = image_brute.is_empty()
+        && body
+            .get("extraction")
+            .map(|v| v.is_object())
+            .unwrap_or(false);
+    let octets = if mode_extrait {
+        Vec::new()
+    } else {
+        match crate::p2p_preuve::decoder_image(&image_brute) {
+            Ok(octets) => octets,
+            Err(e) => return refus(&e, "IMAGE_INVALIDE"),
+        }
     };
     let face = if role == "buyer" {
         &commande.vendeur
@@ -3459,12 +3756,29 @@ pub async fn p2p_proof_attach(
         );
     }
 
-    let analyse = crate::p2p_preuve::analyser(
-        &octets,
-        &saisi,
-        &attendu,
-        &crate::p2p_preuve::charger_poids(&conn),
-    );
+    let analyse = if mode_extrait {
+        // Données déclarées + horodatage vérifié serveur, sans image :
+        // verdict "doute" — jamais "valide" sans photo analysée.
+        crate::p2p_preuve::Analyse {
+            verdict: crate::p2p_preuve::Verdict::Doute,
+            conformite: 0.5,
+            veto: false,
+            nom_ok: crate::p2p_preuve::NomRecu::Inverifiable,
+            signaux: vec![crate::p2p_preuve::Signal {
+                nom: "horodatage",
+                force: 0.0,
+                detail: "mode bas debit : donnees declarees, fraicheur verifiee cote serveur"
+                    .to_string(),
+            }],
+        }
+    } else {
+        crate::p2p_preuve::analyser(
+            &octets,
+            &saisi,
+            &attendu,
+            &crate::p2p_preuve::charger_poids(&conn),
+        )
+    };
     let enregistree = match crate::p2p_preuve::inserer_preuve(
         &conn,
         identifiant,
@@ -3509,7 +3823,7 @@ pub async fn p2p_proof_list(
     if uq.is_empty() {
         return refus("Identifiant UQ requis", "UQ_REQUIS");
     }
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -3546,7 +3860,7 @@ pub async fn p2p_proof_image(
     if uq.is_empty() {
         return refus("Identifiant UQ requis", "UQ_REQUIS");
     }
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -3591,7 +3905,7 @@ pub async fn p2p_order_confirm(
 ) -> HttpResponse {
     let identifiant = path.into_inner();
     let uq = texte(&body, "uq");
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -3612,45 +3926,31 @@ pub async fn p2p_order_confirm(
         return refus("Cette commande n'attend pas de paiement", "STATUT_INVALIDE");
     }
 
-    // Code de preuve : l'acheteur doit saisir le code 4 chiffres de CETTE
-    // commande (celui qu'il devait ecrire sur sa preuve papier). Sans lui,
-    // n'importe quelle vieille capture pourrait servir.
-    let code_saisi = texte(&body, "proof_code").trim().to_string();
-    if !commande.proof_code.is_empty() {
-        if code_saisi.is_empty() {
-            return refus(
-                "Saisis le code a 4 chiffres affiche pour cette commande — tu aurais du l'ecrire sur ta preuve papier.",
-                "CODE_REQUIS",
-            );
-        }
-        if code_saisi != commande.proof_code {
-            return refus(
-                "Code incorrect : ce n'est pas le code de cette transaction. Verifie celui affiche dans ta commande.",
-                "CODE_INCORRECT",
-            );
-        }
-    }
-
     // « J'ai payé » ne s'ouvre qu'avec une preuve analysée. Le moteur tranche,
     // l'humain garde le dernier mot sur un doute ou un écart, et cette
     // dérogation est écrite noir sur blanc pour le vendeur.
-    let preuve = match crate::p2p_preuve::derniere_preuve_de(&conn, identifiant, &commande.acheteur) {
+    let preuve = match crate::p2p_preuve::derniere_preuve_de(&conn, identifiant, &commande.acheteur)
+    {
         Ok(preuve) => preuve,
         Err(e) => return echec(e),
     };
-    let preuve = match preuve {
-        Some(preuve) => preuve,
-        None => return refus(
-            "Ajoute une capture de ton paiement mobile money avant d'annoncer que tu as payé.",
-            "PREUVE_REQUISE",
-        ),
-    };
+    let preuve =
+        match preuve {
+            Some(preuve) => preuve,
+            None => return refus(
+                "Ajoute une capture de ton paiement mobile money avant d'annoncer que tu as payé.",
+                "PREUVE_REQUISE",
+            ),
+        };
     let verdict = preuve
         .get("verdict")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let conformite = preuve.get("conformite").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let conformite = preuve
+        .get("conformite")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
     // Le moteur écarte déjà une divergence de nom, mais la raison doit être
     // dite en clair : corriger une capture n'a rien à voir avec corriger un
     // nom mal recopié.
@@ -3678,7 +3978,10 @@ pub async fn p2p_order_confirm(
     }
 
     if !passer_statut(&conn, identifiant, &["pending_payment"], "paid") {
-        return refus("Cette commande n'attend plus de paiement", "STATUT_INVALIDE");
+        return refus(
+            "Cette commande n'attend plus de paiement",
+            "STATUT_INVALIDE",
+        );
     }
     let nom_acheteur = crate::uq_public_alias::get_public_display(&commande.acheteur);
     let signal = match verdict.as_str() {
@@ -3723,13 +4026,35 @@ pub async fn p2p_order_complete(
 ) -> HttpResponse {
     let identifiant = path.into_inner();
     let uq = texte(&body, "uq");
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
         Ok(conn) => conn,
         Err(e) => return echec(e),
     };
+    let operation_key = texte(&body, "idempotency_key");
+    if operation_key.is_empty() {
+        return refus(
+            "Clé d'idempotence requise pour libérer les BORB.",
+            "IDEMPOTENCE_REQUISE",
+        );
+    }
+    match crate::p2p_security::idempotent_replay(
+        &conn,
+        &uq,
+        &format!("p2p_complete:{}", identifiant),
+        &operation_key,
+        &body,
+    ) {
+        Ok(Some(response)) => return HttpResponse::Ok().json(response),
+        Ok(None) => {}
+        Err(error) => return HttpResponse::Conflict().json(json!({
+            "status": "error",
+            "code": "IDEMPOTENCE_CONFLIT",
+            "message": error
+        })),
+    }
     let commande = match charger_commande(&conn, identifiant) {
         Ok(commande) => commande,
         Err(e) => return refus(&e, "COMMANDE_INTROUVABLE"),
@@ -3753,8 +4078,56 @@ pub async fn p2p_order_complete(
             "COMMANDE_OBSOLETE",
         );
     }
+    let pin = texte(&body, "pin");
+    if pin.is_empty() {
+        return refus(
+            "Code PIN vendeur requis pour libérer les BORB",
+            "PIN_REQUIS",
+        );
+    }
+    match verifier_pin_public(&commande.vendeur, &pin) {
+        Ok(true) => {}
+        Ok(false) => return refus("Code PIN incorrect", "PIN_INCORRECT"),
+        Err(error) => return echec(error),
+    }
+    if !pin_configure(&commande.vendeur) {
+        return refus(
+            "Configure un PIN vendeur avant de libérer les BORB.",
+            "PIN_NON_CONFIGURE",
+        );
+    }
+    if let Err(error) = crate::p2p_security::release_requirements(&conn, identifiant) {
+        return refus(&error, "LIBERATION_NON_AUTORISEE");
+    }
+    let expected_version = body
+        .get("expected_version")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let current_version: i64 = conn
+        .query_row(
+            "SELECT expected_version FROM p2p_orders WHERE id = ?1",
+            params![identifiant],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if expected_version <= 0 {
+        return refus(
+            "Recharge la commande et fournis sa version avant de libérer.",
+            "VERSION_REQUISE",
+        );
+    }
+    if expected_version != current_version {
+        return HttpResponse::Conflict().json(json!({
+            "status": "error",
+            "code": "CONFLIT_VERSION",
+            "message": "La commande a changé. Recharge-la avant de libérer."
+        }));
+    }
     if !passer_statut(&conn, identifiant, &["paid"], "completed") {
-        return refus("Cette commande n'attend plus de libération", "STATUT_INVALIDE");
+        return refus(
+            "Cette commande n'attend plus de libération",
+            "STATUT_INVALIDE",
+        );
     }
 
     if let Err(e) = crate::p2p_escrow::liberer(
@@ -3811,13 +4184,24 @@ pub async fn p2p_order_complete(
     let modele = crate::p2p_preuve::recalibrer(&conn)
         .unwrap_or_else(|_| serde_json::json!({ "erreur": "apprentissage indisponible" }));
 
-    HttpResponse::Ok().json(json!({
+    let response = json!({
         "status": "success",
         "message": "Commande terminée, BORB transférés",
         "borb_amount": borb,
         "escrow_points": commande.points,
         "apprentissage": modele
-    }))
+    });
+    if let Err(error) = crate::p2p_security::remember_idempotent(
+        &conn,
+        &uq,
+        &format!("p2p_complete:{}", identifiant),
+        &operation_key,
+        &body,
+        &response,
+    ) {
+        return echec(error);
+    }
+    HttpResponse::Ok().json(response)
 }
 
 pub async fn p2p_order_cancel(
@@ -3827,7 +4211,7 @@ pub async fn p2p_order_cancel(
 ) -> HttpResponse {
     let identifiant = path.into_inner();
     let uq = texte(&body, "uq");
-    if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
+    if let Err(response) = exiger_participant(&req, &uq) {
         return response;
     }
     let conn = match ouvrir_index() {
@@ -3849,17 +4233,46 @@ pub async fn p2p_order_cancel(
     if commande.statut != "pending_payment" && commande.statut != "paid" {
         return refus("Cette commande n'est plus annulable", "STATUT_INVALIDE");
     }
-    let litige = body
-        .get("litige")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let litige = body.get("litige").and_then(Value::as_bool).unwrap_or(false);
 
-    if !passer_statut(
-        &conn,
-        identifiant,
-        &["pending_payment", "paid"],
-        "cancelled",
-    ) {
+    if litige || commande.statut == "paid" {
+        if !passer_statut(&conn, identifiant, &[commande.statut.as_str()], "disputed") {
+            return refus("Cette commande a changé d'état", "STATUT_INVALIDE");
+        }
+        let raison = texte(&body, "reason");
+        let raison = if raison.len() >= 8 {
+            raison
+        } else if litige {
+            "Litige déclaré par un participant.".to_string()
+        } else {
+            "Annulation refusée après paiement: arbitrage requis.".to_string()
+        };
+        let _ = conn.execute(
+            "UPDATE p2p_orders SET dispute_reason = ?1 WHERE id = ?2",
+            params![raison, identifiant],
+        );
+        let _ = conn.execute(
+            "INSERT INTO p2p_disputes (order_id, opened_by, reason, status, created_at)
+             VALUES (?1, ?2, ?3, 'open', ?4)
+             ON CONFLICT(order_id) DO UPDATE SET reason = excluded.reason, status = 'open'",
+            params![identifiant, uq, raison, maintenant()],
+        );
+        let _ = crate::p2p_security::audit(
+            &conn,
+            identifiant,
+            &uq,
+            "cancel_rejected_as_dispute",
+            "frozen",
+            json!({ "previous_status": commande.statut, "reason": raison }),
+        );
+        return HttpResponse::Conflict().json(json!({
+            "status": "error",
+            "code": "ARBITRAGE_REQUIS",
+            "message": "Après paiement, la commande ne peut plus être annulée. Les BORB restent gelés jusqu'à l'arbitrage."
+        }));
+    }
+
+    if !passer_statut(&conn, identifiant, &["pending_payment"], "cancelled") {
         return refus("Cette commande n'est plus annulable", "STATUT_INVALIDE");
     }
 
@@ -3915,7 +4328,11 @@ pub async fn p2p_order_cancel(
         &format!("{}, la commande #{} est annulée.", detail, identifiant),
         &format!("p2p:{}", identifiant),
     );
-    message_canal(&commande.groupe, &uq, &format!("Commande annulée, {}.", detail));
+    message_canal(
+        &commande.groupe,
+        &uq,
+        &format!("Commande annulée, {}.", detail),
+    );
 
     // Une annulation signalée comme litige est un cas d'école : le moteur
     // apprend que les preuves de cette commande n'ont pas convaincu.
@@ -3943,10 +4360,7 @@ pub async fn p2p_order_cancel(
 // GET /api/notifications/screen/{uq}
 // ====================
 
-pub async fn screen_notifications(
-    req: HttpRequest,
-    path: web::Path<String>,
-) -> HttpResponse {
+pub async fn screen_notifications(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
     let uq = path.into_inner();
     if let Err(response) = crate::auth_guard::exiger_soi_ou_owner(&req, &uq) {
         return response;
@@ -3962,7 +4376,9 @@ pub async fn screen_notifications(
     // Une alerte d'état s'efface quand elle est acquittée ; elle revient si la
     // situation change (référence différente), jamais par simple relecture.
     let mut acquittees: Vec<String> = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT reference FROM screen_ack WHERE UPPER(uq) = UPPER(?1)") {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT reference FROM screen_ack WHERE UPPER(uq) = UPPER(?1)")
+    {
         if let Ok(rows) = stmt.query_map(params![uq], |row| row.get::<_, String>(0)) {
             acquittees.extend(rows.flatten());
         }
@@ -4040,7 +4456,8 @@ pub async fn screen_notifications(
     }
 
     // Messages directs : la vraie boîte de réception porte l'état « non lu ».
-    let conversations = crate::database::Database::shared("uq_platform_db.json").get_chat_inbox(&uq);
+    let conversations =
+        crate::database::Database::shared("uq_platform_db.json").get_chat_inbox(&uq);
     let messages_non_lus = conversations
         .iter()
         .filter(|conversation| {
@@ -4120,7 +4537,10 @@ pub async fn screen_notifications(
         {
             tete += 1;
         }
-        let lu = notification.get("read").and_then(|v| v.as_bool()).unwrap_or(false);
+        let lu = notification
+            .get("read")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if lu {
             continue;
         }
@@ -4179,10 +4599,7 @@ pub async fn screen_notifications_read(req: HttpRequest, body: web::Json<Value>)
                 .collect()
         })
         .unwrap_or_default();
-    let tout = body
-        .get("all")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let tout = body.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
 
     if tout || (identifiants.is_empty() && scope.is_empty() && references.is_empty()) {
         let _ = conn.execute(
@@ -4311,7 +4728,12 @@ mod notifications_tri_tests {
             .collect();
         assert_eq!(
             clefs,
-            vec![(false, 5_000, 2), (false, 1_000, 1), (true, 4_000, 4), (true, 4_000, 3)]
+            vec![
+                (false, 5_000, 2),
+                (false, 1_000, 1),
+                (true, 4_000, 4),
+                (true, 4_000, 3)
+            ]
         );
     }
 
@@ -4406,7 +4828,10 @@ mod notifications_tri_tests {
             format!("p2p:{}", paiement_annonce),
             format!("earn:{}", position),
         ] {
-            assert!(actives.contains(&attendue), "{attendue} devrait être en cours");
+            assert!(
+                actives.contains(&attendue),
+                "{attendue} devrait être en cours"
+            );
         }
         for morte in [
             format!("order:{}", execute),
@@ -4415,7 +4840,10 @@ mod notifications_tri_tests {
             format!("p2p:{}", sautee),
             format!("earn:{}", retiree),
         ] {
-            assert!(!actives.contains(&morte), "{morte} ne devrait plus être en cours");
+            assert!(
+                !actives.contains(&morte),
+                "{morte} ne devrait plus être en cours"
+            );
         }
     }
 }
@@ -4537,10 +4965,7 @@ mod p2p_saisie_tests {
     use super::*;
 
     fn rates() -> HashMap<String, f64> {
-        HashMap::from([
-            ("CDF".to_string(), 2800.0),
-            ("EUR".to_string(), 0.9),
-        ])
+        HashMap::from([("CDF".to_string(), 2800.0), ("EUR".to_string(), 0.9)])
     }
 
     #[test]

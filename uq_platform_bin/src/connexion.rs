@@ -20,7 +20,7 @@
 // mesurée il y a six heures vaut moins qu'une fiche mesurée il y a deux minutes
 // — le score s'en ressent jusqu'à ce que le vendeur la re-mesure.
 
-use actix_web::{HttpRequest, HttpResponse, web};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -240,7 +240,10 @@ const CLES_DE_PRIX: &[&str] = &[
 
 /// `Some(clé)` quand la requête tente de publier un prix.
 pub fn cle_de_prix_presente(body: &serde_json::Value) -> Option<&'static str> {
-    CLES_DE_PRIX.iter().copied().find(|cle| body.get(*cle).is_some())
+    CLES_DE_PRIX
+        .iter()
+        .copied()
+        .find(|cle| body.get(*cle).is_some())
 }
 
 fn texte(body: &serde_json::Value, cle: &str) -> String {
@@ -252,7 +255,9 @@ fn texte(body: &serde_json::Value, cle: &str) -> String {
 }
 
 fn nombre(body: &serde_json::Value, cle: &str) -> Option<f64> {
-    body.get(cle).and_then(|v| v.as_f64()).filter(|v| v.is_finite())
+    body.get(cle)
+        .and_then(|v| v.as_f64())
+        .filter(|v| v.is_finite())
 }
 
 /// Une position exploitable : des degrés valides, et pas le (0, 0) d'un GPS qui
@@ -280,7 +285,10 @@ pub fn fiche_from_body(
         return Err("Le nom de ta fiche est obligatoire".to_string());
     }
     if nom.chars().count() > NOM_MAX {
-        return Err(format!("Le nom est trop long ({} caractères au plus)", NOM_MAX));
+        return Err(format!(
+            "Le nom est trop long ({} caractères au plus)",
+            NOM_MAX
+        ));
     }
 
     let reseau = texte(body, "reseau").to_lowercase();
@@ -291,7 +299,10 @@ pub fn fiche_from_body(
     let latitude = nombre(body, "latitude").unwrap_or(0.0);
     let longitude = nombre(body, "longitude").unwrap_or(0.0);
     if !position_valide(latitude, longitude) {
-        return Err("Une position valide est obligatoire : on ne partage pas une connexion sans savoir où".to_string());
+        return Err(
+            "Une position valide est obligatoire : on ne partage pas une connexion sans savoir où"
+                .to_string(),
+        );
     }
 
     let photo = texte(body, "photo");
@@ -324,7 +335,10 @@ pub fn fiche_from_body(
         latence_ms,
         mesuree_a,
         publiee: true,
-        creee_a: existante.map(|a| a.creee_a).filter(|v| *v > 0).unwrap_or(maintenant),
+        creee_a: existante
+            .map(|a| a.creee_a)
+            .filter(|v| *v > 0)
+            .unwrap_or(maintenant),
         maj_a: maintenant,
     })
 }
@@ -374,7 +388,11 @@ pub fn classer(
         .into_iter()
         .map(|(note, distance, annonce)| {
             let mut vue = annonce.vue_publique(
-                if distance == f64::MAX { None } else { Some(distance) },
+                if distance == f64::MAX {
+                    None
+                } else {
+                    Some(distance)
+                },
                 maintenant,
             );
             vue["score"] = json!((note * 1000.0).round() / 1000.0);
@@ -660,7 +678,11 @@ pub async fn connexion_avis_publier(
         Ok(claims) => claims,
         Err(response) => return response,
     };
-    let Some(id) = body.get("annonce_id").and_then(|v| v.as_str()).map(str::trim) else {
+    let Some(id) = body
+        .get("annonce_id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+    else {
         return reponse_erreur("Indique la fiche notée (« annonce_id »).");
     };
     let Some(note) = body.get("note").and_then(|v| v.as_i64()) else {
@@ -669,7 +691,11 @@ pub async fn connexion_avis_publier(
     if !(1..=5).contains(&note) {
         return reponse_erreur("La note est un entier de 1 à 5.");
     }
-    let texte = body.get("texte").and_then(|v| v.as_str()).unwrap_or("").trim();
+    let texte = body
+        .get("texte")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
     if texte.chars().count() > AVIS_TEXTE_MAX {
         return reponse_erreur(&format!(
             "Un avis tient en {} caractères : il raconte une expérience, pas une facture.",
@@ -738,11 +764,7 @@ pub async fn connexion_avis_liste(
             "status": "error", "message": "Aucune fiche publiée de cet identifiant."
         }));
     };
-    let (moyenne, total) = db
-        .get_avis_par_fiche()
-        .get(id)
-        .cloned()
-        .unwrap_or((0.0, 0));
+    let (moyenne, total) = db.get_avis_par_fiche().get(id).cloned().unwrap_or((0.0, 0));
 
     HttpResponse::Ok().json(json!({
         "status": "success",
@@ -816,7 +838,10 @@ mod tests {
         assert!(classement[0]["distance_km"].as_f64().unwrap() < 1.0);
         // Le Starlink reste dans la région, il est simplement second : à
         // 5,5 km, sa puissance ne rattrape pas le voisin du coin de la rue.
-        assert!(classement[1]["puissance"].as_f64().unwrap() > classement[0]["puissance"].as_f64().unwrap());
+        assert!(
+            classement[1]["puissance"].as_f64().unwrap()
+                > classement[0]["puissance"].as_f64().unwrap()
+        );
     }
 
     #[test]
@@ -854,7 +879,13 @@ mod tests {
     fn sans_position_acheteur_la_distance_reste_nulle() {
         let maintenant = 5_000_000;
         let classement = classer(
-            &[fiche("connexion_sans_position_acheteur", "mobile", 60.0, 10.0, 80.0)],
+            &[fiche(
+                "connexion_sans_position_acheteur",
+                "mobile",
+                60.0,
+                10.0,
+                80.0,
+            )],
             None,
             20.0,
             maintenant,
@@ -918,7 +949,10 @@ mod tests {
             AnnonceConnexion::id_du_compte("UQ-2303-5436"),
             AnnonceConnexion::id_du_compte("uq-2303-5436")
         );
-        assert_eq!(AnnonceConnexion::id_du_compte("UQ-230354360"), "connexion_uq_230354360");
+        assert_eq!(
+            AnnonceConnexion::id_du_compte("UQ-230354360"),
+            "connexion_uq_230354360"
+        );
     }
 
     #[test]
@@ -952,7 +986,10 @@ mod tests {
         assert_eq!(boutique["confiance_systeme"], json!(true));
         assert_eq!(boutique["systeme"], json!(true));
         // Le titre dit le service, pas la plateforme : « UQ » n'y apparaît pas.
-        assert!(!BOUTIQUE_NOM.to_lowercase().contains("uq"), "le titre porte la plateforme");
+        assert!(
+            !BOUTIQUE_NOM.to_lowercase().contains("uq"),
+            "le titre porte la plateforme"
+        );
     }
 
     #[test]
@@ -960,12 +997,25 @@ mod tests {
         let boutique = boutique_systeme();
         assert_eq!(cle_de_prix_presente(&boutique), None);
         let brut = boutique.to_string();
-        for interdit in ["latitude", "longitude", "\"owner\":\"UQ-1", "prix_par_seconde"] {
-            assert!(!brut.contains(interdit), "la fiche système fuit {}", interdit);
+        for interdit in [
+            "latitude",
+            "longitude",
+            "\"owner\":\"UQ-1",
+            "prix_par_seconde",
+        ] {
+            assert!(
+                !brut.contains(interdit),
+                "la fiche système fuit {}",
+                interdit
+            );
         }
         // Ses visuels sont embarqués dans l'application : aucun dépend d'un site tiers.
         for visuel in BOUTIQUE_GALERIE {
-            assert!(visuel.starts_with("/assets/connexion/"), "visuel externe {}", visuel);
+            assert!(
+                visuel.starts_with("/assets/connexion/"),
+                "visuel externe {}",
+                visuel
+            );
         }
     }
 
@@ -1001,14 +1051,14 @@ mod tests {
 
     #[test]
     fn une_fiche_sans_avis_n_affiche_aucune_moyenne() {
-        let vue = json!({ "id": "connexion_uq_996697110", "nom": "Fiche" });
+        let vue = json!({ "id": "connexion_uq_00000001", "nom": "Fiche" });
 
         let vu = avec_avis(&Default::default(), vue.clone());
         assert_eq!(vu["avis_total"], json!(0));
         assert_eq!(vu["avis_moyenne"], json!(null));
 
         let mut agregats = std::collections::HashMap::new();
-        agregats.insert("connexion_uq_996697110".to_string(), (4.333_3, 3i64));
+        agregats.insert("connexion_uq_00000001".to_string(), (4.333_3, 3i64));
         let vu = avec_avis(&agregats, vue);
         assert_eq!(vu["avis_total"], json!(3));
         assert_eq!(vu["avis_moyenne"], json!(4.3));

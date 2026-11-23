@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // chat_risk.rs — Detection de spam, phishing, faux clients
 // ============================================================================
 
@@ -16,9 +16,19 @@ pub struct AnalyseRisque {
 pub fn contient_lien(message: &str) -> bool {
     let msg = message.to_lowercase();
     let liens = [
-        "http://", "https://", "www.", "t.me/", "bit.ly/",
-        "tinyurl.com", "goo.gl/", "is.gd/", "ow.ly/", "cutt.ly/",
-        "rb.gy/", "shorturl.at", "rebrand.ly",
+        "http://",
+        "https://",
+        "www.",
+        "t.me/",
+        "bit.ly/",
+        "tinyurl.com",
+        "goo.gl/",
+        "is.gd/",
+        "ow.ly/",
+        "cutt.ly/",
+        "rb.gy/",
+        "shorturl.at",
+        "rebrand.ly",
     ];
     liens.iter().any(|l| msg.contains(l))
 }
@@ -81,48 +91,59 @@ pub fn analyser_risque(
     let now = chrono::Utc::now().timestamp();
 
     // 1. Demande de PIN/mot de passe
-    if msg_lower.contains("pin") || msg_lower.contains("mot de passe")
-        || msg_lower.contains("password") || msg_lower.contains("code secret") {
+    if msg_lower.contains("pin")
+        || msg_lower.contains("mot de passe")
+        || msg_lower.contains("password")
+        || msg_lower.contains("code secret")
+    {
         score += 80;
         signaux.push("demande_pin".to_string());
     }
 
     // 2. Demande hors plateforme
-    if msg_lower.contains("whatsapp") || msg_lower.contains("telegram")
-        || msg_lower.contains("hors uq") {
+    if msg_lower.contains("whatsapp")
+        || msg_lower.contains("telegram")
+        || msg_lower.contains("hors uq")
+    {
         score += 60;
         signaux.push("hors_plateforme".to_string());
     }
 
     // 3. Volume 24h
-    let messages_24h: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM chat_messages WHERE sender = ?1 AND timestamp >= ?2",
-        params![sender, now - 86400],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let messages_24h: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chat_messages WHERE sender = ?1 AND timestamp >= ?2",
+            params![sender, now - 86400],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     if messages_24h > 50 {
         score += 30;
         signaux.push("volume_50".to_string());
     }
 
     // 4. Messages repetitifs
-    let messages_identiques: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT recipient) FROM chat_messages
+    let messages_identiques: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT recipient) FROM chat_messages
          WHERE sender = ?1 AND content = ?2 AND timestamp >= ?3",
-        params![sender, message, now - 86400],
-        |row| row.get(0),
-    ).unwrap_or(0);
+            params![sender, message, now - 86400],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     if messages_identiques >= 3 {
         score += 40;
         signaux.push("message_repetitif".to_string());
     }
 
     // 5. Compte recent
-    let cree_le: i64 = conn.query_row(
-        "SELECT created_at FROM accounts WHERE uq_number = ?1",
-        params![sender],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let cree_le: i64 = conn
+        .query_row(
+            "SELECT created_at FROM accounts WHERE uq_number = ?1",
+            params![sender],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     if cree_le > 0 && now - cree_le < 7 * 86400 {
         score += 20;
         signaux.push("compte_recent".to_string());
@@ -171,6 +192,7 @@ pub fn logguer_risque(
             analyse.action,
             chrono::Utc::now().timestamp()
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -1,0 +1,140 @@
+// ====================
+// 🌐 EXTERNAL ROUTES — Crypto / Fiat / Bourse (Mission 7.5)
+// ====================
+//
+//   GET /api/external/status                   PUBLIC (état des sources)
+//   GET /api/external/crypto/price/{symbol}    USER
+//   GET /api/external/crypto/klines/{symbol}   USER  ?interval=1h&limit=200
+//   GET /api/external/fiat/rates               PUBLIC
+//   GET /api/external/stock/quote/{symbol}     USER
+//   GET /api/external/market/tick/{symbol}     PUBLIC  biquote, cache 60 s
+//   GET /api/external/market/ohlc/{symbol}     PUBLIC  biquote, ?interval=1h&limit=24
+//   GET /api/external/gold/spot                PUBLIC  xaus, cache 5 min
+// ====================
+
+use actix_web::{web, HttpRequest, HttpResponse};
+use serde_json::json;
+
+/// GET /api/external/status
+pub async fn external_status() -> HttpResponse {
+    HttpResponse::Ok().json(crate::external_api::etat_sources())
+}
+
+/// GET /api/external/crypto/price/{symbol}
+pub async fn crypto_price(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+    let symbole = path.into_inner();
+    let r = crate::external_api::prix_crypto(&symbole).await;
+    if r["status"] == "error" {
+        return HttpResponse::ServiceUnavailable().json(r);
+    }
+    HttpResponse::Ok().json(r)
+}
+
+/// GET /api/external/crypto/klines/{symbol}?interval=1h&limit=200
+pub async fn crypto_klines(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+    let symbole = path.into_inner();
+
+    // Paramètres ?interval=1h&limit=200
+    let mut intervalle = "1h".to_string();
+    let mut limite = 200u32;
+    for (k, v) in form_urlencoded_lite(req.query_string()) {
+        if k == "interval" && !v.is_empty() {
+            intervalle = v;
+        } else if k == "limit" {
+            limite = v.parse::<u32>().unwrap_or(200);
+        }
+    }
+
+    let r = crate::external_api::bougies(&symbole, &intervalle, limite).await;
+    if r["status"] == "error" {
+        return HttpResponse::ServiceUnavailable().json(r);
+    }
+    HttpResponse::Ok().json(r)
+}
+
+/// GET /api/external/fiat/rates — réutilise l'oracle interne
+pub async fn fiat_rates() -> HttpResponse {
+    let taux = crate::public_routes::taux_du_jour().await;
+    let prix = crate::persistence::load_prix();
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "base": taux.base,
+        "source": taux.source,
+        "updated_at": taux.updated_at,
+        "fxb_usd": prix.prix_actuel.parse::<f64>().unwrap_or(1.0),
+        "rates": taux.rates
+    }))
+}
+
+/// GET /api/external/stock/quote/{symbol}
+pub async fn stock_quote(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+    let symbole = path.into_inner();
+    let r = crate::external_api::action(&symbole).await;
+    if r["status"] == "error" {
+        return HttpResponse::ServiceUnavailable().json(r);
+    }
+    HttpResponse::Ok().json(r)
+}
+
+/// GET /api/external/market/tick/{symbol} — biquote, cache 60 s.
+/// PUBLIC : un prix de marché n'est une donnée personnelle pour personne.
+pub async fn market_tick(path: web::Path<String>) -> HttpResponse {
+    let symbole = path.into_inner();
+    let r = crate::external_api::tick_temps_reel(&symbole).await;
+    if r["status"] == "error" {
+        return HttpResponse::BadRequest().json(r);
+    }
+    HttpResponse::Ok().json(r)
+}
+
+/// GET /api/external/market/ohlc/{symbol}?interval=1h&limit=24 — biquote.
+pub async fn market_ohlc(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
+    let symbole = path.into_inner();
+
+    let mut intervalle = "1h".to_string();
+    let mut limite = 24u32;
+    for (k, v) in form_urlencoded_lite(req.query_string()) {
+        if k == "interval" && !v.is_empty() {
+            intervalle = v;
+        } else if k == "limit" && !v.is_empty() {
+            limite = v.parse::<u32>().unwrap_or(24);
+        }
+    }
+
+    let r = crate::external_api::bougies_temps_reel(&symbole, &intervalle, limite).await;
+    if r["status"] == "error" {
+        return HttpResponse::BadRequest().json(r);
+    }
+    HttpResponse::Ok().json(r)
+}
+
+/// GET /api/external/gold/spot — xaus.com, cache 5 min.
+pub async fn gold_spot() -> HttpResponse {
+    let r = crate::external_api::spot_or().await;
+    if r["status"] == "error" {
+        return HttpResponse::ServiceUnavailable().json(r);
+    }
+    HttpResponse::Ok().json(r)
+}
+
+/// Découpage minimal d'une query string (évite une dépendance)
+fn form_urlencoded_lite(q: &str) -> Vec<(String, String)> {
+    q.split('&')
+        .filter(|s| !s.is_empty())
+        .map(|paire| {
+            let mut it = paire.splitn(2, '=');
+            let k = it.next().unwrap_or("").to_string();
+            let v = it.next().unwrap_or("").to_string();
+            (k, v)
+        })
+        .collect()
+}

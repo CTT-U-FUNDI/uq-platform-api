@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // WALLET KEYS — Génération + Chiffrement + Signature
 // ====================
 //
@@ -10,13 +10,13 @@
 //
 // ====================
 
+use sha2::{Digest, Sha256};
 use uq_core::crypto;
-use sha2::{Sha256, Digest};
 
 /// Résultat de la génération de clés
 pub struct WalletKeys {
     pub public_key: [u8; 32],
-    pub encrypted_private_key: Vec<u8>,  // [IV(12) | ciphertext]
+    pub encrypted_private_key: Vec<u8>, // [IV(12) | ciphertext]
     pub iv: [u8; 12],
     pub salt: [u8; 32],
 }
@@ -30,7 +30,7 @@ fn derive_key_from_password(password: &str, salt: &[u8; 32]) -> [u8; 32] {
     hasher.update(b":");
     hasher.update(salt);
     let result = hasher.finalize();
-    
+
     let mut key = [0u8; 32];
     key.copy_from_slice(&result);
     key
@@ -60,7 +60,10 @@ pub fn generate_wallet_keys(password: &str) -> Result<WalletKeys, String> {
     let mut iv = [0u8; 12];
     iv.copy_from_slice(&encrypted[..12]);
 
-    eprintln!("🔐 WalletKeys généré : pubkey={}...", hex::encode(&kp.public_key[..8]));
+    eprintln!(
+        "🔐 WalletKeys généré : pubkey={}...",
+        hex::encode(&kp.public_key[..8])
+    );
 
     Ok(WalletKeys {
         public_key: kp.public_key,
@@ -81,7 +84,7 @@ pub fn decrypt_private_key(
     }
 
     let encryption_key = derive_key_from_password(password, salt);
-    
+
     let decrypted = crypto::decrypt_aes_gcm(encrypted_private_key, &encryption_key)
         .map_err(|e| format!("Déchiffrement échoué: {}", e))?;
 

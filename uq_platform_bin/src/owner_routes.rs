@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // OWNER ROUTES — Détection automatique des routes owner
 // ====================
 //
@@ -13,23 +13,18 @@ pub const OWNER_PREFIXES: &[&str] = &[
     "/api/cases/",
     "/api/distribution/",
     "/api/invoices/",
-
     // Admin
     "/api/admin/",
     "/api/system/",
     "/api/dev/",
-
     // Sécurité avancée
     "/api/fraud/",
-
     // Governance
     "/api/arbitration/",
     "/api/validator/",
     "/api/oracle/",
-
     // Reçus
     "/api/receipt/",
-
     // Guardian
     "/api/guardian/",
 ];

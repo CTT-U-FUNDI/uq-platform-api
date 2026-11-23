@@ -93,9 +93,7 @@ pub async fn ocean_recharge(req: HttpRequest, path: web::Path<String>) -> HttpRe
     }
 
     // `force=true` pour recharger même au-dessus du seuil
-    let forcer = req
-        .query_string()
-        .contains("force=true");
+    let forcer = req.query_string().contains("force=true");
 
     match crate::ocean::recharger_profil1(forcer) {
         Ok(r) => HttpResponse::Ok().json(json!({

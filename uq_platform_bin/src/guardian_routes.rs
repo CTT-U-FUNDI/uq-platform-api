@@ -1,13 +1,15 @@
-﻿// ====================
+// ====================
 // GUARDIAN ROUTES — Exposer les commandes au terminal
 // ====================
 
-use actix_web::{web, HttpResponse, HttpRequest};
-use serde_json::json;
 use crate::command_registry::init_registry;
-use uq_blockchain::constants::{TERMINAL_AUTH_KEY, OWNER_NUMBER, OWNER_EMAIL, OWNER_PASSWORD_INITIAL, OWNER_UNLOCK_CODE};
+use actix_web::{web, HttpRequest, HttpResponse};
+use serde_json::json;
 use std::sync::Arc;
 use std::sync::Mutex;
+use uq_blockchain::constants::{
+    OWNER_EMAIL, OWNER_NUMBER, OWNER_PASSWORD_INITIAL, OWNER_UNLOCK_CODE, TERMINAL_AUTH_KEY,
+};
 
 /// État du Gardien (verrouillage, sessions)
 pub struct GuardianState {
@@ -22,7 +24,7 @@ lazy_static::lazy_static! {
         locked: false,
         session_active: false,
     });
-    
+
     pub static ref COMMAND_REGISTRY: Arc<CommandRegistry> = Arc::new(init_registry());
 }
 
@@ -41,16 +43,16 @@ pub async fn guardian_login(body: web::Json<serde_json::Value>) -> HttpResponse 
     let number = body.get("number").and_then(|v| v.as_str()).unwrap_or("");
     let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("");
     let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
-    
+
     let mut state = GUARDIAN_STATE.lock().unwrap();
-    
+
     if state.locked {
         return HttpResponse::Forbidden().json(json!({
             "status": "error",
             "message": "Terminal verrouillé. Utilisez le code de déblocage."
         }));
     }
-    
+
     // CAS 1 : Proprietaire (hardcode)
     let is_owner = number == OWNER_NUMBER
         && email == OWNER_EMAIL
@@ -64,7 +66,9 @@ pub async fn guardian_login(body: web::Json<serde_json::Value>) -> HttpResponse 
         // et peut des lors accepter la naissance d'une cle sur cet appareil.
         crate::secure_handlers::horoder_controle_complet(
             OWNER_NUMBER,
-            body.get("credential_id").and_then(|v| v.as_str()).unwrap_or(""),
+            body.get("credential_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
         );
         // Issue a JWT token for the guardian session (24h)
         let auth = crate::auth::AuthManager::new();
@@ -74,31 +78,38 @@ pub async fn guardian_login(body: web::Json<serde_json::Value>) -> HttpResponse 
                 "message": "Connexion réussie. Session JWT fournie.",
                 "token": token,
             })),
-            Err(_) => HttpResponse::InternalServerError().json(json!({"status":"error","message":"Failed to create token"})),
+            Err(_) => HttpResponse::InternalServerError()
+                .json(json!({"status":"error","message":"Failed to create token"})),
         }
     } else {
         // CAS 2 : Utilisateur normal -> verifier dans uq_index.db
-        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
         if let Some(account) = idx.verify_credentials(number, email, password) {
             state.failed_attempts = 0;
             state.session_active = true;
             drop(state);
             crate::secure_handlers::horoder_controle_complet(
                 number,
-                body.get("credential_id").and_then(|v| v.as_str()).unwrap_or(""),
+                body.get("credential_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
             );
             let auth = crate::auth::AuthManager::new();
             match auth.create_jwt(number, "user", 24) {
-                Ok(token) => return HttpResponse::Ok().json(json!({
-                    "status": "success",
-                    "message": "Connexion reussie",
-                    "token": token,
-                    "account": account
-                })),
-                Err(_) => return HttpResponse::InternalServerError().json(json!({
-                    "status": "error",
-                    "message": "Failed to create token"
-                })),
+                Ok(token) => {
+                    return HttpResponse::Ok().json(json!({
+                        "status": "success",
+                        "message": "Connexion reussie",
+                        "token": token,
+                        "account": account
+                    }))
+                }
+                Err(_) => {
+                    return HttpResponse::InternalServerError().json(json!({
+                        "status": "error",
+                        "message": "Failed to create token"
+                    }))
+                }
             }
         }
 
@@ -158,23 +169,26 @@ pub async fn guardian_commands(req: HttpRequest) -> HttpResponse {
     if !verify_terminal_key(&req) {
         return HttpResponse::Forbidden().json(json!({"error": "Clé terminal invalide"}));
     }
-    
+
     let registry = COMMAND_REGISTRY.clone();
     let commands = registry.list_all();
     HttpResponse::Ok().json(commands)
 }
 
 /// POST /api/guardian/execute — Exécuter une commande
-pub async fn guardian_execute(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn guardian_execute(
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     if !verify_terminal_key(&req) {
         return HttpResponse::Forbidden().json(json!({"error": "Clé terminal invalide"}));
     }
-    
+
     let command = body.get("command").and_then(|v| v.as_str()).unwrap_or("");
     let args = body.get("args").and_then(|v| v.as_str()).unwrap_or("");
-    
+
     let registry = COMMAND_REGISTRY.clone();
-    
+
     match registry.execute(command, args) {
         Some(result) => HttpResponse::Ok().json(json!({
             "status": "success",
@@ -192,7 +206,7 @@ pub async fn guardian_status(req: HttpRequest) -> HttpResponse {
     if !verify_terminal_key(&req) {
         return HttpResponse::Forbidden().json(json!({"error": "Clé terminal invalide"}));
     }
-    
+
     let state = GUARDIAN_STATE.lock().unwrap();
     HttpResponse::Ok().json(json!({
         "locked": state.locked,
@@ -206,9 +220,8 @@ pub async fn guardian_logout(req: HttpRequest) -> HttpResponse {
     if !verify_terminal_key(&req) {
         return HttpResponse::Forbidden().json(json!({"error": "Clé terminal invalide"}));
     }
-    
+
     let mut state = GUARDIAN_STATE.lock().unwrap();
     state.session_active = false;
     HttpResponse::Ok().json(json!({"status": "success", "message": "Déconnecté."}))
 }
-

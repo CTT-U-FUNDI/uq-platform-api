@@ -1,0 +1,54 @@
+﻿import re
+
+path = r"C:\Users\destin\Desktop\UQ_Platform\uq_platform_bin\src\database.rs"
+
+# Lire avec UTF-8
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Dictionnaire de remplacement
+replacements = {
+    'Ã©': 'é',
+    'Ã¨': 'è',
+    'Ã ': 'à',
+    'Ã´': 'ô',
+    'Ã®': 'î',
+    'Ã»': 'û',
+    'Ã§': 'ç',
+    'Ã¹': 'ù',
+    'Ã¢': 'â',
+    'Ãª': 'ê',
+    'Ã«': 'ë',
+    'Ã¯': 'ï',
+    'Ã¼': 'ü',
+    'Ã±': 'ñ',
+    'â€¢': '•',
+    'â€"': '—',
+    'â€™': "'",
+    'â€œ': '"',
+    'â€': '"',
+    'â•': '═',
+    'â—': '—',
+    'Â°': '°',
+    'Â«': '«',
+    'Â»': '»',
+}
+
+# Appliquer chaque remplacement
+total = 0
+for broken, correct in replacements.items():
+    count = content.count(broken)
+    if count > 0:
+        content = content.replace(broken, correct)
+        total += count
+        print(f'  {broken} -> {correct} : {count}')
+
+# Corriger les séquences de décorations 'â•â•â•' -> '═══════'
+content = re.sub(r'(â•)+', '=' * 60, content)
+
+# Réécrire en UTF-8
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(content)
+
+print(f'')
+print(f'  TOTAL : {total} caracteres repares')

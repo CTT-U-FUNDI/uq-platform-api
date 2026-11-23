@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 🤖 IA DE VALIDATION KYC
 // ====================
 //
@@ -12,9 +12,9 @@
 //
 // ====================
 
-use serde::{Serialize, Deserialize};
-use crate::kyc::metrics::AiMetrics;
 use crate::kyc::decision::{HumanDecision, RejectionReason};
+use crate::kyc::metrics::AiMetrics;
+use serde::{Deserialize, Serialize};
 
 // ====================
 // SEUILS
@@ -26,18 +26,18 @@ pub struct Seuils {
     pub min_sharpness: f32,
     /// Netteté en dessous de laquelle on refuse
     pub refuse_sharpness: f32,
-    
+
     /// Similarité faciale minimale
     pub min_face_similarity: f32,
     /// Similarité en dessous de laquelle on refuse
     pub refuse_face_similarity: f32,
-    
+
     /// Vivacité minimale
     pub min_liveness: f32,
-    
+
     /// Âge minimum
     pub min_age: f32,
-    
+
     /// Confiance OCR minimale
     pub min_ocr_confidence: f32,
 }
@@ -81,7 +81,7 @@ pub struct AiSuggestion {
 
 pub struct KycIa {
     pub seuils: Seuils,
-    pub autonomie: f32,  // 0.0 = 100% humain, 1.0 = 100% auto
+    pub autonomie: f32, // 0.0 = 100% humain, 1.0 = 100% auto
     pub apprentissages: Vec<Apprentissage>,
 }
 
@@ -176,7 +176,11 @@ impl KycIa {
 
         // Calcul de la decision
         let total = score_positif + score_negatif;
-        let confiance = if total > 0.0 { score_positif / total } else { 0.5 };
+        let confiance = if total > 0.0 {
+            score_positif / total
+        } else {
+            0.5
+        };
 
         let decision = if !raisons.is_empty() {
             AiDecision::Refuser

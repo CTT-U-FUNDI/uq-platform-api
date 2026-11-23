@@ -1,0 +1,330 @@
+﻿// ============================================================================
+// reputation_routes.rs — Systeme de reputation a 5 couleurs
+// ============================================================================
+
+use actix_web::{web, HttpResponse, HttpRequest};
+use serde_json::json;
+use rusqlite::params;
+
+use crate::database::Database;
+use crate::auth_guard::exiger_auth;
+use uuid::Uuid;
+
+/// GET /api/reputation/{uq} — retourne les 5 couleurs
+pub async fn get_reputation(path: web::Path<String>) -> HttpResponse {
+    let uq = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    match conn.query_row(
+        "SELECT vert, blanc, orange, rouge, noir, vert_depuis_rouge FROM reputation WHERE uq = ?1",
+        params![uq],
+        |row| Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, i64>(5)?,
+        )),
+    ) {
+        Ok((vert, blanc, orange, rouge, noir, vert_depuis_rouge)) => {
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "vert": vert,
+                "blanc": blanc,
+                "orange": orange,
+                "rouge": rouge,
+                "noir": noir,
+                "vert_depuis_rouge": vert_depuis_rouge,
+            }))
+        }
+        Err(_) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "vert": 0, "blanc": 0, "orange": 0, "rouge": 0, "noir": 0,
+            "vert_depuis_rouge": 0,
+        })),
+    }
+}
+
+/// POST /api/reputation/{uq}/action — ajoute +1 Vert, +1 Blanc, +1 vert_depuis_rouge
+pub async fn add_action(
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let uq = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    // 1. +1 Vert, +1 Blanc, +1 vert_depuis_rouge
+    let _ = conn.execute(
+        "INSERT INTO reputation (uq, vert, blanc, vert_depuis_rouge)
+         VALUES (?1, 1, 1, 1)
+         ON CONFLICT(uq) DO UPDATE SET
+           vert = vert + 1,
+           blanc = blanc + 1,
+           vert_depuis_rouge = vert_depuis_rouge + 1,
+           updated_at = datetime('now')",
+        params![uq],
+    );
+
+    // 2. Si vert_depuis_rouge >= 10 et rouge > 0, effacer 1 Rouge
+    let _ = conn.execute(
+        "UPDATE reputation SET
+           rouge = CASE WHEN vert_depuis_rouge >= 10 AND rouge > 0 THEN rouge - 1 ELSE rouge END,
+           vert_depuis_rouge = CASE WHEN vert_depuis_rouge >= 10 THEN 0 ELSE vert_depuis_rouge END
+         WHERE uq = ?1",
+        params![uq],
+    );
+
+    HttpResponse::Ok().json(json!({"status": "success"}))
+}
+
+/// POST /api/reputation/{uq}/report — ajoute +1 Orange
+pub async fn add_report(
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let _ = claims;
+    let uq = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    let _ = conn.execute(
+        "INSERT INTO reputation (uq, orange)
+         VALUES (?1, 1)
+         ON CONFLICT(uq) DO UPDATE SET
+           orange = orange + 1,
+           updated_at = datetime('now')",
+        params![uq],
+    );
+
+    HttpResponse::Ok().json(json!({"status": "success"}))
+}
+
+/// POST /api/reputation/{uq}/verify — Orange -> disparait (faux) ou devient Rouge + Noir (vrai)
+pub async fn verify_report(
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let _ = claims;
+    let uq = path.into_inner();
+    let coupable = body.get("coupable").and_then(|v| v.as_bool()).unwrap_or(false);
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    if coupable {
+        // -1 Orange, +1 Rouge, +1 Noir, -10 Vert
+        let _ = conn.execute(
+            "UPDATE reputation SET
+               orange = CASE WHEN orange > 0 THEN orange - 1 ELSE 0 END,
+               rouge = rouge + 1,
+               noir = noir + 1,
+               vert = CASE WHEN vert >= 10 THEN vert - 10 ELSE 0 END,
+               vert_depuis_rouge = 0,
+               updated_at = datetime('now')
+             WHERE uq = ?1",
+            params![uq],
+        );
+    } else {
+        // -1 Orange
+        let _ = conn.execute(
+            "UPDATE reputation SET
+               orange = CASE WHEN orange > 0 THEN orange - 1 ELSE 0 END,
+               updated_at = datetime('now')
+             WHERE uq = ?1",
+            params![uq],
+        );
+    }
+
+    HttpResponse::Ok().json(json!({"status": "success"}))
+}
+
+// ============================================================================
+// ANALYSE DE L'HISTORIQUE
+// ============================================================================
+
+pub enum AnalyseResult {
+    Refuse(&'static str),
+    AccusateurSuspect(usize),
+    Credible { total: usize, echecs: usize, en_cours: usize },
+}
+
+/// Analyse l'historique recu du client (7 derniers jours).
+pub fn analyser_historique(historique: &serde_json::Value) -> AnalyseResult {
+    let transactions = historique.get("transactions")
+        .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let p2p = historique.get("p2p")
+        .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let achats = historique.get("achats")
+        .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let messages = historique.get("messages")
+        .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+
+    let total = transactions.len() + p2p.len() + achats.len() + messages.len();
+
+    if total == 0 {
+        return AnalyseResult::Refuse("Aucun historique avec ce profil sur 7 jours.");
+    }
+
+    let mut succes = 0;
+    let mut echecs = 0;
+    let mut en_cours = 0;
+
+    let mut compter = |tx: &serde_json::Value| {
+        match tx.get("statut").and_then(|v| v.as_str()) {
+            Some("succes") => succes += 1,
+            Some("echec") => echecs += 1,
+            _ => en_cours += 1,
+        }
+    };
+
+    for tx in &transactions { compter(tx); }
+    for tx in &p2p { compter(tx); }
+    for tx in &achats { compter(tx); }
+
+    if succes == total {
+        return AnalyseResult::AccusateurSuspect(total);
+    }
+
+    AnalyseResult::Credible { total, echecs, en_cours }
+}
+
+/// Verifie si un utilisateur a un historique reel avec l'un des deux.
+pub fn verifier_historique_reel(
+    conn: &rusqlite::Connection,
+    uq: &str,
+    accusateur: &str,
+    accuse: &str,
+) -> Result<bool, String> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM transactions
+         WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
+           AND timestamp >= ?3",
+        rusqlite::params![uq, accusateur, chrono::Utc::now().timestamp() - 7 * 86400],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    if count > 0 { return Ok(true); }
+
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM transactions
+         WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
+           AND timestamp >= ?3",
+        rusqlite::params![uq, accuse, chrono::Utc::now().timestamp() - 7 * 86400],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    Ok(count > 0)
+}
+
+/// POST /api/reputation/report -- signalement avec historique
+pub async fn add_report(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let accusateur = claims.sub;
+    let accuse = body.get("accuse").and_then(|v| v.as_str()).unwrap_or("");
+    let texte = body.get("texte").and_then(|v| v.as_str()).unwrap_or("");
+    let historique = body.get("historique").cloned().unwrap_or(serde_json::json!({}));
+    let type_litige = body.get("type_litige").and_then(|v| v.as_str()).unwrap_or("general");
+
+    if accuse.is_empty() || texte.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "Accuse et texte obligatoires."
+        }));
+    }
+
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    match analyser_historique(&historique) {
+        AnalyseResult::Refuse(msg) => {
+            HttpResponse::BadRequest().json(json!({
+                "status": "error",
+                "message": msg
+            }))
+        }
+        AnalyseResult::AccusateurSuspect(total) => {
+            let _ = conn.execute(
+                "INSERT INTO reputation (uq, orange) VALUES (?1, 1)
+                 ON CONFLICT(uq) DO UPDATE SET orange = orange + 1, updated_at = datetime('now')",
+                params![accusateur],
+            );
+            HttpResponse::Ok().json(json!({
+                "status": "suspect",
+                "message": "Signalement suspect : toutes les actions sont des succes. L'accusateur est place en Orange.",
+                "total": total
+            }))
+        }
+        AnalyseResult::Credible { total, echecs, en_cours } => {
+            let dossier_id = format!("dossier_{}", Uuid::new_v4());
+            let _ = conn.execute(
+                "INSERT INTO dossiers (id, accusateur, accuse, texte_accusation, historique, nb_evenements, echecs, en_cours, type_litige)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![dossier_id, accusateur, accuse, texte, historique.to_string(), total as i64, echecs as i64, en_cours as i64, type_litige],
+            );
+            let _ = conn.execute(
+                "INSERT INTO reputation (uq, orange) VALUES (?1, 1)
+                 ON CONFLICT(uq) DO UPDATE SET orange = orange + 1, updated_at = datetime('now')",
+                params![accuse],
+            );
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "dossier_id": dossier_id,
+                "nb_evenements": total,
+                "echecs": echecs,
+                "en_cours": en_cours,
+                "message": "Signalement credibles. Le dossier est public."
+            }))
+        }
+    }
+}

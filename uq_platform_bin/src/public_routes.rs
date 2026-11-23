@@ -196,7 +196,9 @@ pub async fn oracle_fiat_devise(path: web::Path<String>) -> HttpResponse {
         return reponse_prix_indisponible();
     };
     let info = snapshot.informations.get(&devise);
-    let source_devise = info.map(|i| i.source.clone()).unwrap_or_else(|| snapshot.source.clone());
+    let source_devise = info
+        .map(|i| i.source.clone())
+        .unwrap_or_else(|| snapshot.source.clone());
 
     if devise == "BORB" {
         return HttpResponse::Ok().json(json!({
@@ -280,7 +282,7 @@ pub async fn account_public_identity(path: web::Path<String>) -> HttpResponse {
     let (pseudo, nom) = crate::uq_public_alias::get_public_identity(&uq);
     // Le wallet BORB vérifie l'existence du compte UQ avant d'ouvrir
     // un wallet — `existe` reflète la vraie DB uq_index, pas le nœud.
-    let existe = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path())
+    let existe = crate::uq_index::UqIndex::shared("uq_index.db")
         .get_account(&uq)
         .is_some();
     // Statut KYC : le wallet BORB exige un compte vérifié pour s'ouvrir.

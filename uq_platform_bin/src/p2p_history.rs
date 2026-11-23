@@ -194,7 +194,13 @@ pub struct HistoryValidation {
 }
 
 impl HistoryValidation {
-    pub fn new(from: &str, lost_uq: &str, request_id: &str, approved: bool, signature: &str) -> Self {
+    pub fn new(
+        from: &str,
+        lost_uq: &str,
+        request_id: &str,
+        approved: bool,
+        signature: &str,
+    ) -> Self {
         Self {
             msg_type: TYPE_VALIDATION.to_string(),
             from: from.to_string(),

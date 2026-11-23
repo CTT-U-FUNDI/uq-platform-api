@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 📊 METRICS KYC — Les 6 mesures de l'IA
 // ====================
 //
@@ -7,7 +7,7 @@
 //
 // ====================
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiMetrics {
@@ -49,7 +49,7 @@ pub struct OcrConfidence {
     pub mean_char_confidence: f32,
     pub min_char_confidence: f32,
     pub composite_score: f32,
-    pub ocr_used: bool,  // L'OCR a-t-il ete utilise ?
+    pub ocr_used: bool, // L'OCR a-t-il ete utilise ?
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -89,13 +89,12 @@ impl AiMetrics {
         // Calcul simplifie pour l'instant
         // Les vraies valeurs seront calculees par les futurs modules
 
-        self.document_quality.composite_score =
-            (self.document_quality.sharpness
-                + self.document_quality.brightness
-                + self.document_quality.contrast) / 3.0;
+        self.document_quality.composite_score = (self.document_quality.sharpness
+            + self.document_quality.brightness
+            + self.document_quality.contrast)
+            / 3.0;
 
-        self.overall_confidence =
-            self.document_quality.composite_score * 0.30
+        self.overall_confidence = self.document_quality.composite_score * 0.30
             + self.ocr_confidence.composite_score * 0.20
             + self.face_comparison.composite_score * 0.25
             + self.liveness.composite_score * 0.15

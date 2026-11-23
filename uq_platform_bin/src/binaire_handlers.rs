@@ -1,12 +1,12 @@
 //! Handlers API pour la protection des binaires propriétaires.
 //! Routes : /api/binaire/*
-//! Auth : signature Ed25519 du owner UQ-996697110.
+//! Auth : signature Ed25519 du owner UQ-00000001.
 
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::json;
 use std::sync::OnceLock;
 
-use crate::binaire_protector::{BinaireStore, DemandeDecrypt, signature_owner_valide};
+use crate::binaire_protector::{signature_owner_valide, BinaireStore, DemandeDecrypt};
 
 static STORE: OnceLock<BinaireStore> = OnceLock::new();
 fn store() -> &'static BinaireStore {
@@ -33,17 +33,17 @@ pub async fn lister_binaires(req: HttpRequest) -> HttpResponse {
 }
 
 /// POST /api/binaire/definir — définit une clé de chiffrement (owner only)
-pub async fn definir_cle(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
+pub async fn definir_cle(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
     let _claims = match crate::auth_guard::exiger_owner(&req) {
         Ok(c) => c,
         Err(r) => return r,
     };
 
     let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    let nom = body.get("nom").and_then(|v| v.as_str()).unwrap_or("Binaire");
+    let nom = body
+        .get("nom")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Binaire");
     let cle = body.get("cle").and_then(|v| v.as_str()).unwrap_or("");
 
     if id.is_empty() {
@@ -83,7 +83,10 @@ pub async fn decrypt_binaire(body: web::Json<DemandeDecrypt>) -> HttpResponse {
     match store().obtenir_cle(&body.binaire_id) {
         Some(cle) => {
             // Logger l'accès
-            eprintln!("🔓 [binaire] Clé servie pour {} à {} (ts={})", body.binaire_id, body.uq_owner, body.ts);
+            eprintln!(
+                "🔓 [binaire] Clé servie pour {} à {} (ts={})",
+                body.binaire_id, body.uq_owner, body.ts
+            );
             ok(json!({
                 "status":"success",
                 "cle":cle,
@@ -96,10 +99,7 @@ pub async fn decrypt_binaire(body: web::Json<DemandeDecrypt>) -> HttpResponse {
 }
 
 /// POST /api/binaire/revoquer — révoque une clé (owner only)
-pub async fn revoquer_cle(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
+pub async fn revoquer_cle(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
     let _claims = match crate::auth_guard::exiger_owner(&req) {
         Ok(c) => c,
         Err(r) => return r,

@@ -1,37 +1,43 @@
-﻿// ====================
+// ====================
 // TREASURY HANDLERS — 10 ROUTES
 // ====================
 
 use actix_web::{web, HttpResponse};
-use serde_json::json;
 use rusqlite::params;
+use serde_json::json;
 
 /// GET /api/treasury/status
 pub async fn treasury_status(req: actix_web::HttpRequest) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — OWNER uniquement
-    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
 
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT profile_name, balance_borb, balance_usd, percentage FROM treasury_system
          UNION ALL
-         SELECT 'dev_profile', balance_borb, balance_usd, percentage FROM dev_profile"
+         SELECT 'dev_profile', balance_borb, balance_usd, percentage FROM dev_profile",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "treasury": {},
-            "dev": {},
-            "total_borb": 0.0
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "treasury": {},
+                "dev": {},
+                "total_borb": 0.0
+            }))
+        }
     };
 
     let mut treasury = json!({});
@@ -70,18 +76,20 @@ pub async fn treasury_status(req: actix_web::HttpRequest) -> HttpResponse {
 
 /// GET /api/treasury/sales
 pub async fn treasury_sales() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT id, amount_borb, crypto_type, crypto_amount, rate_at_sale, status, created_at
-         FROM treasury_system_sales ORDER BY created_at DESC LIMIT 50"
+         FROM treasury_system_sales ORDER BY created_at DESC LIMIT 50",
     ) {
         Ok(s) => s,
         Err(_) => return HttpResponse::Ok().json(json!({ "status": "success", "sales": [] })),
@@ -101,7 +109,9 @@ pub async fn treasury_sales() -> HttpResponse {
 
     let mut sales = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { sales.push(row); }
+        for row in r.flatten() {
+            sales.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({ "status": "success", "sales": sales }))
@@ -109,13 +119,15 @@ pub async fn treasury_sales() -> HttpResponse {
 
 /// GET /api/treasury/revenue
 pub async fn treasury_revenue() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
@@ -144,7 +156,11 @@ pub async fn treasury_revenue() -> HttpResponse {
     if let Ok(r) = rows {
         for row in r.flatten() {
             let (name, borb, _usd) = row;
-            if name == "dev_profile" { dev_total += borb; } else { treasury_total += borb; }
+            if name == "dev_profile" {
+                dev_total += borb;
+            } else {
+                treasury_total += borb;
+            }
         }
     }
 
@@ -158,24 +174,28 @@ pub async fn treasury_revenue() -> HttpResponse {
 
 /// GET /api/treasury/system/profiles
 pub async fn treasury_system_profiles() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     // Si la table est vide, on retourne les 6 profils par defaut
-    let mut stmt = match conn.prepare(
-        "SELECT code, display_name, icon, description, is_active FROM system_profiles"
-    ) {
+    let mut stmt = match conn
+        .prepare("SELECT code, display_name, icon, description, is_active FROM system_profiles")
+    {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "profiles": default_profiles()
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "profiles": default_profiles()
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -190,7 +210,9 @@ pub async fn treasury_system_profiles() -> HttpResponse {
 
     let mut profiles = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { profiles.push(row); }
+        for row in r.flatten() {
+            profiles.push(row);
+        }
     }
 
     if profiles.is_empty() {
@@ -216,18 +238,20 @@ fn default_profiles() -> Vec<serde_json::Value> {
 
 /// GET /api/treasury/system/messages
 pub async fn treasury_system_messages() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT id, profile_code, title, content, type, priority, created_at
-         FROM system_messages WHERE is_active = 1 ORDER BY priority DESC, created_at DESC LIMIT 50"
+         FROM system_messages WHERE is_active = 1 ORDER BY priority DESC, created_at DESC LIMIT 50",
     ) {
         Ok(s) => s,
         Err(_) => return HttpResponse::Ok().json(json!({ "status": "success", "messages": [] })),
@@ -247,7 +271,9 @@ pub async fn treasury_system_messages() -> HttpResponse {
 
     let mut messages = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { messages.push(row); }
+        for row in r.flatten() {
+            messages.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({ "status": "success", "messages": messages }))
@@ -255,18 +281,20 @@ pub async fn treasury_system_messages() -> HttpResponse {
 
 /// GET /api/treasury/dev/ads
 pub async fn treasury_dev_ads() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT id, title, description, amount_borb, price_usd, status, created_at
-         FROM dev_ads WHERE status = 'active' ORDER BY created_at DESC LIMIT 50"
+         FROM dev_ads WHERE status = 'active' ORDER BY created_at DESC LIMIT 50",
     ) {
         Ok(s) => s,
         Err(_) => return HttpResponse::Ok().json(json!({ "status": "success", "ads": [] })),
@@ -286,7 +314,9 @@ pub async fn treasury_dev_ads() -> HttpResponse {
 
     let mut ads = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { ads.push(row); }
+        for row in r.flatten() {
+            ads.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({ "status": "success", "ads": ads }))
@@ -295,9 +325,18 @@ pub async fn treasury_dev_ads() -> HttpResponse {
 /// POST /api/treasury/dev/ads/create
 pub async fn treasury_dev_ads_create(body: web::Json<serde_json::Value>) -> HttpResponse {
     let title = body.get("title").and_then(|v| v.as_str()).unwrap_or("");
-    let description = body.get("description").and_then(|v| v.as_str()).unwrap_or("");
-    let amount_borb = body.get("amount_borb").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let price_usd = body.get("price_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let description = body
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let amount_borb = body
+        .get("amount_borb")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let price_usd = body
+        .get("price_usd")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
 
     if title.is_empty() || amount_borb <= 0.0 {
         return HttpResponse::BadRequest().json(json!({
@@ -306,20 +345,22 @@ pub async fn treasury_dev_ads_create(body: web::Json<serde_json::Value>) -> Http
         }));
     }
 
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let now = chrono::Utc::now().timestamp();
     match conn.execute(
         "INSERT INTO dev_ads (title, description, amount_borb, price_usd, status, created_at)
          VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
-        params![title, description, amount_borb, price_usd, now]
+        params![title, description, amount_borb, price_usd, now],
     ) {
         Ok(_) => HttpResponse::Ok().json(json!({
             "status": "success",
@@ -344,16 +385,21 @@ pub async fn treasury_dev_ads_delete(body: web::Json<serde_json::Value>) -> Http
         }));
     }
 
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
-    match conn.execute("UPDATE dev_ads SET status = 'deleted' WHERE id = ?1", params![ad_id]) {
+    match conn.execute(
+        "UPDATE dev_ads SET status = 'deleted' WHERE id = ?1",
+        params![ad_id],
+    ) {
         Ok(_) => HttpResponse::Ok().json(json!({
             "status": "success",
             "message": "Annonce supprimée"
@@ -367,18 +413,20 @@ pub async fn treasury_dev_ads_delete(body: web::Json<serde_json::Value>) -> Http
 
 /// GET /api/treasury/wallets
 pub async fn treasury_wallets() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
-    let mut stmt = match conn.prepare(
-        "SELECT id, crypto_type, wallet_address, label, is_default FROM treasury_wallets"
-    ) {
+    let mut stmt = match conn
+        .prepare("SELECT id, crypto_type, wallet_address, label, is_default FROM treasury_wallets")
+    {
         Ok(s) => s,
         Err(_) => return HttpResponse::Ok().json(json!({ "status": "success", "wallets": [] })),
     };
@@ -395,20 +443,33 @@ pub async fn treasury_wallets() -> HttpResponse {
 
     let mut wallets = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { wallets.push(row); }
+        for row in r.flatten() {
+            wallets.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({ "status": "success", "wallets": wallets }))
 }
 
 /// POST /api/treasury/wallets/add
-pub async fn treasury_wallets_add(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn treasury_wallets_add(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     // 🔐 Le guard de scope laisse passer tout JWT sur cette route (pas d'UQ dans le chemin) :
     // vérification owner explicite ici.
-    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
 
-    let crypto_type = body.get("crypto_type").and_then(|v| v.as_str()).unwrap_or("");
-    let wallet_address = body.get("wallet_address").and_then(|v| v.as_str()).unwrap_or("");
+    let crypto_type = body
+        .get("crypto_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let wallet_address = body
+        .get("wallet_address")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let label = body.get("label").and_then(|v| v.as_str()).unwrap_or("");
 
     if crypto_type.is_empty() || wallet_address.is_empty() {
@@ -418,20 +479,22 @@ pub async fn treasury_wallets_add(req: actix_web::HttpRequest, body: web::Json<s
         }));
     }
 
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let now = chrono::Utc::now().timestamp();
     match conn.execute(
         "INSERT INTO treasury_wallets (crypto_type, wallet_address, label, is_default, created_at)
          VALUES (?1, ?2, ?3, 0, ?4)",
-        params![crypto_type, wallet_address, label, now]
+        params![crypto_type, wallet_address, label, now],
     ) {
         Ok(_) => HttpResponse::Ok().json(json!({
             "status": "success",
@@ -441,28 +504,6 @@ pub async fn treasury_wallets_add(req: actix_web::HttpRequest, body: web::Json<s
         Err(e) => HttpResponse::InternalServerError().json(json!({
             "status": "error",
             "message": format!("Insert error: {}", e)
-        })),
-    }
-}
-
-/// GET /api/owner/frais — taux fiat/crypto actuels
-pub async fn owner_frais_get(_req: actix_web::HttpRequest) -> actix_web::HttpResponse {
-    actix_web::HttpResponse::Ok().json(crate::frais_plateforme::taux_actuels())
-}
-
-/// POST /api/owner/frais {"type":"fiat"|"crypto","taux":0.0015}
-pub async fn owner_frais_set(
-    req: actix_web::HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> actix_web::HttpResponse {
-    let ty = body.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    let taux = body.get("taux").and_then(|v| v.as_f64()).unwrap_or(-1.0);
-    match crate::frais_plateforme::definir_taux(ty, taux) {
-        Ok(()) => actix_web::HttpResponse::Ok().json(serde_json::json!({
-            "status":"success","frais":crate::frais_plateforme::taux_actuels()
-        })),
-        Err(e) => actix_web::HttpResponse::BadRequest().json(serde_json::json!({
-            "status":"error","message":e
         })),
     }
 }

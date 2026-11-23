@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // MODULE RECEIPT — Reçus PNG signés
 // ====================
 //
@@ -9,14 +9,14 @@
 //
 // ====================
 
-pub mod treasury_key;
+pub mod embed;
 pub mod generator;
 pub mod qr;
-pub mod embed;
-pub mod verifier;
 pub mod routes;
+pub mod treasury_key;
+pub mod verifier;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Données d'une transaction pour le reçu
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 🧮 RÉGULATEUR — Calcul du prix (BigDecimal 60 décimales)
 // ====================
 //
@@ -11,14 +11,12 @@
 
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 /// Prix initial (1 BORB = 1 USD) — 60 décimales
 pub fn prix_initial() -> BigDecimal {
-    BigDecimal::from_str(
-        "1.000000000000000000000000000000000000000000000000000000000000"
-    ).unwrap()
+    BigDecimal::from_str("1.000000000000000000000000000000000000000000000000000000000000").unwrap()
 }
 
 /// Parité structurelle de la plateforme : 1 BORB vaut 1/2000 d'once d'or, soit
@@ -65,7 +63,7 @@ impl Regulateur {
     /// - etc.
     pub fn choisir_unite(prix_usd: &BigDecimal) -> (&'static str, &'static str, u128) {
         let prix: f64 = prix_usd.to_f64().unwrap_or(1.0);
-        
+
         if prix < 1_000.0 {
             ("BORB", "BORB", 1)
         } else if prix < 10_000.0 {
@@ -80,68 +78,68 @@ impl Regulateur {
             ("fborb", "FEMTO", 10_000_000_000)
         }
     }
-    
+
     /// Facteur de demande
     pub fn facteur_demande(demande_actuelle: u128, demande_precedente: u128) -> BigDecimal {
         if demande_precedente == 0 {
             return BigDecimal::from(1);
         }
-        
+
         let actuelle = BigDecimal::from(demande_actuelle);
         let precedente = BigDecimal::from(demande_precedente);
-        
+
         actuelle / precedente
     }
-    
+
     /// Facteur de rareté
     pub fn facteur_rarete(circulation: u128, masse: u128) -> BigDecimal {
         if masse == 0 {
             return BigDecimal::from(1);
         }
-        
+
         let circulation_bd = BigDecimal::from(circulation);
         let masse_bd = BigDecimal::from(masse);
-        
+
         BigDecimal::from(1) - (circulation_bd / masse_bd)
     }
-    
+
     /// Facteur de vitesse
     pub fn facteur_vitesse(tx_actuelles: u128, tx_precedentes: u128) -> BigDecimal {
         if tx_precedentes == 0 {
             return BigDecimal::from(1);
         }
-        
+
         let actuelles = BigDecimal::from(tx_actuelles);
         let precedentes = BigDecimal::from(tx_precedentes);
-        
+
         actuelles / precedentes
     }
-    
+
     /// Ajuste si nécessaire (auto-régulation)
     pub fn ajuster_si_necessaire(prix_actuel: &BigDecimal) -> Option<BigDecimal> {
         let seuil_haut = BigDecimal::from_str("10000.00").unwrap();
         let seuil_bas = BigDecimal::from_str("0.001").unwrap();
-        
+
         if prix_actuel > &seuil_haut {
             // Prix trop haut → augmenter l'offre (baisser le prix)
             return Some(prix_actuel * BigDecimal::from_str("0.95").unwrap());
         }
-        
+
         if prix_actuel < &seuil_bas {
             // Prix trop bas → réduire l'offre (monter le prix)
             return Some(prix_actuel * BigDecimal::from_str("1.05").unwrap());
         }
-        
+
         None
     }
-    
+
     /// Vérifie l'invariant
     pub fn verifier_invariant(total: &BigDecimal, capacite: &BigDecimal) -> bool {
         let diff = (total - capacite).abs();
-        let tolerance = BigDecimal::from_str(
-            "0.000000000000000000000000000000000000000000000000000000000001"
-        ).unwrap();
-        
+        let tolerance =
+            BigDecimal::from_str("0.000000000000000000000000000000000000000000000000000000000001")
+                .unwrap();
+
         diff < tolerance
     }
 }
@@ -149,7 +147,7 @@ impl Regulateur {
 /// État du régulateur
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegulateurState {
-    pub prix_actuel: String,  // BigDecimal sérialisé en string
+    pub prix_actuel: String, // BigDecimal sérialisé en string
     pub demande: u128,
     pub rarete: String,
     pub vitesse: String,
@@ -159,7 +157,7 @@ pub struct RegulateurState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_prix_initial() {
         let prix = prix_initial();
@@ -168,14 +166,14 @@ mod tests {
             "1.000000000000000000000000000000000000000000000000000000000000"
         );
     }
-    
+
     #[test]
     fn test_facteur_demande() {
         let f = Regulateur::facteur_demande(1000, 500);
         // 1000 / 500 = 2
         assert_eq!(f.to_string(), "2");
     }
-    
+
     #[test]
     fn test_facteur_rarete() {
         let f = Regulateur::facteur_rarete(10, 100);

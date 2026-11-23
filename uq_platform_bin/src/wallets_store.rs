@@ -10,26 +10,26 @@ use std::sync::Mutex;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum WalletType {
-    Online,   // Connecté à UQ, transactions quotidiennes
-    Offline,  // Cold storage, USB key optionnel
+    Online,  // Connecté à UQ, transactions quotidiennes
+    Offline, // Cold storage, USB key optionnel
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletInfo {
-    pub vk_hex: String,           // Clé publique Ed25519 (64 hex chars)
-    pub nom: String,              // Nom affiché (ex: "Principal", "Recovery 1")
-    pub r#type: WalletType,       // Online ou Offline
-    pub cree_le: u64,             // Timestamp création
-    pub actif: bool,              // Wallet actif ou gelé
-    pub usb_key_hash: Option<String>, // Hash de la clé USB si offline+usb
+    pub vk_hex: String,                  // Clé publique Ed25519 (64 hex chars)
+    pub nom: String,                     // Nom affiché (ex: "Principal", "Recovery 1")
+    pub r#type: WalletType,              // Online ou Offline
+    pub cree_le: u64,                    // Timestamp création
+    pub actif: bool,                     // Wallet actif ou gelé
+    pub usb_key_hash: Option<String>,    // Hash de la clé USB si offline+usb
     pub derniere_connexion: Option<u64>, // Dernière fois connecté
-    pub solde_cache: Option<u128>, // Solde en cache (femto-BORB)
+    pub solde_cache: Option<u128>,       // Solde en cache (femto-BORB)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletsCompte {
     pub uq: String,
-    pub wallets: Vec<WalletInfo>, // Max 10
+    pub wallets: Vec<WalletInfo>,         // Max 10
     pub wallet_principal: Option<String>, // vk_hex du wallet principal
     pub mis_a_jour: u64,
 }
@@ -47,11 +47,17 @@ impl WalletsStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
         let _ = std::fs::create_dir_all(&dir);
-        Self { dir, cache: Mutex::new(HashMap::new()) }
+        Self {
+            dir,
+            cache: Mutex::new(HashMap::new()),
+        }
     }
 
     fn path(&self, uq: &str) -> PathBuf {
-        self.dir.join(format!("wallets_{}.json", uq.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_")))
+        self.dir.join(format!(
+            "wallets_{}.json",
+            uq.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_")
+        ))
     }
 
     fn charger(&self, uq: &str) -> Option<WalletsCompte> {
@@ -100,7 +106,13 @@ impl WalletsStore {
     }
 
     /// Ajoute un wallet (max 10, vérifie limites online/offline)
-    pub fn ajouter(&self, uq: &str, vk_hex: &str, nom: &str, r#type: WalletType) -> Result<WalletInfo, String> {
+    pub fn ajouter(
+        &self,
+        uq: &str,
+        vk_hex: &str,
+        nom: &str,
+        r#type: WalletType,
+    ) -> Result<WalletInfo, String> {
         let mut c = self.charger(uq).unwrap_or_else(|| WalletsCompte {
             uq: uq.to_string(),
             wallets: Vec::new(),
@@ -125,7 +137,11 @@ impl WalletsStore {
             WalletType::Offline => MAX_OFFLINE,
         };
         if count_type >= max_type {
-            return Err(format!("MAX_{}: {} max", format!("{:?}", r#type).to_uppercase(), max_type));
+            return Err(format!(
+                "MAX_{}: {} max",
+                format!("{:?}", r#type).to_uppercase(),
+                max_type
+            ));
         }
 
         let wallet = WalletInfo {
@@ -152,13 +168,20 @@ impl WalletsStore {
 
     /// Récupère un wallet par sa clé publique
     pub fn trouver(&self, uq: &str, vk_hex: &str) -> Option<WalletInfo> {
-        self.charger(uq)?.wallets.into_iter().find(|w| w.vk_hex == vk_hex)
+        self.charger(uq)?
+            .wallets
+            .into_iter()
+            .find(|w| w.vk_hex == vk_hex)
     }
 
     /// Met à jour le statut d'un wallet
     pub fn maj_statut(&self, uq: &str, vk_hex: &str, actif: bool) -> Result<(), String> {
         let mut c = self.charger(uq).ok_or("COMPTE_INCONNU")?;
-        let w = c.wallets.iter_mut().find(|w| w.vk_hex == vk_hex).ok_or("WALLET_INCONNU")?;
+        let w = c
+            .wallets
+            .iter_mut()
+            .find(|w| w.vk_hex == vk_hex)
+            .ok_or("WALLET_INCONNU")?;
         w.actif = actif;
         c.mis_a_jour = now_ts();
         self.sauver(uq, &c);
@@ -168,7 +191,11 @@ impl WalletsStore {
     /// Enregistre une clé USB pour un wallet offline
     pub fn lier_usb(&self, uq: &str, vk_hex: &str, usb_hash: &str) -> Result<(), String> {
         let mut c = self.charger(uq).ok_or("COMPTE_INCONNU")?;
-        let w = c.wallets.iter_mut().find(|w| w.vk_hex == vk_hex).ok_or("WALLET_INCONNU")?;
+        let w = c
+            .wallets
+            .iter_mut()
+            .find(|w| w.vk_hex == vk_hex)
+            .ok_or("WALLET_INCONNU")?;
         if w.r#type != WalletType::Offline {
             return Err("USB_SEULEMENT_OFFLINE".to_string());
         }
@@ -180,15 +207,23 @@ impl WalletsStore {
 
     /// Vérifie si un wallet offline a une clé USB
     pub fn a_usb_key(&self, uq: &str, vk_hex: &str) -> bool {
-        self.trouver(uq, vk_hex).map(|w| w.usb_key_hash.is_some()).unwrap_or(false)
+        self.trouver(uq, vk_hex)
+            .map(|w| w.usb_key_hash.is_some())
+            .unwrap_or(false)
     }
 
     /// Compte les wallets par type
     pub fn compter_par_type(&self, uq: &str) -> (usize, usize) {
         match self.charger(uq) {
             Some(c) => (
-                c.wallets.iter().filter(|w| w.r#type == WalletType::Online).count(),
-                c.wallets.iter().filter(|w| w.r#type == WalletType::Offline).count(),
+                c.wallets
+                    .iter()
+                    .filter(|w| w.r#type == WalletType::Online)
+                    .count(),
+                c.wallets
+                    .iter()
+                    .filter(|w| w.r#type == WalletType::Offline)
+                    .count(),
             ),
             None => (0, 0),
         }

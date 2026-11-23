@@ -19,7 +19,10 @@ fn err(message: &str) -> HttpResponse {
 /// POST /api/gel/appliquer — body { uq, niveau (2-7), motif, duree_secs? }
 /// Réservé au propriétaire (owner_guard posé au niveau du scope de route).
 pub async fn appliquer(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
-    let _admin = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let _admin = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = body.get("uq").and_then(|v| v.as_str()).unwrap_or("");
     let niveau = body.get("niveau").and_then(|v| v.as_i64()).unwrap_or(0);
     let motif = body.get("motif").and_then(|v| v.as_str()).unwrap_or("");
@@ -35,7 +38,10 @@ pub async fn appliquer(req: HttpRequest, body: web::Json<serde_json::Value>) -> 
 
 /// POST /api/gel/degeler — body { uq } : réactive complètement un compte.
 pub async fn degeler(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
-    let _admin = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let _admin = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = body.get("uq").and_then(|v| v.as_str()).unwrap_or("");
     if uq.is_empty() {
         return err("uq obligatoire");
@@ -49,9 +55,15 @@ pub async fn degeler(req: HttpRequest, body: web::Json<serde_json::Value>) -> Ht
 /// POST /api/gel/escalader — body { uq, motif? } : passe au niveau supérieur
 /// après récidive (2→3→…→7).
 pub async fn escalader(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
-    let _admin = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let _admin = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = body.get("uq").and_then(|v| v.as_str()).unwrap_or("");
-    let motif = body.get("motif").and_then(|v| v.as_str()).unwrap_or("recidive");
+    let motif = body
+        .get("motif")
+        .and_then(|v| v.as_str())
+        .unwrap_or("recidive");
     if uq.is_empty() {
         return err("uq obligatoire");
     }
@@ -63,11 +75,14 @@ pub async fn escalader(req: HttpRequest, body: web::Json<serde_json::Value>) -> 
 
 /// GET /api/gel/{uq} — état de gel d'un compte (admin ou soi-même).
 pub async fn voir(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = path.into_inner();
     // Un non-admin ne peut consulter que son propre état.
     if claims.sub.trim().to_uppercase() != uq.to_uppercase()
-        && claims.sub.trim().to_uppercase() != "UQ-996697110"
+        && claims.sub.trim().to_uppercase() != "UQ-00000001"
     {
         return HttpResponse::Forbidden().json(json!({
             "status": "error",
@@ -81,12 +96,19 @@ pub async fn voir(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
 }
 
 /// GET /api/gel/peut/{uq}?action=... — test d'autorisation (admin/debug).
-pub async fn peut(req: HttpRequest, path: web::Path<String>, query: web::Query<std::collections::HashMap<String, String>>) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+pub async fn peut(
+    req: HttpRequest,
+    path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = path.into_inner();
     let action = query.get("action").map(String::as_str).unwrap_or("");
     if claims.sub.trim().to_uppercase() != uq.to_uppercase()
-        && claims.sub.trim().to_uppercase() != "UQ-996697110"
+        && claims.sub.trim().to_uppercase() != "UQ-00000001"
     {
         return HttpResponse::Forbidden().json(json!({
             "status": "error",

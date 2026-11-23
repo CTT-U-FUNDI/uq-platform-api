@@ -23,9 +23,7 @@ use serde_json::json;
 
 use crate::database::Database;
 use crate::robinet::{self, Prelevement};
-use crate::user_models::{
-    Shop, DUREE_RENOUVELLEMENT_SECONDES, FRAIS_VITRINE_POURCENT,
-};
+use crate::user_models::{Shop, DUREE_RENOUVELLEMENT_SECONDES, FRAIS_VITRINE_POURCENT};
 
 /// Intervalle du tick, en secondes (`UQ_ROBINET_VITRINE_SECS`).
 pub fn tick_secs() -> u64 {
@@ -44,9 +42,7 @@ pub fn points_dus(catalogue_points: i64, secondes: i64) -> i64 {
     if catalogue_points <= 0 || secondes <= 0 {
         return 0;
     }
-    let dus = catalogue_points as i128
-        * FRAIS_VITRINE_POURCENT as i128
-        * secondes as i128
+    let dus = catalogue_points as i128 * FRAIS_VITRINE_POURCENT as i128 * secondes as i128
         / (100 * DUREE_RENOUVELLEMENT_SECONDES as i128);
     dus.max(0).min(i64::MAX as i128) as i64
 }
@@ -73,7 +69,12 @@ pub struct ReglageVitrine {
 fn boutiques_en_robinet(db: &Database) -> Vec<Shop> {
     db.get_all_shops()
         .into_iter()
-        .filter(|value| value.get("robinet").and_then(|v| v.as_bool()).unwrap_or(false))
+        .filter(|value| {
+            value
+                .get("robinet")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
         .filter_map(|value| serde_json::from_value::<Shop>(value).ok())
         .filter(|shop| !shop.owner.trim().is_empty() && !shop.id.trim().is_empty())
         .collect()
@@ -118,7 +119,9 @@ fn suspendre_vitrine(
 /// champs que le modèle ne connaît pas (boutique héritée, extensions du Studio)
 /// restent en place.
 fn ecrire_compteurs(db: &Database, shop: &Shop, reglages: &[(&str, serde_json::Value)]) {
-    let mut boutique = db.get_shop_by_id(&shop.id).unwrap_or_else(|| to_value(shop));
+    let mut boutique = db
+        .get_shop_by_id(&shop.id)
+        .unwrap_or_else(|| to_value(shop));
     for (cle, valeur) in reglages {
         boutique[cle] = valeur.clone();
     }
@@ -142,7 +145,9 @@ pub fn regler_boutique(db: &Database, shop: &Shop, maintenant: i64) -> Option<Re
         } else {
             "Compte introuvable : robinet suspendu"
         };
-        return Some(suspendre_vitrine(db, shop, maintenant, secondes, 0, message));
+        return Some(suspendre_vitrine(
+            db, shop, maintenant, secondes, 0, message,
+        ));
     }
 
     let catalogue_points = db.valeur_catalogue(&shop.owner).max(0).saturating_mul(100);
@@ -216,7 +221,10 @@ pub fn regler_boutique(db: &Database, shop: &Shop, maintenant: i64) -> Option<Re
         &[
             ("dernier_reglement", json!(maintenant)),
             ("secondes_en_attente", json!(0)),
-            ("regle_points", json!(shop.regle_points.saturating_add(points))),
+            (
+                "regle_points",
+                json!(shop.regle_points.saturating_add(points)),
+            ),
         ],
     );
 
@@ -342,7 +350,10 @@ mod tests {
         // depuis le dernier règlement, mais la fenêtre se ferme à 30 s.
         shop.dernier_reglement = maintenant + DUREE_VITRINE_SECONDES - 120;
         shop.en_ligne_jusqu_a = maintenant + DUREE_VITRINE_SECONDES;
-        assert_eq!(shop.secondes_a_facturer(maintenant + DUREE_VITRINE_SECONDES - 30), 30);
+        assert_eq!(
+            shop.secondes_a_facturer(maintenant + DUREE_VITRINE_SECONDES - 30),
+            30
+        );
 
         // Hors ligne : plus rien.
         shop.en_ligne_jusqu_a = maintenant;

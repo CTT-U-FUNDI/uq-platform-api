@@ -38,12 +38,17 @@ pub fn base32_encode(data: &[u8]) -> String {
 }
 
 pub fn base32_decode(s: &str) -> Option<Vec<u8>> {
-    let clean: String = s.chars().filter(|c| !c.is_whitespace() && *c != '=').collect();
+    let clean: String = s
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '=')
+        .collect();
     let mut bits: u32 = 0;
     let mut nbits = 0u32;
     let mut out = Vec::with_capacity(clean.len() * 5 / 8);
     for c in clean.chars() {
-        let v = B32.iter().position(|&b| b as char == c.to_ascii_uppercase())? as u32;
+        let v = B32
+            .iter()
+            .position(|&b| b as char == c.to_ascii_uppercase())? as u32;
         bits = (bits << 5) | v;
         nbits += 5;
         if nbits >= 8 {

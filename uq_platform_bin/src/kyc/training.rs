@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 🧠 TRAINING — Enregistrement d'apprentissage
 // ====================
 //
@@ -9,9 +9,9 @@
 //
 // ====================
 
-use serde::{Serialize, Deserialize};
-use crate::kyc::metrics::AiMetrics;
 use crate::kyc::decision::{HumanDecision, HumanReview};
+use crate::kyc::metrics::AiMetrics;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TrainingRecord {

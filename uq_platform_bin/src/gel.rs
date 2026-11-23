@@ -29,12 +29,12 @@ pub const GEL_NIVEAUX: [i64; 6] = [2, 3, 4, 5, 6, 7];
 
 /// Durées par défaut par niveau (secondes).
 pub const DUREE_DEFAUT: [i64; 6] = [
-    24 * 3600,        // 2 — 24 h
-    3 * 24 * 3600,    // 3 — 3 jours
-    7 * 24 * 3600,    // 4 — 7 jours
-    14 * 24 * 3600,   // 5 — 14 jours
-    365 * 24 * 3600,  // 6 — 1 an (gel long, contestable publiquement)
-    i64::MAX / 2,     // 7 — definitif (jamais atteint)
+    24 * 3600,       // 2 — 24 h
+    3 * 24 * 3600,   // 3 — 3 jours
+    7 * 24 * 3600,   // 4 — 7 jours
+    14 * 24 * 3600,  // 5 — 14 jours
+    365 * 24 * 3600, // 6 — 1 an (gel long, contestable publiquement)
+    i64::MAX / 2,    // 7 — definitif (jamais atteint)
 ];
 
 // ---------------------------------------------------------------------------
@@ -45,14 +45,14 @@ type Conn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
 pub fn ensure_tables(conn: &Connection) -> Result<(), String> {
     // Colonnes de gel sur accounts (ALTER idempotent : ignoré si présentes).
-    for ddl in [
-        "ALTER TABLE accounts ADD COLUMN statut TEXT NOT NULL DEFAULT 'actif'",
-        "ALTER TABLE accounts ADD COLUMN gel_jusqu_a INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE accounts ADD COLUMN gel_motif TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE accounts ADD COLUMN gel_niveau INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE accounts ADD COLUMN gel_definitif INTEGER NOT NULL DEFAULT 0",
+    for (col, ddl) in [
+        ("statut", "TEXT NOT NULL DEFAULT 'actif'"),
+        ("gel_jusqu_a", "INTEGER NOT NULL DEFAULT 0"),
+        ("gel_motif", "TEXT NOT NULL DEFAULT ''"),
+        ("gel_niveau", "INTEGER NOT NULL DEFAULT 0"),
+        ("gel_definitif", "INTEGER NOT NULL DEFAULT 0"),
     ] {
-        let _ = conn.execute(ddl, []);
+        crate::database::Database::ajouter_colonne_si_absente(conn, "accounts", col, ddl);
     }
     // Le schéma accounts peut exister sans uq_number selon la version de la
     // base : on l'ajoute et on le remplit depuis `id` (qui porte l'UQ number).
@@ -121,13 +121,14 @@ fn lire_etat(conn: &Connection, uq: &str) -> Result<EtatGel, String> {
 #[allow(dead_code)] // API publique pour les futurs guards de routes
 pub fn est_gele(uq: &str) -> bool {
     let Ok(conn) = db() else { return false };
-    let Ok(etat) = lire_etat(&conn, uq) else { return false };
+    let Ok(etat) = lire_etat(&conn, uq) else {
+        return false;
+    };
     en_cours(&etat)
 }
 
 fn en_cours(etat: &EtatGel) -> bool {
-    etat.statut != "actif"
-        && (etat.gel_definitif || etat.gel_jusqu_a > maintenant())
+    etat.statut != "actif" && (etat.gel_definitif || etat.gel_jusqu_a > maintenant())
 }
 
 /// Réactive un compte dont le gel temporaire est expiré. Retourne true si
@@ -180,14 +181,18 @@ fn canonique(action: &str) -> &str {
         "transfer" | "transferer" | "envoyer_argent" | "p2p_envoyer" => "envoyer",
         "withdraw" | "retrait" | "retirer_fonds" => "retirer",
         "trade" | "trading" => "trader",
-        "sell" | "marketplace_vendre" | "p2p_vendre" | "p2p_creer_offre" | "zando_vendre" => "vendre",
+        "sell" | "marketplace_vendre" | "p2p_vendre" | "p2p_creer_offre" | "zando_vendre" => {
+            "vendre"
+        }
         "buy" | "marketplace_acheter" | "p2p_acheter" | "zando_acheter" => "acheter",
         "marketplace" => "vendre",
         "shop" | "zando_publier" | "publier_boutique" => "boutique",
         "chat" | "like" | "commenter" | "interaction" => "interagir",
         // Participer à une contestation = droit de recours, autorisé à tous
         // les niveaux (y compris 6-7 qui bloquent 'interagir').
-        "contestation" | "contester" | "commenter_contestation" | "voter_contestation" => "contester",
+        "contestation" | "contester" | "commenter_contestation" | "voter_contestation" => {
+            "contester"
+        }
         "feed" | "flux" | "lire" => "voir_flux",
         "solde" | "balance" | "compte" => "voir_solde",
         "litige" | "dossier" | "jugement" => "voir_jugement",
@@ -204,7 +209,12 @@ fn bloque_par_niveau(niveau: i64, action: &str) -> bool {
         2 => N2.contains(&action),
         3 => N2.contains(&action) || N3.contains(&action),
         4 => N2.contains(&action) || N3.contains(&action) || N4.contains(&action),
-        5 => N2.contains(&action) || N3.contains(&action) || N4.contains(&action) || N5.contains(&action),
+        5 => {
+            N2.contains(&action)
+                || N3.contains(&action)
+                || N4.contains(&action)
+                || N5.contains(&action)
+        }
         // Niveaux 6 et 7 : tout est bloqué sauf les exceptions déjà filtrées
         // et 'voir_flux' explicitement bloqué au niveau 6+.
         6 | 7 => true,
@@ -240,7 +250,10 @@ pub fn exiger(uq: &str, action: &str) -> Result<(), String> {
     if peut_faire(uq, action)? {
         Ok(())
     } else {
-        Err(format!("Action '{}' bloquee pour ce compte (gel ou reputation)", action))
+        Err(format!(
+            "Action '{}' bloquee pour ce compte (gel ou reputation)",
+            action
+        ))
     }
 }
 
@@ -346,9 +359,8 @@ pub fn degeler(uq: &str) -> Result<(), String> {
 pub fn etat(uq: &str) -> Result<serde_json::Value, String> {
     let conn = db()?;
     let etat = lire_etat(&conn, uq)?;
-    let expire_bientot = !etat.gel_definitif
-        && etat.gel_jusqu_a > 0
-        && etat.gel_jusqu_a - maintenant() < 24 * 3600;
+    let expire_bientot =
+        !etat.gel_definitif && etat.gel_jusqu_a > 0 && etat.gel_jusqu_a - maintenant() < 24 * 3600;
     Ok(serde_json::json!({
         "uq": uq,
         "statut": etat.statut,
@@ -372,8 +384,20 @@ mod tests {
     #[test]
     fn toujours_autorise_aux_niveaux_hauts() {
         for niveau in [2, 3, 4, 5, 6, 7] {
-            for action in ["deposer", "voir_jugement", "voir_solde", "consulter", "contester", "inviter"] {
-                assert!(!bloque_par_niveau(niveau, action), "{} ne doit pas bloquer {}", niveau, action);
+            for action in [
+                "deposer",
+                "voir_jugement",
+                "voir_solde",
+                "consulter",
+                "contester",
+                "inviter",
+            ] {
+                assert!(
+                    !bloque_par_niveau(niveau, action),
+                    "{} ne doit pas bloquer {}",
+                    niveau,
+                    action
+                );
             }
         }
     }

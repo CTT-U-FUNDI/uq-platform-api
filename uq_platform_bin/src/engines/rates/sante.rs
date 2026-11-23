@@ -98,7 +98,13 @@ impl SanteSource {
 
     /// Valeur identique pendant `seuil` ticks → source soupçonnée de servir
     /// du cache : on l'écarte de la médiane le temps du blacklistage.
-    pub fn noter_valeur(&mut self, similaire: bool, seuil: u32, blacklist_secs: i64, maintenant: i64) {
+    pub fn noter_valeur(
+        &mut self,
+        similaire: bool,
+        seuil: u32,
+        blacklist_secs: i64,
+        maintenant: i64,
+    ) {
         if similaire {
             self.valeurs_identiques_de_suite += 1;
         } else {

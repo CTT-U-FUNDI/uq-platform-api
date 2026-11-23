@@ -48,7 +48,10 @@ impl AuditLog {
         let _ = std::fs::create_dir_all(&dir);
         // Reprendre la chaîne là où elle s'est arrêtée (redémarrage safe)
         let (seq, hash) = Self::lire_dernier(&dir);
-        Self { dir, last: Mutex::new((seq, hash)) }
+        Self {
+            dir,
+            last: Mutex::new((seq, hash)),
+        }
     }
 
     fn path(&self) -> PathBuf {
@@ -72,7 +75,15 @@ impl AuditLog {
     }
 
     /// Calcule le hash d'une entrée à partir de ses champs publics.
-    fn calculer_hash(prev: &str, ts: u64, uq: &str, email: &str, pseudo: &str, promo: &str, ident: &str) -> String {
+    fn calculer_hash(
+        prev: &str,
+        ts: u64,
+        uq: &str,
+        email: &str,
+        pseudo: &str,
+        promo: &str,
+        ident: &str,
+    ) -> String {
         let mut h = Sha256::new();
         h.update(prev.as_bytes());
         h.update(b"|");
@@ -151,7 +162,15 @@ impl AuditLog {
             if e.seq != count + 1 || e.prev != prev {
                 return (false, count, Some(e.seq));
             }
-            let attendu = Self::calculer_hash(&e.prev, e.ts, &e.uq, &e.email, &e.pseudo, &e.promo, &e.ident_hash);
+            let attendu = Self::calculer_hash(
+                &e.prev,
+                e.ts,
+                &e.uq,
+                &e.email,
+                &e.pseudo,
+                &e.promo,
+                &e.ident_hash,
+            );
             if attendu != e.hash {
                 return (false, count, Some(e.seq));
             }
@@ -176,17 +195,15 @@ pub fn shared() -> &'static AuditLog {
 
 /// Raccourci : enregistre une émission de compte (ne fait jamais échouer
 /// la création — l'appelant traite l'erreur en warning).
-pub fn record_account_issued(
-    uq: &str,
-    email: &str,
-    pseudo: &str,
-    promo: &str,
-    ident_hash: &str,
-) {
+pub fn record_account_issued(uq: &str, email: &str, pseudo: &str, promo: &str, ident_hash: &str) {
     if let Err(e) = shared().record_account(uq, email, pseudo, promo, ident_hash) {
         eprintln!("⚠️  [audit] Échec enregistrement {} : {}", uq, e);
     } else {
-        eprintln!("📝 [audit] Émission enregistrée : {} (seq={})", uq, shared().count());
+        eprintln!(
+            "📝 [audit] Émission enregistrée : {} (seq={})",
+            uq,
+            shared().count()
+        );
     }
 }
 
@@ -224,7 +241,10 @@ impl SecurityAudit {
         let dir = dir.into();
         let _ = std::fs::create_dir_all(&dir);
         let (seq, hash) = Self::lire_dernier(&dir);
-        Self { dir, last: Mutex::new((seq, hash)) }
+        Self {
+            dir,
+            last: Mutex::new((seq, hash)),
+        }
     }
 
     fn path(&self) -> PathBuf {
@@ -271,7 +291,8 @@ impl SecurityAudit {
         let (seq, prev) = (guard.0 + 1, guard.1.clone());
         let hash = Self::calculer_hash(&prev, ts, kind, uq, detail);
         let entry = SecurityEvent {
-            seq, ts,
+            seq,
+            ts,
             kind: kind.to_string(),
             uq: uq.to_string(),
             detail: detail.to_string(),
@@ -281,7 +302,8 @@ impl SecurityAudit {
         let line = serde_json::to_string(&entry).map_err(|e| e.to_string())?;
         use std::io::Write;
         let mut f = std::fs::OpenOptions::new()
-            .create(true).append(true)
+            .create(true)
+            .append(true)
             .open(self.path())
             .map_err(|e| e.to_string())?;
         writeln!(f, "{}", line).map_err(|e| e.to_string())?;
@@ -320,7 +342,8 @@ impl SecurityAudit {
         let Ok(content) = std::fs::read_to_string(self.path()) else {
             return Vec::new();
         };
-        content.lines()
+        content
+            .lines()
             .filter_map(|l| serde_json::from_str::<SecurityEvent>(l).ok())
             .filter(|e| e.uq == uq)
             .collect()

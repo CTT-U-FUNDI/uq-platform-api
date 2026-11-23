@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 🪪 KYC — Verification d'identite (IA + humain)
 // ====================
 //
@@ -14,22 +14,18 @@
 //
 // ====================
 
-pub mod dossier;
-pub mod queue;
-pub mod metrics;
+pub mod cadenas;
 pub mod decision;
-pub mod training;
-pub mod storage;
+pub mod dossier;
 pub mod ia;
+pub mod metrics;
 pub mod metrics_calc;
 pub mod ocr_learn;
-pub mod cadenas;
+pub mod queue;
+pub mod storage;
+pub mod training;
 
+pub use decision::{HumanDecision, HumanReview, RejectionReason};
 pub use dossier::{KycDossier, KycStatus};
 pub use queue::KycQueue;
-pub use decision::{HumanDecision, HumanReview, RejectionReason};
 pub use storage::KycStore;
-
-
-
-

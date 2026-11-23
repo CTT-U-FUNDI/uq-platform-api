@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 📊 CALCUL DES METRIQUES KYC (simule pour l'instant)
 // ====================
 //
@@ -8,7 +8,9 @@
 //
 // ====================
 
-use crate::kyc::metrics::{AiMetrics, DocumentQuality, OcrConfidence, FaceComparison, Liveness, AgeEstimation, Anomalies};
+use crate::kyc::metrics::{
+    AgeEstimation, AiMetrics, Anomalies, DocumentQuality, FaceComparison, Liveness, OcrConfidence,
+};
 
 /// Calcule TOUTES les metriques a partir de la photo et video
 pub fn calculer_metriques(photo: &[u8], video: Option<&[u8]>) -> AiMetrics {
@@ -22,7 +24,7 @@ pub fn calculer_metriques(photo: &[u8], video: Option<&[u8]>) -> AiMetrics {
         skew_angle_deg: simuler_valeur(0.0, 10.0),
         glare_ratio: simuler_valeur(0.0, 0.2),
         noise_level: simuler_valeur(0.0, 0.4),
-        composite_score: 0.0,  // Sera calcule
+        composite_score: 0.0, // Sera calcule
     };
 
     // ===== 2. OCR =====

@@ -1,0 +1,177 @@
+﻿// ============================================================================
+// reputation_routes.rs — Systeme de reputation a 5 couleurs
+// ============================================================================
+
+use actix_web::{web, HttpResponse, HttpRequest};
+use serde_json::json;
+use rusqlite::params;
+
+use crate::database::Database;
+use crate::auth_guard::exiger_auth;
+
+/// GET /api/reputation/{uq} — retourne les 5 couleurs
+pub async fn get_reputation(path: web::Path<String>) -> HttpResponse {
+    let uq = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    match conn.query_row(
+        "SELECT vert, blanc, orange, rouge, noir, vert_depuis_rouge FROM reputation WHERE uq = ?1",
+        params![uq],
+        |row| Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, i64>(5)?,
+        )),
+    ) {
+        Ok((vert, blanc, orange, rouge, noir, vert_depuis_rouge)) => {
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "vert": vert,
+                "blanc": blanc,
+                "orange": orange,
+                "rouge": rouge,
+                "noir": noir,
+                "vert_depuis_rouge": vert_depuis_rouge,
+            }))
+        }
+        Err(_) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "vert": 0, "blanc": 0, "orange": 0, "rouge": 0, "noir": 0,
+            "vert_depuis_rouge": 0,
+        })),
+    }
+}
+
+/// POST /api/reputation/{uq}/action — ajoute +1 Vert, +1 Blanc, +1 vert_depuis_rouge
+pub async fn add_action(
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let uq = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    // 1. +1 Vert, +1 Blanc, +1 vert_depuis_rouge
+    let _ = conn.execute(
+        "INSERT INTO reputation (uq, vert, blanc, vert_depuis_rouge)
+         VALUES (?1, 1, 1, 1)
+         ON CONFLICT(uq) DO UPDATE SET
+           vert = vert + 1,
+           blanc = blanc + 1,
+           vert_depuis_rouge = vert_depuis_rouge + 1,
+           updated_at = datetime('now')",
+        params![uq],
+    );
+
+    // 2. Si vert_depuis_rouge >= 10 et rouge > 0, effacer 1 Rouge
+    let _ = conn.execute(
+        "UPDATE reputation SET
+           rouge = CASE WHEN vert_depuis_rouge >= 10 AND rouge > 0 THEN rouge - 1 ELSE rouge END,
+           vert_depuis_rouge = CASE WHEN vert_depuis_rouge >= 10 THEN 0 ELSE vert_depuis_rouge END
+         WHERE uq = ?1",
+        params![uq],
+    );
+
+    HttpResponse::Ok().json(json!({"status": "success"}))
+}
+
+/// POST /api/reputation/{uq}/report — ajoute +1 Orange
+pub async fn add_report(
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let _ = claims;
+    let uq = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    let _ = conn.execute(
+        "INSERT INTO reputation (uq, orange)
+         VALUES (?1, 1)
+         ON CONFLICT(uq) DO UPDATE SET
+           orange = orange + 1,
+           updated_at = datetime('now')",
+        params![uq],
+    );
+
+    HttpResponse::Ok().json(json!({"status": "success"}))
+}
+
+/// POST /api/reputation/{uq}/verify — Orange -> disparait (faux) ou devient Rouge + Noir (vrai)
+pub async fn verify_report(
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let _ = claims;
+    let uq = path.into_inner();
+    let coupable = body.get("coupable").and_then(|v| v.as_bool()).unwrap_or(false);
+    let db = Database::shared("uq_platform_db.json");
+    let conn = match db.sqlite_pool.get() {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": e.to_string()
+        })),
+    };
+
+    if coupable {
+        // -1 Orange, +1 Rouge, +1 Noir, -10 Vert
+        let _ = conn.execute(
+            "UPDATE reputation SET
+               orange = CASE WHEN orange > 0 THEN orange - 1 ELSE 0 END,
+               rouge = rouge + 1,
+               noir = noir + 1,
+               vert = CASE WHEN vert >= 10 THEN vert - 10 ELSE 0 END,
+               vert_depuis_rouge = 0,
+               updated_at = datetime('now')
+             WHERE uq = ?1",
+            params![uq],
+        );
+    } else {
+        // -1 Orange
+        let _ = conn.execute(
+            "UPDATE reputation SET
+               orange = CASE WHEN orange > 0 THEN orange - 1 ELSE 0 END,
+               updated_at = datetime('now')
+             WHERE uq = ?1",
+            params![uq],
+        );
+    }
+
+    HttpResponse::Ok().json(json!({"status": "success"}))
+}

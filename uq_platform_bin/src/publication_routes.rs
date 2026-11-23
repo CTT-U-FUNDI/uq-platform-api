@@ -48,7 +48,10 @@ pub async fn publication_list(req: HttpRequest) -> HttpResponse {
 }
 
 /// POST /api/publications — { uq, kind, title, body?, price?, media?, zando_item_id? }
-pub async fn publication_create(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn publication_create(
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let lecteur = match uq_du_lecteur(&req, Some(&body)) {
         Some(lecteur) => lecteur,
         None => {
@@ -58,23 +61,36 @@ pub async fn publication_create(req: HttpRequest, body: web::Json<serde_json::Va
             }))
         }
     };
-    let kind = body.get("kind").and_then(|value| value.as_str()).unwrap_or("publication");
+    let kind = body
+        .get("kind")
+        .and_then(|value| value.as_str())
+        .unwrap_or("publication");
     if !KINDS.contains(&kind) {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": "Type de publication invalide"
         }));
     }
-    let title = body.get("title").and_then(|value| value.as_str()).unwrap_or("").trim();
+    let title = body
+        .get("title")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim();
     if title.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": "Titre requis"
         }));
     }
-    let texte = body.get("body").and_then(|value| value.as_str()).unwrap_or("");
+    let texte = body
+        .get("body")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
     let price = body.get("price").and_then(|value| value.as_f64());
-    let media = body.get("media").and_then(|value| value.as_str()).unwrap_or("");
+    let media = body
+        .get("media")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
     if media.len() > crate::database::PUBLICATION_MEDIA_MAX_CHARS {
         return HttpResponse::PayloadTooLarge().json(json!({
             "status": "error",
@@ -107,7 +123,11 @@ pub async fn publication_create(req: HttpRequest, body: web::Json<serde_json::Va
 }
 
 /// POST /api/publications/{id}/comment — { uq, content }
-pub async fn publication_comment(req: HttpRequest, path: web::Path<String>, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn publication_comment(
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let lecteur = match uq_du_lecteur(&req, Some(&body)) {
         Some(lecteur) => lecteur,
         None => {
@@ -117,7 +137,11 @@ pub async fn publication_comment(req: HttpRequest, path: web::Path<String>, body
             }))
         }
     };
-    let texte = body.get("content").and_then(|value| value.as_str()).unwrap_or("").trim();
+    let texte = body
+        .get("content")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim();
     if texte.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",

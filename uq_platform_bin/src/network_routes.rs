@@ -1,10 +1,10 @@
-﻿// ============================================================================
+// ============================================================================
 // network_routes.rs — Systeme de reseau (demandes d'amitie, 1 USD)
 // ============================================================================
 
-use actix_web::{web, HttpResponse, HttpRequest};
-use serde_json::json;
+use actix_web::{web, HttpRequest, HttpResponse};
 use rusqlite::params;
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth_guard::exiger_auth;
@@ -12,7 +12,7 @@ use crate::database::Database;
 
 // Montant en points (1 USD = 100 points, si 1 BORB = 100 points)
 const MONTANT_POINTS: i64 = 100;
-const DUREE_DEMANDE_SECS: i64 = 12 * 3600;  // 12h
+const DUREE_DEMANDE_SECS: i64 = 12 * 3600; // 12h
 
 /// Ouvre la base d'un compte
 fn ouvrir_base(uq: &str) -> Result<rusqlite::Connection, String> {
@@ -21,13 +21,16 @@ fn ouvrir_base(uq: &str) -> Result<rusqlite::Connection, String> {
 }
 
 /// Envoyer une demande d'amitie (PIN du demandeur)
-pub async fn request(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+pub async fn request(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let demandeur = claims.sub;
-    let destinataire = body.get("destinataire").and_then(|v| v.as_str()).unwrap_or("");
+    let destinataire = body
+        .get("destinataire")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
 
     if destinataire.is_empty() || pin.is_empty() {
@@ -44,9 +47,12 @@ pub async fn request(
 
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.conn() {
-        Ok(c) => c, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
 
     // 1. Verifier le PIN du demandeur
@@ -84,14 +90,19 @@ pub async fn request(
 
     // 4. Geler 1 USD dans la base du demandeur
     let base_demandeur = match ouvrir_base(&demandeur) {
-        Ok(c) => c, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e
-        })),
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e
+            }))
+        }
     };
 
-    let solde: i64 = base_demandeur.query_row(
-        "SELECT points FROM balance WHERE id = 1", [], |row| row.get(0)
-    ).unwrap_or(0);
+    let solde: i64 = base_demandeur
+        .query_row("SELECT points FROM balance WHERE id = 1", [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
 
     if solde < MONTANT_POINTS {
         return HttpResponse::BadRequest().json(json!({
@@ -127,11 +138,11 @@ pub async fn request(
 }
 
 /// Accepter une demande (PIN du destinataire)
-pub async fn accept(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+pub async fn accept(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let destinataire = claims.sub;
     let demandeur = body.get("demandeur").and_then(|v| v.as_str()).unwrap_or("");
     let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
@@ -144,9 +155,12 @@ pub async fn accept(
 
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.conn() {
-        Ok(c) => c, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
 
     // 1. Verifier PIN du destinataire
@@ -200,11 +214,11 @@ pub async fn accept(
 }
 
 /// Refuser une demande (PIN du destinataire)
-pub async fn reject(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+pub async fn reject(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let destinataire = claims.sub;
     let demandeur = body.get("demandeur").and_then(|v| v.as_str()).unwrap_or("");
     let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
@@ -226,9 +240,12 @@ pub async fn reject(
 
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.conn() {
-        Ok(c) => c, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
 
     let _ = conn.execute(
@@ -243,11 +260,11 @@ pub async fn reject(
 }
 
 /// Quitter une amitie (PIN de celui qui quitte)
-pub async fn leave(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+pub async fn leave(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let quittant = claims.sub;
     let autre = body.get("autre").and_then(|v| v.as_str()).unwrap_or("");
     let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
@@ -266,9 +283,12 @@ pub async fn leave(
 
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.conn() {
-        Ok(c) => c, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
 
     // Verifier que l'amitie existe
@@ -305,49 +325,67 @@ pub async fn leave(
 
 /// Lister les demandes recues et envoyees
 pub async fn list(req: HttpRequest) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = claims.sub;
 
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.conn() {
-        Ok(c) => c, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
 
     // Recues
     let mut stmt = match conn.prepare(
         "SELECT uq_follower, created_at, expires_at FROM followers
-         WHERE uq_followed = ?1 AND status = 'pending' ORDER BY created_at DESC"
+         WHERE uq_followed = ?1 AND status = 'pending' ORDER BY created_at DESC",
     ) {
-        Ok(s) => s, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(s) => s,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
-    let recues: Vec<serde_json::Value> = stmt.query_map(params![uq], |row| {
-        Ok(json!({
-            "de": row.get::<_, String>(0)?,
-            "created_at": row.get::<_, i64>(1)?,
-            "expires_at": row.get::<_, i64>(2)?,
-        }))
-    }).map(|r| r.filter_map(|x| x.ok()).collect::<Vec<_>>()).unwrap_or_default();
+    let recues: Vec<serde_json::Value> = stmt
+        .query_map(params![uq], |row| {
+            Ok(json!({
+                "de": row.get::<_, String>(0)?,
+                "created_at": row.get::<_, i64>(1)?,
+                "expires_at": row.get::<_, i64>(2)?,
+            }))
+        })
+        .map(|r| r.filter_map(|x| x.ok()).collect::<Vec<_>>())
+        .unwrap_or_default();
 
     // Envoyees
     let mut stmt = match conn.prepare(
         "SELECT uq_followed, created_at, expires_at FROM followers
-         WHERE uq_follower = ?1 AND status = 'pending' ORDER BY created_at DESC"
+         WHERE uq_follower = ?1 AND status = 'pending' ORDER BY created_at DESC",
     ) {
-        Ok(s) => s, Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error", "message": e.to_string()
-        })),
+        Ok(s) => s,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", "message": e.to_string()
+            }))
+        }
     };
-    let envoyees: Vec<serde_json::Value> = stmt.query_map(params![uq], |row| {
-        Ok(json!({
-            "vers": row.get::<_, String>(0)?,
-            "created_at": row.get::<_, i64>(1)?,
-            "expires_at": row.get::<_, i64>(2)?,
-        }))
-    }).map(|r| r.filter_map(|x| x.ok()).collect::<Vec<_>>()).unwrap_or_default();
+    let envoyees: Vec<serde_json::Value> = stmt
+        .query_map(params![uq], |row| {
+            Ok(json!({
+                "vers": row.get::<_, String>(0)?,
+                "created_at": row.get::<_, i64>(1)?,
+                "expires_at": row.get::<_, i64>(2)?,
+            }))
+        })
+        .map(|r| r.filter_map(|x| x.ok()).collect::<Vec<_>>())
+        .unwrap_or_default();
 
     HttpResponse::Ok().json(json!({
         "status": "success",
@@ -361,17 +399,20 @@ pub async fn list(req: HttpRequest) -> HttpResponse {
 fn verifier_pin(uq: &str, pin: &str) -> Result<(), String> {
     // Utiliser la fonction existante de verification de PIN
     let base = ouvrir_base(uq)?;
-    let hash_stocke: String = base.query_row(
-        "SELECT login_pin_hash FROM settings WHERE key = 'login_pin_hash'",
-        [], |row| row.get(0)
-    ).map_err(|_| "PIN non configure".to_string())?;
+    let hash_stocke: String = base
+        .query_row(
+            "SELECT login_pin_hash FROM settings WHERE key = 'login_pin_hash'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "PIN non configure".to_string())?;
 
     if hash_stocke.is_empty() {
         return Err("PIN non configure".to_string());
     }
 
     // Calculer le hash du PIN fourni
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(format!("UQ_PIN_V2:{}:{}", pin, uq).as_bytes());
     let hash_fourni = format!("{:x}", hasher.finalize());
@@ -388,7 +429,8 @@ fn rembourser(uq: &str) -> Result<(), String> {
     base.execute(
         "UPDATE balance SET points = points + ?1, frozen_points = frozen_points - ?1 WHERE id = 1",
         params![MONTANT_POINTS],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -397,16 +439,20 @@ fn transferer_montant(de: &str, vers: &str) -> Result<(), String> {
     let base_vers = ouvrir_base(vers)?;
 
     // Degeler chez de
-    base_de.execute(
-        "UPDATE balance SET frozen_points = frozen_points - ?1 WHERE id = 1",
-        params![MONTANT_POINTS],
-    ).map_err(|e| e.to_string())?;
+    base_de
+        .execute(
+            "UPDATE balance SET frozen_points = frozen_points - ?1 WHERE id = 1",
+            params![MONTANT_POINTS],
+        )
+        .map_err(|e| e.to_string())?;
 
     // Crediter chez vers
-    base_vers.execute(
-        "UPDATE balance SET points = points + ?1 WHERE id = 1",
-        params![MONTANT_POINTS],
-    ).map_err(|e| e.to_string())?;
+    base_vers
+        .execute(
+            "UPDATE balance SET points = points + ?1 WHERE id = 1",
+            params![MONTANT_POINTS],
+        )
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -422,15 +468,18 @@ pub fn expirer_demandes() -> Result<Vec<String>, String> {
 
     let now = chrono::Utc::now().timestamp();
 
-    let mut stmt = conn.prepare(
-        "SELECT id, uq_follower, uq_followed FROM followers
-         WHERE status = 'pending' AND expires_at < ?1"
-    ).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, uq_follower, uq_followed FROM followers
+         WHERE status = 'pending' AND expires_at < ?1",
+        )
+        .map_err(|e| e.to_string())?;
 
     let demandes: Vec<(i64, String, String)> = stmt
-        .query_map(params![now], |row| Ok((
-            row.get(0)?, row.get(1)?, row.get(2)?
-        ))).map_err(|e| e.to_string())?
+        .query_map(params![now], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
 

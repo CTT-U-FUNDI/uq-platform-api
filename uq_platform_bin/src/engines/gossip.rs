@@ -90,10 +90,8 @@ pub fn signature_valide(diffusion: &Diffusion) -> bool {
     match std::env::var("UQ_GOSSIP_VERIFICATION").ok().as_deref() {
         Some("structurelle") => !diffusion.signature.is_empty(),
         _ => {
-            crate::p2p_history::signature_locale(
-                &secret_partage(),
-                &diffusion.message_a_signer(),
-            ) == diffusion.signature
+            crate::p2p_history::signature_locale(&secret_partage(), &diffusion.message_a_signer())
+                == diffusion.signature
         }
     }
 }
@@ -122,7 +120,10 @@ mod tests {
         signer(&mut d);
         assert!(signature_valide(&d));
         d.valeur = serde_json::json!({"prix": 9999.0});
-        assert!(!signature_valide(&d), "un prix modifié doit casser la signature");
+        assert!(
+            !signature_valide(&d),
+            "un prix modifié doit casser la signature"
+        );
     }
 
     #[test]

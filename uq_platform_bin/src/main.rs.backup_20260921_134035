@@ -1,0 +1,107 @@
+﻿mod auth;
+mod wal;
+mod geo;
+mod command_registry;
+mod guardian_routes;
+mod fixorb_distribution;
+mod api_handlers;
+mod api_routes;
+mod database;
+mod uq_index;
+mod user_models;
+mod user_handlers;
+mod real_state;
+mod player_routes;
+mod publication_routes;
+mod mini_routes;
+mod real_services;
+mod real_gov;
+mod real_vault;
+mod real_p2p;
+mod udp_network;
+
+use actix_web::{web, App, HttpServer};
+use actix_cors::Cors;
+use database::Database;
+use real_state::GlobalState;
+use player_routes::PlayerState;
+use mini_routes::MiniServerState;
+use real_p2p::P2pState;
+use std::sync::Arc;
+
+// Load .env for local development
+use dotenv::dotenv;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    dotenv().ok();
+
+    let required_envs = [
+        "OWNER_UNLOCK_CODE",
+        "OWNER_PASSWORD_INITIAL",
+        "TERMINAL_AUTH_KEY",
+        "JWT_SECRET",
+    ];
+    for key in &required_envs {
+        if std::env::var(key).is_err() {
+            eprintln!("ERROR: required environment variable '{}' is not set. Set it in the environment or in a .env (development). Exiting.", key);
+            std::process::exit(1);
+        }
+    }
+
+    println!("🚀 UQ PLATFORM — Démarrage...");
+
+    let db = Database::shared("uq_platform_db.json");
+    let state = Arc::new(GlobalState::new());
+    let player_state = Arc::new(PlayerState::new());
+    let mini_state = Arc::new(MiniServerState::new());
+
+    // 🆕 AJOUT — P2pState pour le réseau P2P
+    let p2p_state = Arc::new(P2pState::new([0u8; 32]));
+
+    println!("📦 Base JSON initialisée");
+    println!("🎵 PlayerState initialisé");
+    println!("🔐 MiniServerState initialisé");
+    let udp_port = std::env::var("UDP_PORT").unwrap_or_else(|_| "8080".to_string());
+    println!("🌐 P2pState initialisé (UDP sur 0.0.0.0:{})", udp_port);
+
+    let host = std::env::var("RUST_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port = std::env::var("RUST_PORT").unwrap_or_else(|_| "5000".to_string());
+    let bind_addr = format!("{}:{}", host, port);
+
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| {
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000".to_string()
+    });
+    let allowed_roots: Vec<String> = allowed_origins
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    println!("🌐 Serveur sur http://{}", bind_addr);
+    println!("🔒 Allowed origins: {:?}", allowed_roots);
+
+    HttpServer::new(move || {
+        let mut cors = Cors::default()
+            .allow_any_method()
+            .allow_any_header();
+
+        for origin in &allowed_roots {
+            cors = cors.allowed_origin(origin);
+        }
+
+        App::new()
+            .app_data(web::Data::new(db.clone()))
+            .app_data(web::Data::new(state.clone()))
+            .app_data(web::Data::new(player_state.clone()))
+            .app_data(web::Data::new(mini_state.clone()))
+            // 🆕 AJOUT — Injection du P2pState
+            .app_data(web::Data::new(p2p_state.clone()))
+            .wrap(cors)
+            .configure(api_routes::configure_routes)
+    })
+    .bind(&bind_addr)?
+    .run()
+    .await
+}
+

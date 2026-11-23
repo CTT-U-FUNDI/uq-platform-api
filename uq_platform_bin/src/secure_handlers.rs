@@ -2,33 +2,33 @@
 // SECURE HANDLERS — Owner 3 tentatives + 3543 + 2FA
 // ====================
 
+use crate::security_login;
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::json;
-use crate::security_login;
 
 // ====================
-// CHEMIN ABSOLU — cherche data/users/uq_996697110.db
+// CHEMIN ABSOLU — cherche data/users/uq_00000001.db
 // à partir du répertoire du binaire
 // ====================
 fn get_owner_db_path() -> String {
     // 1. Essayer le chemin relatif standard
-    let relative = "data/users/uq_996697110.db";
+    let relative = "data/users/uq_00000001.db";
     if std::path::Path::new(relative).exists() {
         return relative.to_string();
     }
-    
+
     // 2. Essayer depuis le répertoire du binaire
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             // Remonter de target/release/ vers le projet
             let candidates = vec![
-                exe_dir.join("data/users/uq_996697110.db"),
-                exe_dir.join("../data/users/uq_996697110.db"),
-                exe_dir.join("../../data/users/uq_996697110.db"),
-                exe_dir.join("../../../data/users/uq_996697110.db"),
-                exe_dir.join("../../../../data/users/uq_996697110.db"),
+                exe_dir.join("data/users/uq_00000001.db"),
+                exe_dir.join("../data/users/uq_00000001.db"),
+                exe_dir.join("../../data/users/uq_00000001.db"),
+                exe_dir.join("../../../data/users/uq_00000001.db"),
+                exe_dir.join("../../../../data/users/uq_00000001.db"),
             ];
-            
+
             for candidate in candidates {
                 if candidate.exists() {
                     if let Some(path_str) = candidate.to_str() {
@@ -38,19 +38,20 @@ fn get_owner_db_path() -> String {
             }
         }
     }
-    
+
     // 3. Fallback : chemin absolu connu
-    let fallback = r"C:\Users\destin\Desktop\UQ_Platform\uq_platform_bin\data\users\uq_996697110.db";
+    let fallback = r"C:\Users\destin\Desktop\UQ_Platform\uq_platform_bin\data\users\uq_00000001.db";
     if std::path::Path::new(fallback).exists() {
         return fallback.to_string();
     }
-    
+
     // 4. Vraiment rien trouvé → retourner le relatif
     relative.to_string()
 }
 
 fn get_ip(req: &HttpRequest) -> String {
-    req.headers().get("X-Forwarded-For")
+    req.headers()
+        .get("X-Forwarded-For")
         .and_then(|h| h.to_str().ok())
         .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
         .or_else(|| req.peer_addr().map(|a| a.ip().to_string()))
@@ -107,13 +108,11 @@ pub fn horoder_controle_complet(uq: &str, credential_id: &str) {
 // ====================
 // ÉTAPE 1 — Vérifier UQ
 // ====================
-pub async fn secure_step1(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
+pub async fn secure_step1(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
     // Accepte uq_number OU uq_email : si on reçoit un email, on résout
     // le compte en interne — l'utilisateur n'a plus besoin de taper son UQ.
-    let input = body.get("uq_number")
+    let input = body
+        .get("uq_number")
         .or_else(|| body.get("uq_email"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -128,7 +127,7 @@ pub async fn secure_step1(
     // Résolution : si l'input ressemble à un email (contient '@' et ne
     // commence pas par "UQ-"), on cherche le compte par email.
     let uq = if input.contains('@') && !input.starts_with("UQ-") {
-        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
         match idx.get_uq_by_email(&input) {
             Some(uq) => uq,
             None => return bad_data(),
@@ -138,27 +137,31 @@ pub async fn secure_step1(
     };
 
     // ===== BASCULE OWNER : Lire X-Switch-From =====
-    // Si le header est present ET vaut UQ-996697110 (owner) => autoriser la connexion
+    // Si le header est present ET vaut UQ-00000001 (owner) => autoriser la connexion
     // d'un membre de cercle (bascule). Sinon => bloquer si membre.
     let allow_circle_member = req
         .headers()
         .get("X-Switch-From")
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim() == "UQ-996697110")
+        .map(|v| v.trim() == "UQ-00000001")
         .unwrap_or(false);
 
     if allow_circle_member {
-        eprintln!("[SWITCH] Header X-Switch-From detecte pour {} -> bascule owner", uq);
+        eprintln!(
+            "[SWITCH] Header X-Switch-From detecte pour {} -> bascule owner",
+            uq
+        );
     }
 
     // 1. Vérifier que le compte existe + charger la config
-    let config = match crate::application::login_service::validate_uq_step1(&uq, allow_circle_member) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[SWITCH] validate_uq_step1 refuse pour {} : {}", uq, e);
-            return bad_data();
-        }
-    };
+    let config =
+        match crate::application::login_service::validate_uq_step1(&uq, allow_circle_member) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[SWITCH] validate_uq_step1 refuse pour {} : {}", uq, e);
+                return bad_data();
+            }
+        };
 
     // 2. Vérifier cooldown
     if let Some(_remaining) = crate::application::login_service::is_in_cooldown(&uq) {
@@ -202,20 +205,17 @@ pub async fn secure_step1(
     }
 }
 
-pub async fn secure_step2(
-    req: HttpRequest,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
-    let session_id = body.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+pub async fn secure_step2(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    let session_id = body
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let tfa_token = body.get("tfa_token").and_then(|v| v.as_str()).unwrap_or("");
     let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("");
     let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
     let ip = get_ip(&req);
 
-    // Login « UQ + mot de passe » : l'email est OPTIONNEL. S'il est absent,
-    // le serveur le resout depuis le uq_number de la session — l'utilisateur
-    // ne saisit jamais son email dans l'app UQZ.
-    if session_id.is_empty() || tfa_token.is_empty() || password.is_empty() {
+    if session_id.is_empty() || tfa_token.is_empty() || password.is_empty() || email.is_empty() {
         return bad_data();
     }
 
@@ -240,16 +240,6 @@ pub async fn secure_step2(
         let _ = crate::application::login_service::increment_failure(&uq);
         return bad_data();
     }
-
-    // Email absent -> resolution interne par numero UQ (login mobile).
-    let email_resolu;
-    let email = if email.trim().is_empty() {
-        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
-        match idx.get_email(&uq) {
-            Some(e) if !e.trim().is_empty() => { email_resolu = e; &email_resolu }
-            _ => return bad_data(),
-        }
-    } else { email };
 
     // 2. Valider email + password via le service
     match crate::application::login_service::validate_step2(&uq, email, password) {
@@ -287,7 +277,8 @@ pub async fn secure_step2(
 
             eprintln!(
                 "🔐 Étape 2 OK pour {} → step {} ({})",
-                uq, next_step,
+                uq,
+                next_step,
                 if result.is_owner { "OWNER" } else { "USER" }
             );
 
@@ -310,7 +301,10 @@ pub async fn secure_step_login_pin(
     req: HttpRequest,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let session_id = body.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+    let session_id = body
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let tfa_token = body.get("tfa_token").and_then(|v| v.as_str()).unwrap_or("");
     let login_pin = body.get("login_pin").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -331,40 +325,37 @@ pub async fn secure_step_login_pin(
 
     let (stored_tfa, current_step, _uq) = match result {
         Ok(v) => v,
-        Err(_) => {
-            eprintln!("🔍 step-login-pin: session introuvable {}", session_id);
-            return HttpResponse::Ok().json(json!({"status":"error","message":"SESSION_INTROUVABLE","debug":"session"}));
-        }
+        Err(_) => return bad_data(),
     };
 
     if stored_tfa != tfa_token || current_step != 3 {
-        eprintln!("🔍 step-login-pin: gate fail tfa={} step={} (attendu step=3)", stored_tfa==tfa_token, current_step);
-        return HttpResponse::Ok().json(json!({"status":"error","message":"GATE_FAIL","debug":format!("step={}",current_step)}));
+        return bad_data();
     }
 
-    let salt: String = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'login_pin_salt'",
-        [], |row| row.get(0)
-    ).unwrap_or_else(|_| security_login::DEFAULT_LOGIN_PIN_SALT.to_string());
+    let salt: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'login_pin_salt'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| security_login::DEFAULT_LOGIN_PIN_SALT.to_string());
 
-    let stored_hash: String = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'login_pin_hash'",
-        [], |row| row.get(0)
-    ).unwrap_or_default();
+    let stored_hash: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'login_pin_hash'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
 
     // Hash fail-closed : sans amorce en DB, seul le PIN de secours (comparé en hash) passe.
     let computed = {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(format!("{}:{}", login_pin, salt).as_bytes());
         format!("{:x}", hasher.finalize())
     };
-    // Le code owner env (OWNER_UNLOCK_CODE) est accepte en plus du hash DB :
-    // la DB Render peut contenir une autre valeur — l'env fait foi.
-    let env_ok = std::env::var("OWNER_UNLOCK_CODE")
-        .map(|c| security_login::constant_time_eq(login_pin, c.trim()))
-        .unwrap_or(false);
-    let pin_ok = env_ok || if stored_hash.is_empty() {
+    let pin_ok = if stored_hash.is_empty() {
         security_login::constant_time_eq(
             &security_login::hash_pin(login_pin, security_login::DEFAULT_LOGIN_PIN_SALT),
             security_login::FALLBACK_OWNER_PIN_HASH,
@@ -374,13 +365,12 @@ pub async fn secure_step_login_pin(
     };
 
     if !pin_ok {
-        eprintln!("🔍 step-login-pin: PIN incorrect (env_ok={})", env_ok);
-        return HttpResponse::Ok().json(json!({"status":"error","message":"PIN_INCORRECT","debug":format!("env_ok={}",env_ok)}));
+        return bad_data();
     }
 
     let new_tfa = security_login::generate_tfa_token();
     let now = chrono::Utc::now().timestamp();
-    
+
     let _ = conn.execute(
         "UPDATE security_login_sessions SET current_step = 4, step3_ok = 1, tfa_token = ?1, last_activity = ?2 WHERE session_id = ?3",
         rusqlite::params![new_tfa, now, session_id],
@@ -404,7 +394,10 @@ pub async fn secure_finalize_owner(
     req: HttpRequest,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let session_id = body.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+    let session_id = body
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let tfa_token = body.get("tfa_token").and_then(|v| v.as_str()).unwrap_or("");
     let ip = get_ip(&req);
 
@@ -444,7 +437,9 @@ pub async fn secure_finalize_owner(
     security_login::reset_cooldown_uq(&conn, &uq);
     horoder_controle_complet(
         &uq,
-        body.get("credential_id").and_then(|v| v.as_str()).unwrap_or(""),
+        body.get("credential_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
     );
 
     // 🧹 Auto-cleanup du compte owner (par transaction / par compte / 1x 24h)
@@ -478,7 +473,10 @@ pub async fn secure_finalize_user(
     req: HttpRequest,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let session_id = body.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+    let session_id = body
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let tfa_token = body.get("tfa_token").and_then(|v| v.as_str()).unwrap_or("");
     let ip = get_ip(&req);
 
@@ -518,10 +516,12 @@ pub async fn secure_finalize_user(
     security_login::reset_cooldown_uq(&conn, &uq);
     horoder_controle_complet(
         &uq,
-        body.get("credential_id").and_then(|v| v.as_str()).unwrap_or(""),
+        body.get("credential_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
     );
 
-    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
     let account_info = idx.get_account(&uq);
 
     // ====================
@@ -560,36 +560,5 @@ pub async fn secure_forgot_password(body: web::Json<serde_json::Value>) -> HttpR
     HttpResponse::Ok().json(json!({
         "status": "success",
         "message": "Si ce compte existe, vous recevrez un email."
-    }))
-}
-
-
-
-
-
-
-
-
-// DEBUG BETA — verifie la resolution d'un UQ sans connexion.
-pub async fn debug_account_check(body: web::Json<serde_json::Value>) -> HttpResponse {
-    let uq = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-    if uq.is_empty() { return bad_data(); }
-
-    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
-    let account = idx.get_account(&uq);
-    let exists = account.is_some();
-    let is_owner = account.as_ref()
-        .and_then(|a| a.get("is_owner").and_then(|v| v.as_bool()))
-        .unwrap_or(false);
-
-    let config = crate::application::login_service::get_login_config(&uq).ok();
-
-    HttpResponse::Ok().json(json!({
-        "uq": uq,
-        "exists_in_index": exists,
-        "is_owner": is_owner,
-        "login_config_ok": config.is_some(),
-        "is_owner_config": config.as_ref().map(|c| c.is_owner),
-        "firestore_env": std::env::var("FIREBASE_SA_CLIENT_EMAIL").is_ok(),
     }))
 }

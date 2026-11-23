@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 🌊 BLOCKORB — Disque dur en u128
 // ====================
 //
@@ -12,17 +12,15 @@
 //
 // ====================
 
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 use crate::montant::{MontantBorb, CAPACITE_TOTALE, FEMTO_PAR_BORB};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Placeholders historiques qui ne sont PAS un cadenas structurel.
 pub const CADENAS_PLACEHOLDER: &str = "NON_POSE";
 
 pub fn cadenas_credible(h: &str) -> bool {
-    !h.is_empty()
-        && h != CADENAS_PLACEHOLDER
-        && h != "DEVERROUILLE_AUTO_OWNER"
+    !h.is_empty() && h != CADENAS_PLACEHOLDER && h != "DEVERROUILLE_AUTO_OWNER"
 }
 
 // ====================
@@ -114,12 +112,12 @@ pub mod u128_map_string {
 // ===== LES 6 CASES (formes de l'eau) =====
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FormeEau {
-    Ocean,      // 💰 Trésor
-    Nuages,     // 💸 Frais
-    Rivieres,   // 🏆 Récompenses
-    Glaciers,   // ❄️ Épargne
-    Nappes,     // 💳 Crédit
-    Vapeur,     // 🛡️ Bouclier
+    Ocean,    // 💰 Trésor
+    Nuages,   // 💸 Frais
+    Rivieres, // 🏆 Récompenses
+    Glaciers, // ❄️ Épargne
+    Nappes,   // 💳 Crédit
+    Vapeur,   // 🛡️ Bouclier
 }
 
 impl FormeEau {
@@ -190,7 +188,6 @@ pub struct Portefeuille {
     // ====================
     // 🆕 TRAÇABILITÉ BORB
     // ====================
-
     /// ⏰ Horloge interne du BORB
     #[serde(default)]
     pub internal_clock: i64,
@@ -281,7 +278,10 @@ impl Portefeuille {
 
     /// Cadenas structurel présent et crédible (jamais un placeholder).
     pub fn porte_cadenas(&self) -> bool {
-        self.cadenas.as_deref().map(cadenas_credible).unwrap_or(false)
+        self.cadenas
+            .as_deref()
+            .map(cadenas_credible)
+            .unwrap_or(false)
     }
 
     pub fn geler(&mut self, details: String) {
@@ -333,12 +333,12 @@ impl BlockOrb {
         let ubi_enveloppe = 10_000_000u128 * FEMTO_PAR_BORB;
 
         // Repartition initiale (Tresor reduit de 10M)
-        cases[0] = 31_110_000_000 * FEMTO_PAR_BORB;  // Tresor
-        cases[1] = 2_240_000_000 * FEMTO_PAR_BORB;   // Frais
-        cases[2] = 2_240_000_000 * FEMTO_PAR_BORB;   // Recompenses
-        cases[3] = 2_240_000_000 * FEMTO_PAR_BORB;   // Epargne
-        cases[4] = 1_320_000_000 * FEMTO_PAR_BORB;   // Credit
-        cases[5] = 840_000_000 * FEMTO_PAR_BORB;     // Bouclier
+        cases[0] = 31_110_000_000 * FEMTO_PAR_BORB; // Tresor
+        cases[1] = 2_240_000_000 * FEMTO_PAR_BORB; // Frais
+        cases[2] = 2_240_000_000 * FEMTO_PAR_BORB; // Recompenses
+        cases[3] = 2_240_000_000 * FEMTO_PAR_BORB; // Epargne
+        cases[4] = 1_320_000_000 * FEMTO_PAR_BORB; // Credit
+        cases[5] = 840_000_000 * FEMTO_PAR_BORB; // Bouclier
 
         Self {
             cases,
@@ -397,7 +397,7 @@ impl BlockOrb {
         self.block_number += 1;
         self.last_block_at = chrono::Utc::now().timestamp();
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(self.block_number.to_le_bytes());
         hasher.update(self.last_block_at.to_le_bytes());
@@ -410,19 +410,19 @@ impl BlockOrb {
     /// crédible (posé à la création, jamais un placeholder) ?
     /// C'est LE porteur : sans lui, aucun BORB n'entre.
     pub fn porte_cadenas(&self, uq_number: &str) -> bool {
-        self.comptes.get(uq_number).map(|p| p.porte_cadenas()).unwrap_or(false)
+        self.comptes
+            .get(uq_number)
+            .map(|p| p.porte_cadenas())
+            .unwrap_or(false)
     }
 
     /// Traite une transaction (u128 = ultra rapide).
     /// Règle BlockOrb : un transfert ne crée JAMAIS de portefeuille et
     /// n'entre dans aucun compte sans cadenas structurel.
-    pub fn traiter(
-        &mut self,
-        from: &str,
-        to: &str,
-        montant: MontantBorb,
-    ) -> Result<(), String> {
-        let p_from = self.comptes.get(from)
+    pub fn traiter(&mut self, from: &str, to: &str, montant: MontantBorb) -> Result<(), String> {
+        let p_from = self
+            .comptes
+            .get(from)
             .ok_or_else(|| format!("CADENAS_REQUIS: compte {from} absent du BlockOrb"))?;
         if p_from.alerte_piratage {
             return Err(format!("Compte {from} gele (alerte piratage)"));
@@ -439,7 +439,9 @@ impl BlockOrb {
             ));
         }
 
-        let p_to = self.comptes.get(to)
+        let p_to = self
+            .comptes
+            .get(to)
             .ok_or_else(|| format!("CADENAS_REQUIS: compte {to} absent du BlockOrb"))?;
         if !p_to.porte_cadenas() {
             return Err(format!(
@@ -506,7 +508,12 @@ impl BlockOrb {
     /// Crée un nouveau compte **en prélevant du Trésor** (jamais en créant
     /// de la valeur). Le cadenas structurel est exigé dès la création :
     /// sans identifiants personnels hashés, pas de compte, pas de BORB.
-    pub fn creer_compte(&mut self, uq_number: &str, solde_initial: u128, cadenas: &str) -> Result<(), String> {
+    pub fn creer_compte(
+        &mut self,
+        uq_number: &str,
+        solde_initial: u128,
+        cadenas: &str,
+    ) -> Result<(), String> {
         if self.comptes.contains_key(uq_number) {
             return Ok(());
         }
@@ -544,7 +551,8 @@ impl BlockOrb {
             ));
         }
         let solde = self.comptes_cadeaux.get(uq_number).copied().unwrap_or(0);
-        self.comptes_cadeaux.insert(uq_number.to_string(), solde + montant);
+        self.comptes_cadeaux
+            .insert(uq_number.to_string(), solde + montant);
 
         if !self.verifier() {
             self.comptes_cadeaux.insert(uq_number.to_string(), solde);
@@ -563,18 +571,24 @@ impl BlockOrb {
     pub fn traiter_cadeau(&mut self, from: &str, to: &str, montant: u128) -> Result<(), String> {
         if !self.porte_cadenas(to) {
             return Err(format!(
-                "CADENAS_REQUIS: cadeau vers {} refuse (compte absent ou sans cadenas)", to
+                "CADENAS_REQUIS: cadeau vers {} refuse (compte absent ou sans cadenas)",
+                to
             ));
         }
         let solde_from = self.comptes_cadeaux.get(from).copied().unwrap_or(0);
         if solde_from < montant {
-            return Err(format!("Solde cadeaux insuffisant: {} < {}", solde_from, montant));
+            return Err(format!(
+                "Solde cadeaux insuffisant: {} < {}",
+                solde_from, montant
+            ));
         }
 
         let solde_to = self.comptes_cadeaux.get(to).copied().unwrap_or(0);
 
-        self.comptes_cadeaux.insert(from.to_string(), solde_from - montant);
-        self.comptes_cadeaux.insert(to.to_string(), solde_to + montant);
+        self.comptes_cadeaux
+            .insert(from.to_string(), solde_from - montant);
+        self.comptes_cadeaux
+            .insert(to.to_string(), solde_to + montant);
 
         if !self.verifier() {
             self.comptes_cadeaux.insert(from.to_string(), solde_from);
@@ -594,7 +608,9 @@ impl BlockOrb {
 
     /// Set solde d'un compte — n'invente jamais de portefeuille.
     pub fn set_solde(&mut self, uq_number: &str, solde: u128) -> Result<(), String> {
-        let p = self.comptes.get_mut(uq_number)
+        let p = self
+            .comptes
+            .get_mut(uq_number)
             .ok_or_else(|| format!("Compte {} absent du BlockOrb", uq_number))?;
         p.solde = solde;
         Ok(())
@@ -602,17 +618,24 @@ impl BlockOrb {
 
     /// Ajouter a un compte — entrée de BORB : cadenas structurel exigé.
     pub fn ajouter_solde(&mut self, uq_number: &str, montant: u128) -> Result<(), String> {
-        let p = self.comptes.get_mut(uq_number)
+        let p = self
+            .comptes
+            .get_mut(uq_number)
             .ok_or_else(|| format!("CADENAS_REQUIS: compte {} absent du BlockOrb", uq_number))?;
         if !p.porte_cadenas() {
-            return Err(format!("CADENAS_REQUIS: {} sans cadenas structurel", uq_number));
+            return Err(format!(
+                "CADENAS_REQUIS: {} sans cadenas structurel",
+                uq_number
+            ));
         }
         p.ajouter(montant)
     }
 
     /// Retirer d'un compte
     pub fn retirer_solde(&mut self, uq_number: &str, montant: u128) -> Result<(), String> {
-        let p = self.comptes.get_mut(uq_number)
+        let p = self
+            .comptes
+            .get_mut(uq_number)
             .ok_or("Compte introuvable")?;
         p.retirer(montant)
     }
@@ -643,8 +666,10 @@ mod tests {
 
     fn orb_avec_comptes() -> BlockOrb {
         let mut orb = BlockOrb::new();
-        orb.creer_compte("UQ-A", 1000 * FEMTO_PAR_BORB, "AAAA-BBBB-CCCC-DDDD").unwrap();
-        orb.creer_compte("UQ-B", 500 * FEMTO_PAR_BORB, "EEEE-FFFF-0000-1111").unwrap();
+        orb.creer_compte("UQ-A", 1000 * FEMTO_PAR_BORB, "AAAA-BBBB-CCCC-DDDD")
+            .unwrap();
+        orb.creer_compte("UQ-B", 500 * FEMTO_PAR_BORB, "EEEE-FFFF-0000-1111")
+            .unwrap();
         orb
     }
 
@@ -678,14 +703,23 @@ mod tests {
         // Compte tracé avec solde légitime (prélevé du Trésor) mais dont le
         // cadenas disparaît : plus rien ne doit pouvoir y entrer.
         orb.creer_compte("UQ-C", 0, "").unwrap_err();
-        orb.creer_compte("UQ-D", 10 * FEMTO_PAR_BORB, "9999-8888-7777-6666").unwrap();
+        orb.creer_compte("UQ-D", 10 * FEMTO_PAR_BORB, "9999-8888-7777-6666")
+            .unwrap();
         orb.comptes.get_mut("UQ-D").unwrap().cadenas = None;
 
-        assert!(orb.traiter("UQ-D", "UQ-A", MontantBorb::from_borb(1)).is_err(),
-            "sortie sans cadenas refusee");
-        assert!(orb.traiter("UQ-A", "UQ-D", MontantBorb::from_borb(1)).is_err(),
-            "entree sans cadenas refusee");
-        assert!(orb.traiter("UQ-A", "UQ-B", MontantBorb::from_borb(1)).is_ok());
+        assert!(
+            orb.traiter("UQ-D", "UQ-A", MontantBorb::from_borb(1))
+                .is_err(),
+            "sortie sans cadenas refusee"
+        );
+        assert!(
+            orb.traiter("UQ-A", "UQ-D", MontantBorb::from_borb(1))
+                .is_err(),
+            "entree sans cadenas refusee"
+        );
+        assert!(orb
+            .traiter("UQ-A", "UQ-B", MontantBorb::from_borb(1))
+            .is_ok());
 
         assert!(orb.ajouter_solde("UQ-D", FEMTO_PAR_BORB).is_err());
         assert!(orb.crediter_cadeau("UQ-D", FEMTO_PAR_BORB).is_err());
@@ -700,7 +734,9 @@ mod tests {
         let mut orb = BlockOrb::new();
         assert!(orb.creer_compte("UQ-X", 100, "").is_err());
         assert!(orb.creer_compte("UQ-X", 100, "NON_POSE").is_err());
-        assert!(orb.creer_compte("UQ-X", 100, "DEVERROUILLE_AUTO_OWNER").is_err());
+        assert!(orb
+            .creer_compte("UQ-X", 100, "DEVERROUILLE_AUTO_OWNER")
+            .is_err());
         assert!(orb.creer_compte("UQ-X", 100, "1234-ABCD-5678-EF01").is_ok());
     }
 
@@ -708,16 +744,27 @@ mod tests {
     fn creer_compte_ne_cree_jamais_de_valeur() {
         let mut orb = BlockOrb::new();
         let total_avant = orb.total();
-        orb.creer_compte("UQ-A", 1000 * FEMTO_PAR_BORB, "AAAA-BBBB-CCCC-DDDD").unwrap();
-        assert_eq!(orb.total(), total_avant, "la creation de compte preleve du Tresor, ne mint pas");
-        assert_eq!(orb.cases[0], 31_110_000_000 * FEMTO_PAR_BORB - 1000 * FEMTO_PAR_BORB);
+        orb.creer_compte("UQ-A", 1000 * FEMTO_PAR_BORB, "AAAA-BBBB-CCCC-DDDD")
+            .unwrap();
+        assert_eq!(
+            orb.total(),
+            total_avant,
+            "la creation de compte preleve du Tresor, ne mint pas"
+        );
+        assert_eq!(
+            orb.cases[0],
+            31_110_000_000 * FEMTO_PAR_BORB - 1000 * FEMTO_PAR_BORB
+        );
     }
 
     #[test]
     fn verifier_refuse_un_trou_d_un_borb() {
         let mut orb = BlockOrb::new();
         orb.cases[0] -= 1_000_000_000_000_000_000; // 1 BORB d'evaporation
-        assert!(!orb.verifier(), "la tolerance doit etre bien plus petite qu'un BORB");
+        assert!(
+            !orb.verifier(),
+            "la tolerance doit etre bien plus petite qu'un BORB"
+        );
     }
 
     #[test]

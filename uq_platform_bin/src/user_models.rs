@@ -1,4 +1,4 @@
-﻿use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Présence en ligne maximale d'une vitrine sans renouvellement (7 jours).
 pub const DUREE_VITRINE_SECONDES: i64 = 7 * 86_400;
@@ -348,9 +348,19 @@ pub struct DashboardStats {
 }
 
 impl Shop {
-    pub fn new(owner: &str, name: &str, description: &str, category: &str, lat: f64, lon: f64) -> Self {
+    pub fn new(
+        owner: &str,
+        name: &str,
+        description: &str,
+        category: &str,
+        lat: f64,
+        lon: f64,
+    ) -> Self {
         Self {
-            id: format!("shop_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+            id: format!(
+                "shop_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ),
             owner: owner.to_string(),
             name: name.to_string(),
             description: description.to_string(),
@@ -407,7 +417,9 @@ impl Shop {
         if !self.robinet || !self.est_en_ligne(maintenant) {
             return 0;
         }
-        let ecoulee = (maintenant - self.dernier_reglement).max(0).min(RATTRAPAGE_MAX_SECONDES);
+        let ecoulee = (maintenant - self.dernier_reglement)
+            .max(0)
+            .min(RATTRAPAGE_MAX_SECONDES);
         // On ne facture pas la présence qui n'a pas encore eu lieu.
         if self.en_ligne_jusqu_a > 0 {
             ecoulee.min((self.en_ligne_jusqu_a - maintenant).max(0))
@@ -420,7 +432,10 @@ impl Shop {
 impl Product {
     pub fn new(shop_id: &str, name: &str, price_points: u64, stock: u64) -> Self {
         Self {
-            id: format!("prod_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+            id: format!(
+                "prod_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ),
             shop_id: shop_id.to_string(),
             name: name.to_string(),
             description: String::new(),
@@ -437,9 +452,8 @@ pub fn calculate_distance_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 
     let earth_radius_km = 6371.0;
     let dlat = (lat2 - lat1).to_radians();
     let dlon = (lon2 - lon1).to_radians();
-    let a = (dlat / 2.0).sin().powi(2) 
+    let a = (dlat / 2.0).sin().powi(2)
         + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
     earth_radius_km * c
 }
-

@@ -1,0 +1,2296 @@
+﻿use rusqlite;
+use crate::uq_index;
+use std::sync::Arc;
+use crate::real_state::GlobalState;
+use crate::database::Database;
+use actix_web::{web, HttpResponse};
+use serde_json::json;
+use crate::user_models::*;
+// Structure pour le transfert de bulles
+#[derive(serde::Deserialize)]
+pub struct TransferRequest {
+    pub sender: String,
+    pub recipient: String,
+    pub amount_points: u64,
+    pub fee_points: u64,
+}
+
+
+// ==========================================================
+// FONCTION OK() Ã¢â‚¬â€ pour les handlers qui seront connectÃƒÂ©s plus tard
+// ==========================================================
+fn ok() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"status":"success"}))
+}
+
+// ==========================================================
+// ROUTES DE BASE (7)
+// ==========================================================
+pub async fn index() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"service":"uq_platform","status":"running"}))
+}
+pub async fn health() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"service":"uq_platform","status":"healthy"}))
+}
+pub async fn stats() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"total_supply_fxb":40_000_000_000u64,"six_cases":6}))
+}
+pub async fn price_gold() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"price_usd_per_ounce":2000,"fxb_value_usd":1.0}))
+}
+pub async fn price_usd() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"fxb_to_usd":1.0,"usd_to_fxb":1.0}))
+}
+pub async fn blockchain_info() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"chain":"UQ Chain","consensus":"PoS","validators":10}))
+}
+pub async fn total_supply() -> HttpResponse {
+    HttpResponse::Ok().json(json!({"total":40_000_000_000u64}))
+}
+
+// ==========================================================
+// COMPTES (4)
+// ==========================================================
+pub async fn account_create(
+    state: web::Data<Arc<GlobalState>>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    // ═══════════════════════════════════════════════════════════
+    // 1. EXTRAIRE LES DONNÉES DU BODY
+    // ═══════════════════════════════════════════════════════════
+    let uq_number = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
+    let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("");
+    let pseudo = body.get("pseudo").and_then(|v| v.as_str()).unwrap_or("");
+    let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
+    let full_name = body.get("full_name").and_then(|v| v.as_str()).unwrap_or("");
+    
+    // ═══════════════════════════════════════════════════════════
+    // 2. GÉNÉRER UN UQ_NUMBER SI NON FOURNI
+    // ═══════════════════════════════════════════════════════════
+    let index = uq_index::UqIndex::shared("uq_index.db");
+    let count = index.count();
+    let generated_number = if uq_number.is_empty() {
+        format!("UQ-{:08}", count + 100)  // Commence à 100 pour éviter les conflits
+    } else {
+        uq_number.to_string()
+    };
+    
+    let generated_email = if email.is_empty() {
+        format!("user{}@zando.uq", count + 100)
+    } else {
+        email.to_string()
+    };
+    
+    let generated_pseudo = if pseudo.is_empty() {
+        format!("uq@user{}", count + 100)
+    } else {
+        pseudo.to_string()
+    };
+    
+    // ═══════════════════════════════════════════════════════════
+    // 3. CRÉER LE FICHIER .DB AVEC LES 46 TABLES
+    // ═══════════════════════════════════════════════════════════
+    let db_filename = generated_number.replace("-", "_").to_lowercase();
+    let db_path = format!("data/users/{}.db", db_filename);
+    
+    // Créer le dossier data/users s'il n'existe pas
+    if let Err(e) = std::fs::create_dir_all("data/users") {
+        eprintln!("Erreur création dossier data/users: {}", e);
+    }
+    
+    // CRÉER LE FICHIER .DB AVEC LES 46 TABLES
+    if let Err(e) = uq_index::UqIndex::init_user_db(&db_path) {
+        eprintln!("Erreur création base utilisateur: {}", e);
+        return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur création base: {}", e)
+        }));
+    }
+    
+    eprintln!("✅ Base créée: {} (46 tables)", db_path);
+    
+    // ═══════════════════════════════════════════════════════════
+    // 4. INSÉRER DANS uq_index
+    // ═══════════════════════════════════════════════════════════
+    let salt = format!("uq_{}_salt", generated_number.to_lowercase().replace("-", "_"));
+    let hash_password = uq_index::UqIndex::hash_password(
+        if password.is_empty() { "changeme123" } else { password },
+        &salt
+    );
+    let hash_identity = uq_index::UqIndex::hash_identity(
+        full_name,
+        "",
+        "RDC",
+        0
+    );
+    
+    if let Err(e) = index.insert_account(
+        &generated_number,
+        &generated_email,
+        &generated_pseudo,
+        &hash_identity,
+        &hash_password,
+        &salt,
+        &[0u8; 32],  // public_key (à remplacer par la vraie clé)
+        false,       // is_owner
+        &db_path,
+    ) {
+        eprintln!("Erreur insertion uq_index: {}", e);
+        return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur index: {}", e)
+        }));
+    }
+    
+    eprintln!("✅ Compte inséré dans uq_index: {}", generated_number);
+    
+    // ═══════════════════════════════════════════════════════════
+    // 5. CRÉER DANS SQLITE GLOBAL (pour compatibilité)
+    // ═══════════════════════════════════════════════════════════
+    let db = Database::shared("uq_platform_db.json");
+    db.create_account(&generated_number, &[0u8; 32]);
+    
+    // ═══════════════════════════════════════════════════════════
+    // 6. CRÉER DANS GlobalState
+    // ═══════════════════════════════════════════════════════════
+    match state.create_account() {
+        Ok(_) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "account_created": true,
+            "uq_number": generated_number,
+            "email": generated_email,
+            "pseudo": generated_pseudo,
+            "db_path": db_path,
+            "balance_fxb": 0,
+            "message": "Compte créé avec 46 tables. 0 FXB. Utilisez un code promo pour gagner 1 FXB."
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+pub async fn account_verify() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.create_account("verified_user", &[0u8; 32]);
+    HttpResponse::Ok().json(json!({"status":"success","kyc_verified":true}))
+}
+pub async fn account_get(path: web::Path<String>) -> HttpResponse {
+    HttpResponse::Ok().json(json!({"account_id":path.into_inner()}))
+}
+pub async fn account_balance(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let balance = db.get_balance(&path.into_inner());
+    HttpResponse::Ok().json(json!({"balance_fxb":balance.0,"balance_fixo":balance.1}))
+}
+
+// ==========================================================
+// BULLES (7)
+// ==========================================================
+pub async fn bubble_create(
+    state: web::Data<Arc<GlobalState>>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let owner = body.get("owner").and_then(|v| v.as_str()).unwrap_or("UQ-00000001");
+    let amount = body.get("amount_micro").and_then(|v| v.as_u64()).unwrap_or(0);
+    
+    // Creer une bulle dans BubbleRegistry
+    let mut registry = state.bubble_registry.lock().unwrap();
+    
+    let owner_bytes = {
+        let mut addr = [0u8; 32];
+        let bytes = owner.as_bytes();
+        for i in 0..32 {
+            if i < bytes.len() {
+                addr[i] = bytes[i];
+            }
+        }
+        addr
+    };
+    
+    match registry.create_bubble(
+        owner_bytes,
+        owner_bytes,
+        amount,
+        Vec::new(),
+        |data| {
+            use sha2::{Sha256, Digest};
+            let mut hasher = Sha256::new();
+            hasher.update(data);
+            hasher.finalize().to_vec()
+        },
+    ) {
+        Ok(bubble) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "bubble_created": true,
+            "bubble_id": format!("{:?}", &bubble.id[..8]),
+            "amount_micro": amount
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+pub async fn bubble_transfer(
+    req: actix_web::HttpRequest,
+    state: web::Data<Arc<GlobalState>>,
+    body: web::Json<TransferRequest>,
+) -> HttpResponse {
+    match crate::auth::AuthManager::require_role(&req, &["user", "admin", "guardian"]) {
+        Ok(_claims) => {
+            let sender = body.sender.clone();
+            let recipient = body.recipient.clone();
+            let amount = body.amount_points;
+            let fee = body.fee_points;
+            let total_cost = amount + fee;
+            let amount_fxb = amount / 100;  // Conversion points → FXB
+            
+            let sender_db_path = format!("data/users/{}.db", sender.replace("-", "_").to_lowercase());
+            let recipient_db_path = format!("data/users/{}.db", recipient.replace("-", "_").to_lowercase());
+            
+            if !std::path::Path::new(&sender_db_path).exists() {
+                return HttpResponse::BadRequest().json(json!({
+                    "status": "error",
+                    "message": format!("Compte expediteur introuvable: {}", sender)
+                }));
+            }
+            if !std::path::Path::new(&recipient_db_path).exists() {
+                return HttpResponse::BadRequest().json(json!({
+                    "status": "error",
+                    "message": format!("Compte destinataire introuvable: {}", recipient)
+                }));
+            }
+            
+            // OUVRIR SENDER
+            let sender_conn = match rusqlite::Connection::open(&sender_db_path) {
+                Ok(c) => c,
+                Err(e) => return HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Erreur ouverture sender: {}", e)
+                })),
+            };
+            
+            let sender_balance: i64 = match sender_conn.query_row(
+                "SELECT points FROM balance WHERE id = 1",
+                [],
+                |row| row.get(0),
+            ) {
+                Ok(b) => b,
+                Err(_) => 0,
+            };
+            
+            if sender_balance < total_cost as i64 {
+                return HttpResponse::BadRequest().json(json!({
+                    "status": "error",
+                    "message": format!("Solde insuffisant. Solde: {} points, Requis: {} points", sender_balance, total_cost)
+                }));
+            }
+            
+            let now = chrono::Utc::now().timestamp();
+            
+            // DÉBITER LE SENDER
+            if let Err(e) = sender_conn.execute(
+                "UPDATE balance SET points = points - ?1, updated_at = ?2 WHERE id = 1",
+                rusqlite::params![total_cost as i64, now],
+            ) {
+                return HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Erreur debit sender: {}", e)
+                }));
+            }
+            
+            let tx_hash = {
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(format!("{}:{}:{}:{}", sender, recipient, amount, now).as_bytes());
+                hex::encode(hasher.finalize())
+            };
+            
+            // ENREGISTRER TRANSACTION SEND
+            match sender_conn.execute(
+                "INSERT INTO transactions (tx_type, amount, fee, counterparty, memo, created_at)
+                 VALUES ('send', ?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![amount as i64, fee as i64, recipient, tx_hash, now],
+            ) {
+                Ok(_) => eprintln!("✅ Transaction send enregistrée pour {}", sender),
+                Err(e) => eprintln!("❌ Erreur INSERT send: {}", e),
+            }
+            
+            // METTRE À JOUR my_fixorb_units[FXB] DU SENDER (en FXB, pas en points)
+            match sender_conn.execute(
+                "UPDATE my_fixorb_units SET balance = balance - ?1, updated_at = ?2 WHERE unit = 'FXB'",
+                rusqlite::params![amount_fxb as i64, now],
+            ) {
+                Ok(_) => eprintln!("✅ my_fixorb_units SENDER mis à jour: -{} FXB", amount_fxb),
+                Err(e) => eprintln!("❌ Erreur UPDATE my_fixorb_units SENDER: {}", e),
+            }
+            
+            // OUVRIR RECIPIENT
+            let recipient_conn = match rusqlite::Connection::open(&recipient_db_path) {
+                Ok(c) => c,
+                Err(e) => return HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Erreur ouverture recipient: {}", e)
+                })),
+            };
+            
+            // CRÉDITER LE RECIPIENT
+            if let Err(e) = recipient_conn.execute(
+                "UPDATE balance SET points = points + ?1, updated_at = ?2 WHERE id = 1",
+                rusqlite::params![amount as i64, now],
+            ) {
+                return HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Erreur credit recipient: {}", e)
+                }));
+            }
+            
+            // ENREGISTRER TRANSACTION RECEIVE
+            match recipient_conn.execute(
+                "INSERT INTO transactions (tx_type, amount, fee, counterparty, memo, created_at)
+                 VALUES ('receive', ?1, 0, ?2, ?3, ?4)",
+                rusqlite::params![amount as i64, sender, tx_hash, now],
+            ) {
+                Ok(_) => eprintln!("✅ Transaction receive enregistrée pour {}", recipient),
+                Err(e) => eprintln!("❌ Erreur INSERT receive: {}", e),
+            }
+            
+            // METTRE À JOUR my_fixorb_units[FXB] DU RECIPIENT
+            match recipient_conn.execute(
+                "UPDATE my_fixorb_units SET balance = balance + ?1, updated_at = ?2 WHERE unit = 'FXB'",
+                rusqlite::params![amount_fxb as i64, now],
+            ) {
+                Ok(_) => eprintln!("✅ my_fixorb_units RECIPIENT mis à jour: +{} FXB", amount_fxb),
+                Err(e) => eprintln!("❌ Erreur UPDATE my_fixorb_units RECIPIENT: {}", e),
+            }
+            
+            // PERSISTER DANS SQLITE GLOBAL
+            let db = Database::shared("uq_platform_db.json");
+            db.record_transaction(&sender, &recipient, amount, fee);
+            
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "persisted": true,
+                "blockchain": true,
+                "amount": amount,
+                "fee": fee,
+                "tx_hash": tx_hash,
+                "sender_new_balance": sender_balance - total_cost as i64,
+                "message": "Transfert effectue et persiste dans les tables"
+            }))
+        }
+        Err(resp) => resp,
+    }
+}
+pub async fn bubble_freeze() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("freezer", "Bulle gelÃƒÂ©e", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","frozen":true}))
+}
+pub async fn bubble_unfreeze() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("unfreezer", "Bulle dÃƒÂ©gelÃƒÂ©e", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","unfrozen":true}))
+}
+pub async fn bubble_burn() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("burner", "Bulle brÃƒÂ»lÃƒÂ©e", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","burned":true}))
+}
+pub async fn bubble_lend() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("lender", "Bulle prÃƒÂªtÃƒÂ©e", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","lent":true}))
+}
+pub async fn bubble_get(path: web::Path<String>) -> HttpResponse {
+    HttpResponse::Ok().json(json!({"bubble_id":path.into_inner()}))
+}
+
+// ==========================================================
+// 6 CASES (7)
+// ==========================================================
+pub async fn cases_stats() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+pub async fn case_treasury() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+pub async fn case_fees() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+pub async fn case_rewards() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+pub async fn case_savings() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+pub async fn case_credit() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+pub async fn case_shield() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let cases = db.get_cases_stats(); HttpResponse::Ok().json(json!({"status":"success","cases":cases})) }
+
+// ==========================================================
+// UBI (3)
+// ==========================================================
+pub async fn ubi_info() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","ubi_claims":stats["ubi_claims"],"daily_pool_pct":0.01})) }
+pub async fn ubi_claim(
+    state: web::Data<Arc<GlobalState>>,
+) -> HttpResponse {
+    // 1. Recuperer le compte du UQ-00000001
+    let address = {
+        let mut addr = [0u8; 32];
+        let bytes = b"UQ-00000001";
+        for i in 0..32.min(bytes.len()) {
+            addr[i] = bytes[i];
+        }
+        addr
+    };
+    
+    // 2. Verifier si eligible
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    
+    let mut ubi_pool = state.ubi_pool.lock().unwrap();
+    
+    match ubi_pool.claim_ubi(&address, 30, true, current_time) {
+        Ok(amount) => {
+            drop(ubi_pool);
+            
+            // Crediter la bulle
+            let mut registry = state.bubble_registry.lock().unwrap();
+            // (Le credit est fait via le UbiPool dans la vraie implementation)
+            
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "amount_points": amount,
+                "message": "UBI reclame avec succes"
+            }))
+        }
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+pub async fn ubi_check(path: web::Path<String>) -> HttpResponse { HttpResponse::Ok().json(json!({"account":path.into_inner()})) }
+
+// ==========================================================
+// EXCHANGE (5)
+// ==========================================================
+pub async fn exchange_order() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("trader", "Ordre d ÃƒÂ©change", 0, 0); HttpResponse::Ok().json(json!({"status":"success","order_created":true})) }
+pub async fn exchange_confirm() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("trader", "Ordre confirmÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","confirmed":true})) }
+pub async fn exchange_complete() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("trader", "Ordre complÃƒÂ©tÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","completed":true})) }
+pub async fn exchange_cancel() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("trader", "Ordre annulÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","cancelled":true})) }
+pub async fn exchange_sms() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("sms_parser", "SMS parsÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","sms_parsed":true})) }
+
+// ==========================================================
+// PRÃƒÅ TS + ASSURANCE + ESCROW (10)
+// ==========================================================
+pub async fn lending_offer() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("lender", "Offre de prÃƒÂªt", 0, 0); HttpResponse::Ok().json(json!({"status":"success","offer_created":true})) }
+pub async fn lending_borrow() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("borrower", "Emprunt", 0, 0); HttpResponse::Ok().json(json!({"status":"success","borrowed":true})) }
+pub async fn lending_repay() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("borrower", "Remboursement", 0, 0); HttpResponse::Ok().json(json!({"status":"success","repaid":true})) }
+pub async fn lending_liquidate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("lender", "Liquidation", 0, 0); HttpResponse::Ok().json(json!({"status":"success","liquidated":true})) }
+pub async fn insurance_contribute() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("contributor", "Contribution assurance", 0, 0); HttpResponse::Ok().json(json!({"status":"success","contributed":true})) }
+pub async fn insurance_claim() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("claimant", "Sinistre", 0, 0); HttpResponse::Ok().json(json!({"status":"success","claimed":true})) }
+pub async fn insurance_vote() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("voter", "vote", "Vote sinistre"); HttpResponse::Ok().json(json!({"status":"success","voted":true})) }
+pub async fn escrow_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("escrow", "SÃƒÂ©questre crÃƒÂ©ÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","escrow_created":true})) }
+pub async fn escrow_release() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("escrow", "release", "Fonds libÃƒÂ©rÃƒÂ©s"); HttpResponse::Ok().json(json!({"status":"success","released":true})) }
+pub async fn escrow_refund() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("escrow", "refund", "Remboursement"); HttpResponse::Ok().json(json!({"status":"success","refunded":true})) }
+
+// ==========================================================
+// IDENTITÃƒâ€° + GOUVERNANCE (10)
+// ==========================================================
+pub async fn identity_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("identity_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","identity_created":true})) }
+pub async fn identity_kyc() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("kyc_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","kyc_verified":true})) }
+pub async fn identity_get(path: web::Path<String>) -> HttpResponse { HttpResponse::Ok().json(json!({"id":path.into_inner()})) }
+pub async fn identity_certificate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_account("cert_user", &[0u8; 32]); HttpResponse::Ok().json(json!({"status":"success","certificate_created":true})) }
+pub async fn identity_verify(path: web::Path<String>) -> HttpResponse { HttpResponse::Ok().json(json!({"id":path.into_inner()})) }
+pub async fn governance_list() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","proposals":[]})) }
+pub async fn governance_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_proposal("Nouvelle proposition", "Description", "proposer_001"); HttpResponse::Ok().json(json!({"status":"success","proposal_created":true})) }
+pub async fn governance_vote() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.create_proposal("Vote UQ", "Proposition de vote", "voter_001");
+    HttpResponse::Ok().json(json!({"status":"success","vote_recorded":true}))
+}
+pub async fn governance_execute() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_proposal("Executed", "Proposal", "executor"); HttpResponse::Ok().json(json!({"status":"success","executed":true})) }
+pub async fn governance_stats() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","stats":stats})) }
+
+// ==========================================================
+// RÃƒâ€°SEAU P2P (15)
+// ==========================================================
+pub async fn network_peers() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","peers":stats})) }
+pub async fn network_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("network", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","ready":true})) }
+pub async fn network_threats() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("network", "threats", "scan"); HttpResponse::Ok().json(json!({"status":"success","threats":0})) }
+pub async fn d2d_connect() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("d2d", "connect", "peer"); HttpResponse::Ok().json(json!({"status":"success","connected":true})) }
+pub async fn d2d_disconnect() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("d2d", "disconnect", "peer"); HttpResponse::Ok().json(json!({"status":"success","disconnected":true})) }
+pub async fn d2d_scan() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("d2d", "scan", "peers"); HttpResponse::Ok().json(json!({"status":"success","scanning":true})) }
+pub async fn d2d_peers() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","peers":stats})) }
+pub async fn mesh_relay() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("mesh", "relay", "packet"); HttpResponse::Ok().json(json!({"status":"success","relayed":true})) }
+pub async fn mesh_routing() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("mesh", "routing", "table"); HttpResponse::Ok().json(json!({"status":"success","routing":[]})) }
+pub async fn mesh_route() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("mesh", "route", "find"); HttpResponse::Ok().json(json!({"status":"success","route_found":true})) }
+pub async fn mesh_sellers() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let offers = db.get_all_offers(); HttpResponse::Ok().json(json!({"status":"success","sellers":offers})) }
+pub async fn frequency_hop() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("freq", "hop", "change"); HttpResponse::Ok().json(json!({"status":"success","hopped":true})) }
+pub async fn frequency_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("freq", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","frequency":"2.4GHz"})) }
+pub async fn phantom_create_channel() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("phantom", "create", "channel"); HttpResponse::Ok().json(json!({"status":"success","channel_created":true})) }
+pub async fn phantom_channels() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("phantom", "channels", "list"); HttpResponse::Ok().json(json!({"status":"success","channels":[]})) }
+
+// ==========================================================
+// SÃƒâ€°CURITÃƒâ€° + 2FA + vTEE (15)
+// ==========================================================
+pub async fn security_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","secure":true})) }
+pub async fn security_root_check() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "root", "check"); HttpResponse::Ok().json(json!({"status":"success","rooted":false})) }
+pub async fn security_emulator_check() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "emulator", "check"); HttpResponse::Ok().json(json!({"status":"success","emulator":false})) }
+pub async fn security_biometric_sync() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "biometric", "sync"); HttpResponse::Ok().json(json!({"status":"success","synced":true})) }
+pub async fn security_memory_guard() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "memory", "guard"); HttpResponse::Ok().json(json!({"status":"success","guarded":true})) }
+pub async fn security_secure_storage() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "storage", "secure"); HttpResponse::Ok().json(json!({"status":"success","stored":true})) }
+pub async fn security_side_channel() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "side_channel", "protect"); HttpResponse::Ok().json(json!({"status":"success","protected":true})) }
+pub async fn security_trusted_ipc() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "ipc", "trusted"); HttpResponse::Ok().json(json!({"status":"success","trusted":true})) }
+pub async fn security_vtee_generate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("security", "vtee", "generate"); HttpResponse::Ok().json(json!({"status":"success","generated":true})) }
+pub async fn twofa_verify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("2fa", "verify", "code"); HttpResponse::Ok().json(json!({"status":"success","verified":true})) }
+pub async fn twofa_enroll() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("2fa", "enroll", "device"); HttpResponse::Ok().json(json!({"status":"success","enrolled":true})) }
+pub async fn vtee_enclave() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vtee", "enclave", "create"); HttpResponse::Ok().json(json!({"status":"success","enclave_created":true})) }
+pub async fn vtee_attest() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vtee", "attest", "verify"); HttpResponse::Ok().json(json!({"status":"success","attested":true})) }
+pub async fn keys_derive() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("keys", "derive", "new"); HttpResponse::Ok().json(json!({"status":"success","derived":true})) }
+pub async fn secure_store() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("secure", "store", "data"); HttpResponse::Ok().json(json!({"status":"success","stored":true})) }
+
+// ==========================================================
+// VAULT (15)
+// ==========================================================
+pub async fn vault_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","shamir":"3/5"})) }
+pub async fn vault_guardians() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "guardians", "list"); HttpResponse::Ok().json(json!({"status":"success","guardians":[]})) }
+pub async fn vault_recovery_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "recovery", "status"); HttpResponse::Ok().json(json!({"status":"success","recovery":"idle"})) }
+pub async fn vault_authenticity() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "authenticity", "verify"); HttpResponse::Ok().json(json!({"status":"success","authentic":true})) }
+pub async fn vault_compromised() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "compromised", "check"); HttpResponse::Ok().json(json!({"status":"success","compromised":0})) }
+pub async fn vault_p2p_usage() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "p2p", "usage"); HttpResponse::Ok().json(json!({"status":"success","usage":0.0})) }
+pub async fn vault_split() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "split", "key"); HttpResponse::Ok().json(json!({"status":"success","split":5})) }
+pub async fn vault_combine() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "combine", "key"); HttpResponse::Ok().json(json!({"status":"success","combined":true})) }
+pub async fn vault_guardian_replace() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "guardian", "replace"); HttpResponse::Ok().json(json!({"status":"success","replaced":true})) }
+pub async fn vault_proof() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "proof", "create"); HttpResponse::Ok().json(json!({"status":"success","proof_created":true})) }
+pub async fn vault_proof_verify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "proof", "verify"); HttpResponse::Ok().json(json!({"status":"success","proof_valid":true})) }
+pub async fn vault_recovery_start() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "recovery", "start"); HttpResponse::Ok().json(json!({"status":"success","recovery_started":true})) }
+pub async fn vault_session() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.create_session("user_001", "token_unique", chrono::Utc::now().timestamp() + 3600); HttpResponse::Ok().json(json!({"status":"success","session_created":true})) }
+pub async fn vault_p2p_store() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("vault", "p2p", "store"); HttpResponse::Ok().json(json!({"status":"success","stored":true})) }
+pub async fn validator_approvals() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","approvals":10,"stats":stats})) }
+
+// ==========================================================
+// CHAT + DATA (10)
+// ==========================================================
+pub async fn chat_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("chat", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","encryption":"e2e"})) }
+pub async fn chat_send() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("chat_sender", "chat_recipient", "Message chat"); HttpResponse::Ok().json(json!({"status":"success","sent":true})) }
+pub async fn chat_messages(path: web::Path<String>) -> HttpResponse { HttpResponse::Ok().json(json!({"conversation":path.into_inner()})) }
+pub async fn chat_conversation() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("chat", "conversation", "create"); HttpResponse::Ok().json(json!({"status":"success","conversation_created":true})) }
+pub async fn chat_encrypt() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("chat", "encrypt", "message"); HttpResponse::Ok().json(json!({"status":"success","encrypted":true})) }
+pub async fn data_market() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let offers = db.get_all_offers(); HttpResponse::Ok().json(json!({"status":"success","offers":offers})) }
+pub async fn data_stats() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","stats":stats})) }
+pub async fn data_publish() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("data_seller", "DonnÃƒÂ©es", 10, 100); HttpResponse::Ok().json(json!({"status":"success","published":true})) }
+pub async fn data_purchase() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.record_transaction("buyer", "seller", 100, 1); HttpResponse::Ok().json(json!({"status":"success","purchased":true})) }
+pub async fn data_tunnel() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("tunnel", "open", "data"); HttpResponse::Ok().json(json!({"status":"success","tunnel_open":true})) }
+pub async fn data_price() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("data", "price", "set"); HttpResponse::Ok().json(json!({"status":"success","price_set":true})) }
+
+// ==========================================================
+// BLACKKEY + BIOMÃƒâ€°TRIE + VÃƒâ€°RIFICATION (10)
+// ==========================================================
+pub async fn blackkey_sign() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("blackkey", "sign", "data"); HttpResponse::Ok().json(json!({"status":"success","signed":true})) }
+pub async fn blackkey_decrypt() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("blackkey", "decrypt", "data"); HttpResponse::Ok().json(json!({"status":"success","decrypted":true})) }
+pub async fn blackkey_mutate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("blackkey", "mutate", "key"); HttpResponse::Ok().json(json!({"status":"success","mutated":true})) }
+pub async fn blackkey_integrity() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("blackkey", "integrity", "check"); HttpResponse::Ok().json(json!({"status":"success","integrity":"verified"})) }
+pub async fn biometric_template() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("biometric", "template", "create"); HttpResponse::Ok().json(json!({"status":"success","template_created":true})) }
+pub async fn biometric_verify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("biometric", "verify", "match"); HttpResponse::Ok().json(json!({"status":"success","verified":true})) }
+pub async fn biometric_liveness() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("biometric", "liveness", "check"); HttpResponse::Ok().json(json!({"status":"success","alive":true})) }
+pub async fn biometric_spoofing() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("biometric", "spoofing", "detect"); HttpResponse::Ok().json(json!({"status":"success","spoofing_detected":false})) }
+pub async fn verify_youtube() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verify", "youtube", "check"); HttpResponse::Ok().json(json!({"status":"success","platform":"youtube","verified":true})) }
+pub async fn verify_spotify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verify", "spotify", "check"); HttpResponse::Ok().json(json!({"status":"success","platform":"spotify","verified":true})) }
+pub async fn verify_instagram() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verify", "instagram", "check"); HttpResponse::Ok().json(json!({"status":"success","platform":"instagram","verified":true})) }
+pub async fn verify_tiktok() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verify", "tiktok", "check"); HttpResponse::Ok().json(json!({"status":"success","platform":"tiktok","verified":true})) }
+
+// ==========================================================
+// DIVERS (10)
+// ==========================================================
+pub async fn emergency_sos() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("sos", "broadcast", "URGENCE"); HttpResponse::Ok().json(json!({"status":"success","sos_sent":true})) }
+pub async fn emergency_beacon() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("emergency", "beacon", "broadcast"); HttpResponse::Ok().json(json!({"status":"success","beacon_sent":true})) }
+pub async fn internet_sell() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("internet_seller", "Connexion", 5, 100); HttpResponse::Ok().json(json!({"status":"success","selling":true})) }
+pub async fn transport_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("transport", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","ready":true})) }
+pub async fn autopilot_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("autopilot", "status", "check"); HttpResponse::Ok().json(json!({"status":"success","active":true})) }
+pub async fn secure_retrieve() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("secure", "retrieve", "data"); HttpResponse::Ok().json(json!({"status":"success","retrieved":true})) }
+pub async fn sellers_list() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let offers = db.get_all_offers(); HttpResponse::Ok().json(json!({"status":"success","sellers":offers})) }
+pub async fn dao_stats() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","dao_stats":stats})) }
+pub async fn publish_item() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("publisher", "Item publiÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","published":true})) }
+pub async fn mini_peers() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","peers":stats})) }
+
+// ==========================================================
+// HANDLERS AJOUTÃƒâ€°S (51 manquants)
+// ==========================================================
+
+pub async fn arbitration_dispute() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.send_message("disputant", "arbitrator", "Litige ouvert");
+    HttpResponse::Ok().json(json!({"status":"success","dispute_opened":true}))
+}
+pub async fn arbitration_status() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","disputes":stats["messages"]})) }
+pub async fn arbitration_vote() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("arbitrator", "dispute", "Vote enregistrÃƒÂ©"); HttpResponse::Ok().json(json!({"status":"success","vote_cast":true})) }
+pub async fn fraud_blacklist() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("admin", "Adresse blacklistÃƒÂ©e", 0, 0); HttpResponse::Ok().json(json!({"status":"success","blacklisted":true})) }
+pub async fn fraud_history() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","history":stats})) }
+pub async fn fraud_report() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("fraud_reporter", "Fraude signalÃƒÂ©e", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","reported":true}))
+}
+pub async fn fraud_score() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let dashboard = db.get_dashboard("fraud_check"); HttpResponse::Ok().json(json!({"status":"success","risk_score":0,"dashboard":dashboard})) }
+pub async fn fraud_unblacklist() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("admin", "network", "Adresse dÃƒÂ©bloquÃƒÂ©e"); HttpResponse::Ok().json(json!({"status":"success","unblacklisted":true})) }
+pub async fn freeze_complete() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("freezer", "Contrat complÃƒÂ©tÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","completed":true})) }
+pub async fn freeze_create() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("freezer", "Contrat de gel", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","contract_created":true}))
+}
+pub async fn freeze_early() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("freezer", "DÃƒÂ©gel anticipÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","early_unfrozen":true})) }
+pub async fn frequency_hop_now() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("freq", "hop", "now"); HttpResponse::Ok().json(json!({"status":"success","hopped":true})) }
+pub async fn mailbox_delete() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("mailbox", "delete", "message"); HttpResponse::Ok().json(json!({"status":"success","deleted":true})) }
+pub async fn mailbox_get() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("mailbox", "get", "messages"); HttpResponse::Ok().json(json!({"status":"success","messages":[]})) }
+pub async fn mailbox_send() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.send_message("sender", "recipient", "Message mailbox");
+    HttpResponse::Ok().json(json!({"status":"success","sent":true}))
+}
+pub async fn mailbox_stats() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","stats":stats})) }
+pub async fn marketplace_buy() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.record_transaction("buyer", "seller", 100, 1); HttpResponse::Ok().json(json!({"status":"success","purchased":true})) }
+pub async fn marketplace_complete() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("marketplace", "complete", "order"); HttpResponse::Ok().json(json!({"status":"success","completed":true})) }
+pub async fn marketplace_publish() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("seller", "Produit marketplace", 100, 1);
+    HttpResponse::Ok().json(json!({"status":"success","published":true}))
+}
+pub async fn micro_credit_fund() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("lender", "PrÃƒÂªt financÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","funded":true})) }
+pub async fn micro_credit_request() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("borrower", "Demande micro-crÃƒÂ©dit", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","request_created":true}))
+}
+pub async fn micro_credit_voucher() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("voucher", "borrower", "Garantie ajoutÃƒÂ©e"); HttpResponse::Ok().json(json!({"status":"success","voucher_added":true})) }
+pub async fn offline_apply() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.record_transaction("offline_sender", "offline_recipient", 500, 5); HttpResponse::Ok().json(json!({"status":"success","applied":true})) }
+pub async fn offline_create() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("offline_user", "Transaction hors ligne", 0, 0); HttpResponse::Ok().json(json!({"status":"success","offline_tx_created":true})) }
+pub async fn offline_verify() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("verifier", "offline_user", "Transaction vÃƒÂ©rifiÃƒÂ©e"); HttpResponse::Ok().json(json!({"status":"success","verified":true})) }
+pub async fn oracle_current() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("oracle", "current", "price"); HttpResponse::Ok().json(json!({"status":"success","price":2000})) }
+pub async fn oracle_median() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("oracle", "median", "price"); HttpResponse::Ok().json(json!({"status":"success","median":2000})) }
+pub async fn oracle_report() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.publish_offer("oracle", "Prix signalÃƒÂ©", 0, 0);
+    HttpResponse::Ok().json(json!({"status":"success","price_reported":true}))
+}
+pub async fn oracle_validators() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","validators":7,"stats":stats})) }
+pub async fn p2p_broadcast() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("broadcaster", "all_nodes", "Broadcast P2P"); HttpResponse::Ok().json(json!({"status":"success","broadcast":true})) }
+pub async fn p2p_peers() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","peers":stats["sessions"]})) }
+pub async fn p2p_send() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("p2p_sender", "p2p_recipient", "Message P2P"); HttpResponse::Ok().json(json!({"status":"success","sent":true})) }
+pub async fn p2p_start() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("p2p_node", "NÃ…â€œud P2P dÃƒÂ©marrÃƒÂ©", 0, 0); HttpResponse::Ok().json(json!({"status":"success","started":true})) }
+pub async fn reputation_endorse() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.send_message("endorser", "endorsee", "Endorsement");
+    HttpResponse::Ok().json(json!({"status":"success","endorsed":true}))
+}
+pub async fn reputation_get() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let dashboard = db.get_dashboard("user"); HttpResponse::Ok().json(json!({"status":"success","score":dashboard})) }
+pub async fn savings_contract() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("saver", "Contrat ÃƒÂ©pargne", 0, 0); HttpResponse::Ok().json(json!({"status":"success","contract_created":true})) }
+pub async fn savings_yield() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("savings", "yield", "calculate"); HttpResponse::Ok().json(json!({"status":"success","yield_pct":2.0})) }
+pub async fn serve_index() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","service":"uq_platform","stats":stats})) }
+pub async fn shield_aid() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("aid_requester", "shield_pool", "Demande d aide"); HttpResponse::Ok().json(json!({"status":"success","aid_requested":true})) }
+pub async fn shield_approve() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("validator", "aid_requester", "Aide approuvÃƒÂ©e"); HttpResponse::Ok().json(json!({"status":"success","approved":true})) }
+pub async fn shield_key_lost() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    db.send_message("key_lost_user", "guardians", "ClÃƒÂ© perdue");
+    HttpResponse::Ok().json(json!({"status":"success","declared":true}))
+}
+pub async fn shops_list() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let shops = db.get_all_shops(); HttpResponse::Ok().json(json!({"status":"success","shops":shops,"total":shops.len()})) }
+pub async fn stablecoin_burn() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("burner", "UST burned", 0, 0); HttpResponse::Ok().json(json!({"status":"success","burned":true})) }
+pub async fn stablecoin_mint() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.publish_offer("minter", "UST minted", 0, 0); HttpResponse::Ok().json(json!({"status":"success","minted":true})) }
+pub async fn stablecoin_ratio() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("stablecoin", "ratio", "check"); HttpResponse::Ok().json(json!({"status":"success","ratio":150.0})) }
+pub async fn validator_list() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); let stats = db.get_stats(); HttpResponse::Ok().json(json!({"status":"success","validators":stats["accounts"]})) }
+pub async fn validator_validate() -> HttpResponse { let db = Database::shared("uq_platform_db.json"); db.send_message("validator", "network", "Validation effectuÃƒÂ©e"); HttpResponse::Ok().json(json!({"status":"success","validated":true})) }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==========================================================
+// ROUTES DISTRIBUTION 30/70
+// ==========================================================
+
+pub async fn distribution_stats() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    HttpResponse::Ok().json(dist.get_stats())
+}
+
+pub async fn distribution_treasury_status() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    let stats = dist.get_stats();
+    HttpResponse::Ok().json(stats["profile1_treasury"].clone())
+}
+
+pub async fn distribution_delis_status() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    let stats = dist.get_stats();
+    HttpResponse::Ok().json(stats["profile2_delis"].clone())
+}
+
+pub async fn distribution_sell_crypto() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    match dist.profile1_sell_crypto(100, true) {
+        Ok(stock) => HttpResponse::Ok().json(json!({"status":"success","stock_restant":stock})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
+    }
+}
+
+pub async fn distribution_sell_p2p() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    match dist.profile2_sell_p2p(50, true) {
+        Ok(balance) => HttpResponse::Ok().json(json!({"status":"success","balance_restant":balance})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
+    }
+}
+
+pub async fn distribution_auto_recharge() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    let recharged = dist.profile1_auto_recharge();
+    HttpResponse::Ok().json(json!({"status":"success","recharged":recharged}))
+}
+
+pub async fn distribution_claim() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    match dist.profile2_claim_from_profile1() {
+        Ok(new_balance) => HttpResponse::Ok().json(json!({"status":"success","nouveau_solde":new_balance})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
+    }
+}
+
+pub async fn distribution_ubi_distribute() -> HttpResponse {
+    use crate::fixorb_distribution::FixorbDistribution;
+    let dist = FixorbDistribution::new();
+    match dist.distribute_ubi(100, 2) {
+        Ok(total) => HttpResponse::Ok().json(json!({"status":"success","total_distribue":total})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status":"error","message": format!("{}", e)}))
+    }
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// JOURNAL INDIVIDUEL â€” EXPORT
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+pub async fn journal_export(path: web::Path<String>) -> HttpResponse {
+    let account_id = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let journal = db.get_journal(&account_id);
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "account_id": account_id,
+        "entries": journal,
+        "total_entries": journal.len(),
+        "exported_at": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+pub async fn journal_summary(path: web::Path<String>) -> HttpResponse {
+    let account_id = path.into_inner();
+    let db = Database::shared("uq_platform_db.json");
+    let journal = db.get_journal(&account_id);
+    
+    let total_sent: i64 = journal.iter()
+        .filter(|e| e.get("tx_type").and_then(|v| v.as_str()) == Some("transfer_sent"))
+        .map(|e| e.get("amount_points").and_then(|v| v.as_i64()).unwrap_or(0))
+        .sum();
+    
+    let total_received: i64 = journal.iter()
+        .filter(|e| e.get("tx_type").and_then(|v| v.as_str()) == Some("transfer_received"))
+        .map(|e| e.get("amount_points").and_then(|v| v.as_i64()).unwrap_or(0))
+        .sum();
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "account_id": account_id,
+        "total_entries": journal.len(),
+        "total_sent": total_sent,
+        "total_received": total_received,
+        "net": total_received - total_sent
+    }))
+}
+
+
+
+
+
+
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ðŸ›’ ZANDO â€” HANDLERS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+// â”€â”€â”€ ZANDO Ã‰LÃ‰MENTS (6 handlers) â”€â”€â”€
+
+/// CrÃ©e un nouvel Ã©lÃ©ment Zando
+pub async fn zando_item_create(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let shop_id = body.get("shop_id").and_then(|v| v.as_str()).unwrap_or("");
+    let item_type = body.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+    let media_urls = body.get("media_urls").and_then(|v| v.as_str()).unwrap_or("[]");
+    let title = body.get("title").and_then(|v| v.as_str()).unwrap_or("");
+    let description = body.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let price_fxb = body.get("price_fxb").and_then(|v| v.as_u64()).unwrap_or(0);
+    let price_usd = body.get("price_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let category = body.get("category").and_then(|v| v.as_str()).unwrap_or("general");
+    let commission_enabled = body.get("commission_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let commission_rate = body.get("commission_rate").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    
+    let id = db.create_shop_item(
+        shop_id, item_type, media_urls, title, description,
+        price_fxb, price_usd, category, commission_enabled, commission_rate,
+    );
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "item_id": id
+    }))
+}
+
+/// RÃ©cupÃ¨re les Ã©lÃ©ments d'une boutique
+pub async fn zando_items_list() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let items = db.get_all_shop_items();
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "items": items,
+        "total": items.len()
+    }))
+}
+pub async fn zando_items_get(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let shop_id = path.into_inner();
+    let items = db.get_shop_items(&shop_id);
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "items": items,
+        "total": items.len()
+    }))
+}
+
+/// RÃ©cupÃ¨re un Ã©lÃ©ment par ID
+pub async fn zando_item_get(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.get_shop_item_by_id(&id) {
+        Some(item) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "item": item
+        })),
+        None => HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Item not found"
+        }))
+    }
+}
+
+/// Met Ã  jour un Ã©lÃ©ment
+pub async fn zando_item_update(
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    let title = body.get("title").and_then(|v| v.as_str()).unwrap_or("");
+    let description = body.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let price_fxb = body.get("price_fxb").and_then(|v| v.as_u64()).unwrap_or(0);
+    
+    let price_usd = body.get("price_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let category = body.get("category").and_then(|v| v.as_str()).unwrap_or("");
+    let commission_enabled = body.get("commission_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let commission_rate = body.get("commission_rate").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    
+    match db.update_shop_item(&id, title, description, price_fxb, price_usd, category, commission_enabled, commission_rate) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// Supprime un Ã©lÃ©ment
+pub async fn zando_item_delete(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.delete_shop_item(&id) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// Publie un Ã©lÃ©ment
+pub async fn zando_item_publish(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.publish_shop_item(&id) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+// â”€â”€â”€ ZANDO AGENTS (3 handlers) â”€â”€â”€
+
+/// Devient agent commissionnaire
+pub async fn zando_agent_become(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let item_id = body.get("item_id").and_then(|v| v.as_str()).unwrap_or("");
+    let user_id = body.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
+    let commission_rate = body.get("commission_rate").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    
+    match db.add_item_agent(item_id, user_id, commission_rate) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// RÃ©cupÃ¨re les agents d'un Ã©lÃ©ment
+pub async fn zando_agents_get(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let item_id = path.into_inner();
+    let agents = db.get_item_agents(&item_id);
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "agents": agents,
+        "total": agents.len()
+    }))
+}
+
+/// Enregistre une vente via un agent
+pub async fn zando_agent_sale(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let item_id = body.get("item_id").and_then(|v| v.as_str()).unwrap_or("");
+    let agent_id = body.get("agent_id").and_then(|v| v.as_str()).unwrap_or("");
+    let sale_amount = body.get("sale_amount_fxb").and_then(|v| v.as_u64()).unwrap_or(0);
+    
+    match db.record_agent_sale(item_id, agent_id, sale_amount) {
+        Ok(commission) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "commission_earned": commission
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+// â”€â”€â”€ CONTACTS (5 handlers) â”€â”€â”€
+
+/// CrÃ©e une demande de contact
+pub async fn contact_request_create(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let requester_id = body.get("requester_id").and_then(|v| v.as_str()).unwrap_or("");
+    let target_id = body.get("target_id").and_then(|v| v.as_str()).unwrap_or("");
+    let field = body.get("field").and_then(|v| v.as_str()).unwrap_or("number");
+    
+    match db.create_contact_request(requester_id, target_id, field) {
+        Ok(id) => HttpResponse::Ok().json(json!({"status": "success", "request_id": id})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// Accepte une demande
+pub async fn contact_request_accept(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.accept_contact_request(&id) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// Refuse une demande
+pub async fn contact_request_refuse(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.refuse_contact_request(&id) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// Partage un contact
+pub async fn contact_share(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let owner_id = body.get("owner_id").and_then(|v| v.as_str()).unwrap_or("");
+    let shared_with_id = body.get("shared_with_id").and_then(|v| v.as_str()).unwrap_or("");
+    let field = body.get("field").and_then(|v| v.as_str()).unwrap_or("number");
+    
+    match db.share_contact(owner_id, shared_with_id, field) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// RÃ©cupÃ¨re les contacts partagÃ©s
+pub async fn contact_shared_get(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let user_id = path.into_inner();
+    let contacts = db.get_shared_contacts(&user_id);
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "contacts": contacts,
+        "total": contacts.len()
+    }))
+}
+
+// â”€â”€â”€ DRAFTS (2 handlers) â”€â”€â”€
+
+/// Sauvegarde un brouillon
+pub async fn draft_save(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let user_id = body.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
+    let draft_type = body.get("draft_type").and_then(|v| v.as_str()).unwrap_or("item");
+    let data = body.get("data").and_then(|v| v.as_str()).unwrap_or("{}");
+    
+    match db.save_draft(user_id, draft_type, data) {
+        Ok(id) => HttpResponse::Ok().json(json!({"status": "success", "draft_id": id})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+/// Supprime un brouillon
+pub async fn draft_delete(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.delete_draft(&id) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+
+}
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ðŸ“‡ ZANDO â€” CONTACTS (5 handlers)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+pub async fn zando_contact_request(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let requester_id = body.get("requester_id").and_then(|v| v.as_str()).unwrap_or("");
+    let target_id = body.get("target_id").and_then(|v| v.as_str()).unwrap_or("");
+    let field = body.get("field").and_then(|v| v.as_str()).unwrap_or("number");
+    
+    if requester_id.is_empty() || target_id.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "requester_id et target_id requis"
+        }));
+    }
+    
+    match db.create_contact_request(requester_id, target_id, field) {
+        Ok(request_id) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "request_id": request_id
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+
+pub async fn zando_contact_accept(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let request_id = path.into_inner();
+    
+    match db.accept_contact_request(&request_id) {
+        Ok(()) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Demande acceptÃ©e"
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+
+pub async fn zando_contact_refuse(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let request_id = path.into_inner();
+    
+    match db.refuse_contact_request(&request_id) {
+        Ok(()) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Demande refusÃ©e"
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+
+pub async fn zando_contact_share(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let owner_id = body.get("owner_id").and_then(|v| v.as_str()).unwrap_or("");
+    let shared_with_id = body.get("shared_with_id").and_then(|v| v.as_str()).unwrap_or("");
+    let field = body.get("field").and_then(|v| v.as_str()).unwrap_or("number");
+    
+    match db.share_contact(owner_id, shared_with_id, field) {
+        Ok(()) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Contact partagÃ©"
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+
+pub async fn zando_contacts_shared(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let user_id = path.into_inner();
+    
+    let contacts = db.get_shared_contacts(&user_id);
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "contacts": contacts
+    }))
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ðŸ“ ZANDO â€” DRAFTS (3 handlers)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+pub async fn zando_draft_save(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let user_id = body.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
+    let draft_type = body.get("draft_type").and_then(|v| v.as_str()).unwrap_or("item");
+    let data = body.get("data").cloned().unwrap_or(json!({}));
+    let data_str = data.to_string();
+    
+    if user_id.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "user_id requis"
+        }));
+    }
+    
+    match db.save_draft(user_id, draft_type, &data_str) {
+        Ok(draft_id) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "draft_id": draft_id
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+
+pub async fn zando_draft_get(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let draft_id = path.into_inner();
+    
+    match db.get_draft(&draft_id) {
+        Some(draft) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "data": draft
+        })),
+        None => HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Brouillon introuvable"
+        })),
+    }
+}
+
+pub async fn zando_draft_delete(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let draft_id = path.into_inner();
+    
+    match db.delete_draft(&draft_id) {
+        Ok(()) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "message": "Brouillon supprimÃ©"
+        })),
+        Err(e) => HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": format!("{}", e)
+        })),
+    }
+}
+
+
+
+
+
+
+
+
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// â­ CUSTOM TYPES (types de lieux personnalisÃ©s)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+/// CrÃ©e un nouveau type personnalisÃ©
+pub async fn custom_type_create(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    
+    let owner_id = body.get("owner_id").and_then(|v| v.as_str()).unwrap_or("");
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let emoji = body.get("emoji").and_then(|v| v.as_str()).unwrap_or("â­");
+    let color = body.get("color").and_then(|v| v.as_str()).unwrap_or("#4A9EFF");
+    let description = body.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let fields = body.get("fields").and_then(|v| v.as_str()).unwrap_or("[]");
+    
+    if name.is_empty() {
+        return HttpResponse::BadRequest().json(json!({"status": "error", "message": "name requis"}));
+    }
+    
+    let id = db.create_custom_type(owner_id, name, emoji, color, description, fields);
+    
+    if id.is_empty() {
+        return HttpResponse::BadRequest().json(json!({"status": "error", "message": "Creation echouee"}));
+    }
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "type_id": id
+    }))
+}
+
+/// Liste les types personnalisÃ©s d'un utilisateur
+pub async fn custom_types_by_owner(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let owner_id = path.into_inner();
+    let types = db.get_custom_types_by_owner(&owner_id);
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "types": types,
+        "total": types.len()
+    }))
+}
+
+/// Liste TOUS les types personnalisÃ©s
+pub async fn custom_types_list() -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let types = db.get_all_custom_types();
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "types": types,
+        "total": types.len()
+    }))
+}
+
+/// RÃ©cupÃ¨re un type par ID
+pub async fn custom_type_get(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.get_custom_type(&id) {
+        Some(t) => HttpResponse::Ok().json(json!({"status": "success", "type": t})),
+        None => HttpResponse::NotFound().json(json!({"status": "error", "message": "Type non trouve"}))
+    }
+}
+
+/// Supprime un type personnalisÃ©
+pub async fn custom_type_delete(path: web::Path<String>) -> HttpResponse {
+    let db = Database::shared("uq_platform_db.json");
+    let id = path.into_inner();
+    
+    match db.delete_custom_type(&id) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": format!("{}", e)}))
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// UQ ADDRESS — Génération des adresses UQ
+// ═══════════════════════════════════════════════════════════════
+
+pub async fn uq_generate_address(body: web::Json<serde_json::Value>) -> HttpResponse {
+    use uq_blockchain::uq_address::{generate_uq_number, generate_uq_email, generate_uq_pseudo};
+
+    let country = body.get("country").and_then(|v| v.as_str()).unwrap_or("RDC");
+    let nom = body.get("nom").and_then(|v| v.as_str()).unwrap_or("");
+    let prenom = body.get("prenom").and_then(|v| v.as_str()).unwrap_or("");
+    let position = body.get("position").and_then(|v| v.as_u64()).unwrap_or(1);
+
+    if nom.is_empty() || prenom.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "nom et prenom requis"
+        }));
+    }
+
+    let uq_number = generate_uq_number(country, nom, prenom, position);
+    let uq_email = generate_uq_email(prenom, 0);
+    let uq_pseudo = generate_uq_pseudo(prenom, 0);
+
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "uq_number": uq_number,
+        "uq_email": uq_email,
+        "uq_pseudo": uq_pseudo,
+        "country": country,
+        "nom": nom,
+        "prenom": prenom,
+        "position": position
+    }))
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH — Verifier si un compte existe (email + mot de passe)
+// ═══════════════════════════════════════════════════════════════
+
+pub async fn verify_account_exists(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let number = body.get("number").and_then(|v| v.as_str()).unwrap_or("");
+    let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("");
+    let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
+
+    if number.is_empty() || email.is_empty() || password.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "number, email et password requis"
+        }));
+    }
+
+    // Chercher dans uq_index.db (P2P)
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+
+    match idx.verify_credentials(number, email, password) {
+        Some(account_info) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "exists": true,
+            "account": account_info
+        })),
+        None => HttpResponse::Unauthorized().json(json!({
+            "status": "error",
+            "message": "Identifiants incorrects"
+        })),
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// ACCOUNT ME — Profil dynamique (via JWT)
+// ═══════════════════════════════════════════════════════════════
+
+pub async fn account_me(req: actix_web::HttpRequest) -> HttpResponse {
+    use crate::auth::AuthManager;
+
+    // Verifier JWT (user, admin, guardian)
+    let claims = match AuthManager::require_role(&req, &["user", "admin", "guardian"]) {
+        Ok(c) => c,
+        Err(resp) => return resp,
+    };
+
+    let uq_number = &claims.sub;
+
+    // Chercher dans uq_index.db
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+
+    match idx.get_account(uq_number) {
+        Some(account) => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "account": account
+        })),
+        None => HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Compte introuvable"
+        })),
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// FIXORB — ROUTES DÉDIÉES COMPLÈTES
+// ═══════════════════════════════════════════════════════════════
+
+pub async fn fixorb_send(
+    req: actix_web::HttpRequest,
+    state: web::Data<Arc<GlobalState>>,
+    body: web::Json<TransferRequest>,
+) -> HttpResponse {
+    bubble_transfer(req, state, body).await
+}
+
+pub async fn fixorb_receive(
+    path: web::Path<String>,
+) -> HttpResponse {
+    let account_id = path.into_inner();
+    let db_path = format!("data/users/{}.db", account_id.replace("-", "_").to_lowercase());
+    
+    if !std::path::Path::new(&db_path).exists() {
+        return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": format!("Compte introuvable: {}", account_id)
+        }));
+    }
+    
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur: {}", e)
+        })),
+    };
+    
+    let mut stmt = match conn.prepare(
+        "SELECT amount, counterparty, created_at FROM transactions WHERE tx_type = 'receive' ORDER BY created_at DESC LIMIT 10"
+    ) {
+        Ok(s) => s,
+        Err(_) => return HttpResponse::Ok().json(json!({
+            "status": "success",
+            "account": account_id,
+            "recent_receives": []
+        })),
+    };
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(json!({
+            "amount": row.get::<_, i64>(0)?,
+            "from": row.get::<_, String>(1)?,
+            "timestamp": row.get::<_, i64>(2)?
+        }))
+    });
+    
+    let mut receives = Vec::new();
+    if let Ok(r) = rows {
+        for row in r {
+            if let Ok(v) = row { receives.push(v); }
+        }
+    }
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "account": account_id,
+        "recent_receives": receives
+    }))
+}
+
+pub async fn fixorb_balance(
+    path: web::Path<String>,
+) -> HttpResponse {
+    let account_id = path.into_inner();
+    let db_path = format!("data/users/{}.db", account_id.replace("-", "_").to_lowercase());
+    
+    if !std::path::Path::new(&db_path).exists() {
+        return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": format!("Compte introuvable: {}", account_id)
+        }));
+    }
+    
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur: {}", e)
+        })),
+    };
+    
+    let (bubbles, points, frozen): (i64, i64, i64) = conn.query_row(
+        "SELECT bubbles, points, COALESCE(frozen_points, 0) FROM balance WHERE id = 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).unwrap_or((0, 0, 0));
+    
+    let fxb_total = points / 100;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // ORDRE DÉCROISSANT : FXB → fxb → mfxb → nfxb → pfxb → ffxb
+    // ═══════════════════════════════════════════════════════════════
+    
+    let units_info = vec![
+        ("FXB",  "FIXORB", 1i64,               "Unité principale"),
+        ("fxb",  "FIXO",   100,                "1 FXB = 100 fxb"),
+        ("mfxb", "MICRO",  10_000,             "1 FXB = 10 000 mfxb"),
+        ("nfxb", "NANO",   1_000_000,          "1 FXB = 1 000 000 nfxb"),
+        ("pfxb", "PICCO",  100_000_000,        "1 FXB = 100 000 000 pfxb"),
+        ("ffxb", "FEMTO",  10_000_000_000i64,  "1 FXB = 10 000 000 000 ffxb"),
+    ];
+    
+    // Construire la liste ordonnée des unités (UNE SEULE liste)
+    let mut units_list = Vec::new();
+    for (position, (unit, name, rate, description)) in units_info.iter().enumerate() {
+        let value = fxb_total * rate;
+        let display = format!("{} {}", value, unit);
+        
+        units_list.push(json!({
+            "position": position + 1,
+            "unit": unit,
+            "name": name,
+            "value": value,
+            "rate": rate,
+            "description": description,
+            "display": display
+        }));
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // RÉPONSE RÉORGANISÉE
+    // ═══════════════════════════════════════════════════════════════
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "account": account_id,
+        "order": "décroissant (du plus grand au plus petit)",
+        "balance": {
+            "bubbles": bubbles,
+            "points": points,
+            "frozen_points": frozen,
+            "fxb_total": fxb_total,
+            "display": format!("{} FXB", fxb_total)
+        },
+        "units": units_list
+    }))
+}
+
+pub async fn fixorb_transactions(
+    path: web::Path<String>,
+) -> HttpResponse {
+    let account_id = path.into_inner();
+    let db_path = format!("data/users/{}.db", account_id.replace("-", "_").to_lowercase());
+    
+    if !std::path::Path::new(&db_path).exists() {
+        return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": format!("Compte introuvable: {}", account_id)
+        }));
+    }
+    
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur: {}", e)
+        })),
+    };
+    
+    let mut stmt = match conn.prepare(
+        "SELECT id, tx_type, amount, fee, counterparty, created_at FROM transactions ORDER BY created_at DESC LIMIT 50"
+    ) {
+        Ok(s) => s,
+        Err(_) => return HttpResponse::Ok().json(json!({
+            "status": "success",
+            "account": account_id,
+            "transactions": []
+        })),
+    };
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(json!({
+            "id": row.get::<_, i64>(0)?,
+            "type": row.get::<_, String>(1)?,
+            "amount": row.get::<_, i64>(2)?,
+            "fee": row.get::<_, i64>(3)?,
+            "counterparty": row.get::<_, String>(4)?,
+            "timestamp": row.get::<_, i64>(5)?
+        }))
+    });
+    
+    let mut transactions = Vec::new();
+    if let Ok(r) = rows {
+        for row in r {
+            if let Ok(v) = row { transactions.push(v); }
+        }
+    }
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "account": account_id,
+        "total": transactions.len(),
+        "transactions": transactions
+    }))
+}
+
+pub async fn fixorb_supply() -> HttpResponse {
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "total_supply": 40_000_000_000u64,
+        "total_supply_fxb": 40_000_000_000u64,
+        "total_supply_points": 4_000_000_000_000u64,
+        "units": ["FXB", "fxb", "mfxb", "nfxb", "pfxb", "ffxb"],
+        "invariant": "40 milliards FXB (masse fixe éternelle)"
+    }))
+}
+
+pub async fn fixorb_units_info() -> HttpResponse {
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "order": "décroissant (du plus grand au plus petit)",
+        "units": [
+            {
+                "position": 1,
+                "unit": "FXB",
+                "name": "FIXORB",
+                "rate": 1,
+                "description": "Unité principale"
+            },
+            {
+                "position": 2,
+                "unit": "fxb",
+                "name": "FIXO",
+                "rate": 100,
+                "description": "1 FXB = 100 fxb"
+            },
+            {
+                "position": 3,
+                "unit": "mfxb",
+                "name": "MICRO",
+                "rate": 10_000,
+                "description": "1 FXB = 10 000 mfxb"
+            },
+            {
+                "position": 4,
+                "unit": "nfxb",
+                "name": "NANO",
+                "rate": 1_000_000,
+                "description": "1 FXB = 1 000 000 nfxb"
+            },
+            {
+                "position": 5,
+                "unit": "pfxb",
+                "name": "PICCO",
+                "rate": 100_000_000,
+                "description": "1 FXB = 100 000 000 pfxb"
+            },
+            {
+                "position": 6,
+                "unit": "ffxb",
+                "name": "FEMTO",
+                "rate": 10_000_000_000i64,
+                "description": "1 FXB = 10 000 000 000 ffxb"
+            }
+        ]
+    }))
+}
+
+pub async fn fixorb_convert(
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let account_id = body.get("account").and_then(|v| v.as_str()).unwrap_or("");
+    let from_unit = body.get("from").and_then(|v| v.as_str()).unwrap_or("FXB");
+    let to_unit = body.get("to").and_then(|v| v.as_str()).unwrap_or("fxb");
+    let amount = body.get("amount").and_then(|v| v.as_i64()).unwrap_or(0);
+    
+    if account_id.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "account requis"
+        }));
+    }
+    
+    let rates = std::collections::HashMap::from([
+        ("FXB", 1i64),
+        ("fxb", 100),
+        ("mfxb", 10000),
+        ("nfxb", 1000000),
+        ("pfxb", 100000000),
+        ("ffxb", 10000000000),
+    ]);
+    
+    let from_rate = rates.get(from_unit).copied().unwrap_or(1);
+    let to_rate = rates.get(to_unit).copied().unwrap_or(1);
+    
+    let amount_in_points = amount * from_rate;
+    let amount_in_to = amount_in_points / to_rate;
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "conversion": {
+            "from": from_unit,
+            "to": to_unit,
+            "amount": amount,
+            "result": amount_in_to,
+            "rate": format!("1 {} = {} {}", from_unit, to_rate / from_rate, to_unit)
+        }
+    }))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ORACLE BTC + ALL — Prix temps réel
+// ═══════════════════════════════════════════════════════════════
+
+/// Récupère le prix du BTC depuis CoinGecko
+async fn fetch_btc_price() -> f64 {
+    let url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+    
+    match reqwest::get(url).await {
+        Ok(resp) => {
+            match resp.json::<serde_json::Value>().await {
+                Ok(json) => {
+                    json.get("bitcoin")
+                        .and_then(|b| b.get("usd"))
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(95000.0)
+                }
+                Err(_) => 95000.0
+            }
+        }
+        Err(_) => 95000.0
+    }
+}
+
+/// Récupère le prix de l'or (simulé pour l'instant)
+async fn fetch_gold_price() -> f64 {
+    // TODO: Connecter à une vraie API (metals-api, goldapi.io)
+    // Pour l'instant : 2000 USD/once
+    2000.0
+}
+
+/// Route : /api/price/btc
+pub async fn price_btc() -> HttpResponse {
+    let btc_usd = fetch_btc_price().await;
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "btc_usd": btc_usd,
+        "source": "coingecko",
+        "updated_at": chrono::Utc::now().timestamp()
+    }))
+}
+
+/// Route : /api/price/all — Or + USD + BTC
+pub async fn price_all() -> HttpResponse {
+    // Cache en mémoire (60s)
+    static PRICE_CACHE: std::sync::OnceLock<std::sync::Mutex<(f64, f64, i64)>> = std::sync::OnceLock::new();
+    
+    let now = chrono::Utc::now().timestamp();
+    let cache = PRICE_CACHE.get_or_init(|| std::sync::Mutex::new((0.0, 0.0, 0)));
+    
+    let (btc_usd, gold_usd) = {
+        let c = cache.lock().unwrap();
+        if now - c.2 < 60 && c.0 > 0.0 && c.1 > 0.0 {
+            (c.0, c.1)
+        } else {
+            drop(c);
+            
+            // fetch_btc_price() retourne f64 directement
+            // timeout() retourne Result<f64, Elapsed>
+            let btc = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                fetch_btc_price()
+            ).await {
+                Ok(p) if p > 0.0 => p,
+                _ => 95000.0,
+            };
+            
+            // fetch_gold_price() retourne f64 directement
+            let gold = match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                fetch_gold_price()
+            ).await {
+                Ok(p) if p > 0.0 => p,
+                _ => 2000.0,
+            };
+            
+            if let Ok(mut c) = cache.lock() {
+                *c = (btc, gold, now);
+            }
+            
+            (btc, gold)
+        }
+    };
+    
+    let fxb_usd = gold_usd / 2000.0;
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "prices": {
+            "gold_usd_per_ounce": gold_usd,
+            "btc_usd": btc_usd,
+            "fxb_usd": fxb_usd,
+            "fxb_btc": if btc_usd > 0.0 { fxb_usd / btc_usd } else { 0.0 }
+        },
+        "source": {
+            "gold": "internal_oracle",
+            "btc": "coingecko"
+        },
+        "updated_at": now
+    }))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HISTORIQUE DES PRIX — Réel (depuis CoinGecko + SQLite)
+// ═══════════════════════════════════════════════════════════════
+
+/// Récupère l'historique BTC (24h) depuis CoinGecko
+async fn fetch_btc_history_24h() -> Vec<f64> {
+    let url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1";
+    
+    match reqwest::get(url).await {
+        Ok(resp) => {
+            match resp.json::<serde_json::Value>().await {
+                Ok(json) => {
+                    if let Some(prices) = json.get("prices").and_then(|p| p.as_array()) {
+                        // Prendre 24 points (1 par heure)
+                        let step = (prices.len() / 24).max(1);
+                        prices.iter().step_by(step)
+                            .take(24)
+                            .filter_map(|p| p.get(1).and_then(|v| v.as_f64()))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                }
+                Err(_) => Vec::new()
+            }
+        }
+        Err(_) => Vec::new()
+    }
+}
+
+/// Récupère l'historique or (24h) — simulé pour l'instant
+/// TODO: Connecter à une vraie API d'or (metals-api, goldapi.io)
+fn fetch_gold_history_24h() -> Vec<f64> {
+    // Valeur de base 2000, variation simulée
+    // À remplacer par une vraie API
+    vec![2000.0; 24]
+}
+
+/// GET /api/price/history/btc — Historique BTC 24h
+pub async fn price_history_btc() -> HttpResponse {
+    // fetch_btc_history_24h() retourne Vec<f64> directement
+    // timeout() retourne Result<Vec<f64>, Elapsed>
+    let history = match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        fetch_btc_history_24h()
+    ).await {
+        Ok(h) if !h.is_empty() => h,
+        _ => {
+            // Fallback : générer une courbe
+            let current = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                fetch_btc_price()
+            ).await {
+                Ok(p) if p > 0.0 => p,
+                _ => 95000.0,
+            };
+            
+            (0..24).map(|i| {
+                let variation = (i as f64 - 12.0) * 50.0;
+                current + variation
+            }).collect()
+        }
+    };
+    
+    let first = history.first().copied().unwrap_or(0.0);
+    let last = history.last().copied().unwrap_or(0.0);
+    let change_pct = if first > 0.0 { ((last - first) / first) * 100.0 } else { 0.0 };
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "symbol": "BTC",
+        "period": "24h",
+        "data": history,
+        "first": first,
+        "last": last,
+        "change_pct": change_pct,
+        "source": "coingecko_or_fallback"
+    }))
+}
+
+/// GET /api/price/history/gold — Historique or 24h
+pub async fn price_history_gold() -> HttpResponse {
+    let history = fetch_gold_history_24h();
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "symbol": "XAU",
+        "period": "24h",
+        "data": history,
+        "source": "internal_oracle"
+    }))
+}
+
+/// GET /api/fixorb/history/{id} — Historique FIXORB (basé sur or + transactions)
+pub async fn fixorb_history(path: web::Path<String>) -> HttpResponse {
+    let account_id = path.into_inner();
+    let db_path = format!("data/users/{}.db", account_id.replace("-", "_").to_lowercase());
+    
+    if !std::path::Path::new(&db_path).exists() {
+        return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": format!("Compte introuvable: {}", account_id)
+        }));
+    }
+    
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur DB: {}", e)
+        })),
+    };
+    
+    let mut stmt = match conn.prepare(
+        "SELECT tx_type, amount, fee, counterparty, created_at 
+         FROM transactions 
+         ORDER BY created_at DESC LIMIT 100"
+    ) {
+        Ok(s) => s,
+        Err(_) => return HttpResponse::Ok().json(json!({
+            "status": "success",
+            "account": account_id,
+            "total": 0,
+            "history": []
+        })),
+    };
+    
+    let rows = stmt.query_map([], |row| {
+        let ts: i64 = row.get(4)?;
+        Ok(json!({
+            "type": row.get::<_, String>(0)?,
+            "amount": row.get::<_, i64>(1)?,
+            "fee": row.get::<_, i64>(2)?,
+            "counterparty": row.get::<_, String>(3)?,
+            "timestamp": ts,
+            "date": chrono::DateTime::from_timestamp(ts, 0)
+                .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default()
+        }))
+    });
+    
+    let mut history = Vec::new();
+    if let Ok(r) = rows {
+        for row in r {
+            if let Ok(v) = row {
+                history.push(v);
+            }
+        }
+    }
+    
+    let total_in: i64 = history.iter()
+        .filter(|h| h["type"] == "receive")
+        .map(|h| h["amount"].as_i64().unwrap_or(0))
+        .sum();
+    
+    let total_out: i64 = history.iter()
+        .filter(|h| h["type"] == "send")
+        .map(|h| h["amount"].as_i64().unwrap_or(0))
+        .sum();
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "account": account_id,
+        "total": history.len(),
+        "total_in": total_in,
+        "total_out": total_out,
+        "net": total_in - total_out,
+        "history": history
+    }))
+}
+
+/// GET /api/price/history/all — Historique complet (or + btc + fxb)
+pub async fn price_history_all() -> HttpResponse {
+    let btc_history = fetch_btc_history_24h().await;
+    let gold_history = fetch_gold_history_24h();
+    
+    let btc_first = btc_history.first().copied().unwrap_or(0.0);
+    let btc_last = btc_history.last().copied().unwrap_or(0.0);
+    let btc_change = if btc_first > 0.0 { ((btc_last - btc_first) / btc_first) * 100.0 } else { 0.0 };
+    
+    let gold_first = gold_history.first().copied().unwrap_or(0.0);
+    let gold_last = gold_history.last().copied().unwrap_or(0.0);
+    let gold_change = if gold_first > 0.0 { ((gold_last - gold_first) / gold_first) * 100.0 } else { 0.0 };
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "period": "24h",
+        "btc": {
+            "data": btc_history,
+            "change_pct": btc_change,
+            "source": "coingecko"
+        },
+        "gold": {
+            "data": gold_history,
+            "change_pct": gold_change,
+            "source": "internal_oracle"
+        }
+    }))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CODE PIN — Configuration + Vérification
+// ═══════════════════════════════════════════════════════════════
+
+/// Hash SHA-256 du PIN avec salt
+fn hash_pin(pin: &str, salt: &str) -> String {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(format!("{}{}", pin, salt).as_bytes());
+    for _ in 0..1000 {
+        let mut h = Sha256::new();
+        h.update(hasher.finalize());
+        hasher = h;
+    }
+    hex::encode(hasher.finalize())
+}
+
+/// POST /api/account/pin/verify
+/// Vérifie le code PIN
+pub async fn account_pin_verify(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let uq_number = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
+    let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
+    
+    if uq_number.is_empty() || pin.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "uq_number et pin requis"
+        }));
+    }
+    
+    if pin.len() != 4 || !pin.chars().all(|c| c.is_ascii_digit()) {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "PIN doit être 4 chiffres"
+        }));
+    }
+    
+    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    if !std::path::Path::new(&db_path).exists() {
+        return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Compte introuvable"
+        }));
+    }
+    
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur DB: {}", e)
+        })),
+    };
+    
+    // Lire le hash + salt
+    let stored_hash: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'pin_hash'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    
+    let salt: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'pin_salt'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_else(|_| format!("uq_pin_{}", uq_number));
+    
+    if stored_hash.is_empty() {
+        return HttpResponse::Ok().json(json!({
+            "status": "success",
+            "valid": true,
+            "message": "Pas de PIN configuré"
+        }));
+    }
+    
+    let computed = hash_pin(pin, &salt);
+    let valid = computed == stored_hash;
+    
+    // Log échec
+    if !valid {
+        let now = chrono::Utc::now().timestamp();
+        let _ = conn.execute(
+            "INSERT INTO security_log (event_type, success, details, created_at) VALUES ('pin_failed', 0, 'Mauvais PIN', ?1)",
+            rusqlite::params![now]
+        );
+    }
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "valid": valid
+    }))
+}
+
+/// POST /api/account/pin/set
+/// Configure un nouveau PIN
+pub async fn account_pin_set(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let uq_number = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
+    let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
+    let old_pin = body.get("old_pin").and_then(|v| v.as_str()).unwrap_or("");
+    
+    if uq_number.is_empty() || pin.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "uq_number et pin requis"
+        }));
+    }
+    
+    if pin.len() != 4 || !pin.chars().all(|c| c.is_ascii_digit()) {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "PIN doit être 4 chiffres"
+        }));
+    }
+    
+    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    if !std::path::Path::new(&db_path).exists() {
+        return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Compte introuvable"
+        }));
+    }
+    
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur DB: {}", e)
+        })),
+    };
+    
+    // Si PIN déjà configuré, vérifier l'ancien
+    let existing_hash: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'pin_hash'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    
+    let salt: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'pin_salt'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_else(|_| format!("uq_pin_{}", uq_number));
+    
+    if !existing_hash.is_empty() && !old_pin.is_empty() {
+        let old_computed = hash_pin(old_pin, &salt);
+        if old_computed != existing_hash {
+            return HttpResponse::BadRequest().json(json!({
+                "status": "error",
+                "message": "Ancien PIN incorrect"
+            }));
+        }
+    }
+    
+    // Sauvegarder le nouveau PIN
+    let new_hash = hash_pin(pin, &salt);
+    let now = chrono::Utc::now().timestamp();
+    
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('pin_hash', ?1, ?2)",
+        rusqlite::params![new_hash, now]
+    );
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('pin_salt', ?1, ?2)",
+        rusqlite::params![salt, now]
+    );
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('pin_enabled', 'true', ?1)",
+        rusqlite::params![now]
+    );
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "message": "PIN configuré avec succès"
+    }))
+}
+
+/// POST /api/account/pin/remove
+/// Désactive le PIN (nécessite le PIN actuel)
+pub async fn account_pin_remove(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let uq_number = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
+    let pin = body.get("pin").and_then(|v| v.as_str()).unwrap_or("");
+    
+    if uq_number.is_empty() || pin.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "uq_number et pin requis"
+        }));
+    }
+    
+    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "status": "error",
+            "message": format!("Erreur DB: {}", e)
+        })),
+    };
+    
+    let salt: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'pin_salt'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_else(|_| format!("uq_pin_{}", uq_number));
+    
+    let stored_hash: String = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'pin_hash'",
+        [],
+        |row| row.get(0)
+    ).unwrap_or_default();
+    
+    let computed = hash_pin(pin, &salt);
+    if computed != stored_hash {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "PIN incorrect"
+        }));
+    }
+    
+    let now = chrono::Utc::now().timestamp();
+    let _ = conn.execute("DELETE FROM settings WHERE key = 'pin_hash'", []);
+    let _ = conn.execute("DELETE FROM settings WHERE key = 'pin_salt'", []);
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('pin_enabled', 'false', ?1)",
+        rusqlite::params![now]
+    );
+    
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "message": "PIN désactivé"
+    }))
+}

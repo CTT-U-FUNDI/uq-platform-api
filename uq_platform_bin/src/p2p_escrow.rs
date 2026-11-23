@@ -13,7 +13,7 @@
 // `points - frozen_points`, donc un gel et un envoi se neutralisent sans
 // réécrire les autres chemins.
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 /// Parité du grand livre : `amount_points = BORB * 100`, soit 1 point = 0,01 BORB.
 pub const POINTS_PAR_BORB: i64 = 100;
@@ -46,7 +46,8 @@ impl ErreurEscrow {
             }
             ErreurEscrow::CompteIntrouvable => "Base du compte inaccessible".to_string(),
             ErreurEscrow::CadenasRequis => {
-                "L'acheteur n'a pas de cadenas structurel réel : le BORB ne peut pas entrer".to_string()
+                "L'acheteur n'a pas de cadenas structurel réel : le BORB ne peut pas entrer"
+                    .to_string()
             }
             ErreurEscrow::Ecriture(e) => format!("Écriture escrow impossible ({})", e),
         }
@@ -56,7 +57,10 @@ impl ErreurEscrow {
 /// Quantité de BORB (en points) que représente un montant dans la devise de
 /// l'offre, au taux « 1 BORB = X devise ». Arrondi au point le plus proche :
 /// la grandeur appelée n'existe pas en dessous du point.
-pub fn points_pour_devise(montant_devise: f64, taux_devise_par_borb: f64) -> Result<i64, ErreurEscrow> {
+pub fn points_pour_devise(
+    montant_devise: f64,
+    taux_devise_par_borb: f64,
+) -> Result<i64, ErreurEscrow> {
     if !montant_devise.is_finite() || montant_devise <= 0.0 {
         return Err(ErreurEscrow::MontantNonValide);
     }
@@ -192,14 +196,87 @@ pub fn liberer(
         orb.porte_cadenas(acheteur)
     };
     if !lie_dans_orb {
-        eprintln!("🚫 [ESCROW] {} absent du BlockOrb ou cadenas non lié", acheteur);
+        eprintln!(
+            "🚫 [ESCROW] {} absent du BlockOrb ou cadenas non lié",
+            acheteur
+        );
         return Err(ErreurEscrow::CadenasRequis);
     }
+    let journal = Connection::open("uq_index.db")
+        .map_err(|e| ErreurEscrow::Ecriture(format!("journal settlement ({})", e)))?;
+    journal
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS p2p_settlement_journal (
+                order_id INTEGER PRIMARY KEY,
+                seller TEXT NOT NULL,
+                buyer TEXT NOT NULL,
+                points INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+        )
+        .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+    let precedent: Option<String> = journal
+        .query_row(
+            "SELECT state FROM p2p_settlement_journal WHERE order_id = ?1",
+            params![commande_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+    if precedent.as_deref() == Some("committed") {
+        return Ok(());
+    }
+    journal
+        .execute(
+            "INSERT INTO p2p_settlement_journal
+                (order_id, seller, buyer, points, state, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'started', ?5, ?5)
+             ON CONFLICT(order_id) DO UPDATE SET
+                state = 'started',
+                updated_at = excluded.updated_at",
+            params![commande_id, vendeur, acheteur, points, horodatage],
+        )
+        .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+
     // Contrepartie écrite dans l'historique : pseudo et nom, jamais l'identifiant.
     let nom_vendeur = crate::uq_public_alias::get_public_display(vendeur);
     let nom_acheteur = crate::uq_public_alias::get_public_display(acheteur);
     let mut db_vendeur = ouvrir_compte(vendeur)?;
     let mut db_acheteur = ouvrir_compte(acheteur)?;
+    let memo = format!("P2P mobile · commande {}", commande_id);
+    let vendeur_deja_debite = historique_existe(&db_vendeur, TX_VENTE_P2P, &memo);
+    let acheteur_deja_credite = historique_existe(&db_acheteur, TX_ACHAT_P2P, &memo);
+    if vendeur_deja_debite && acheteur_deja_credite {
+        terminer_journal(&journal, commande_id, horodatage)?;
+        return Ok(());
+    }
+    if vendeur_deja_debite != acheteur_deja_credite {
+        if vendeur_deja_debite {
+            terminer_credit_acheteur(
+                &mut db_acheteur,
+                vendeur,
+                acheteur,
+                points,
+                commande_id,
+                &nom_vendeur,
+                horodatage,
+            )?;
+        } else {
+            terminer_debit_vendeur(
+                &mut db_vendeur,
+                vendeur,
+                acheteur,
+                points,
+                commande_id,
+                &nom_acheteur,
+                horodatage,
+            )?;
+        }
+        terminer_journal(&journal, commande_id, horodatage)?;
+        return Ok(());
+    }
 
     // Les deux comptes forment une seule séquence : si l'un refuse, l'autre ne
     // part pas sans contrepartie.
@@ -266,15 +343,135 @@ pub fn liberer(
             if let Err(e) = db_acheteur.execute_batch("COMMIT") {
                 // Le débit du vendeur est validé, le crédit de l'acheteur non :
                 // c'est un incident à rejouer, pas une donnée à deviner.
-                eprintln!("🚨 ESCROW commande {} : débit validé, crédit non commité ({})", commande_id, e);
+                eprintln!(
+                    "🚨 ESCROW commande {} : débit validé, crédit non commité ({})",
+                    commande_id, e
+                );
                 return Err(ErreurEscrow::Ecriture(e.to_string()));
             }
+            terminer_journal(&journal, commande_id, horodatage)?;
             Ok(())
         }
+
         Err(e) => {
             let _ = db_vendeur.execute_batch("ROLLBACK");
             let _ = db_acheteur.execute_batch("ROLLBACK");
             Err(e)
+        }
+    }
+}
+
+fn historique_existe(conn: &Connection, tx_type: &str, memo: &str) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM transactions
+            WHERE tx_type = ?1 AND memo = ?2 AND COALESCE(status, 'success') = 'success'
+        )",
+        params![tx_type, memo],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|value| value == 1)
+    .unwrap_or(false)
+}
+
+fn terminer_journal(
+    conn: &Connection,
+    commande_id: i64,
+    horodatage: i64,
+) -> Result<(), ErreurEscrow> {
+    conn.execute(
+        "UPDATE p2p_settlement_journal
+         SET state = 'committed', updated_at = ?2 WHERE order_id = ?1",
+        params![commande_id, horodatage],
+    )
+    .map(|_| ())
+    .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))
+}
+
+fn terminer_debit_vendeur(
+    conn: &mut Connection,
+    vendeur: &str,
+    acheteur: &str,
+    points: i64,
+    commande_id: i64,
+    nom_acheteur: &str,
+    horodatage: i64,
+) -> Result<(), ErreurEscrow> {
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+    let result = (|| {
+        let changed = conn
+            .execute(
+                "UPDATE balance
+                 SET points = points - ?1,
+                     frozen_points = COALESCE(frozen_points, 0) - ?1,
+                     updated_at = ?2
+                 WHERE id = 1 AND points >= ?1 AND COALESCE(frozen_points, 0) >= ?1",
+                params![points, horodatage],
+            )
+            .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+        if changed != 1 {
+            return Err(ErreurEscrow::GelInsuffisant);
+        }
+        ecrire_grand_livre(
+            conn,
+            vendeur,
+            acheteur,
+            TX_VENTE_P2P,
+            points,
+            commande_id,
+            nom_acheteur,
+            horodatage,
+        )?;
+        resynchroniser_sous_unites(conn, horodatage)
+    })();
+    match result {
+        Ok(()) => conn
+            .execute_batch("COMMIT")
+            .map_err(|e| ErreurEscrow::Ecriture(e.to_string())),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
+}
+
+fn terminer_credit_acheteur(
+    conn: &mut Connection,
+    vendeur: &str,
+    acheteur: &str,
+    points: i64,
+    commande_id: i64,
+    nom_vendeur: &str,
+    horodatage: i64,
+) -> Result<(), ErreurEscrow> {
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+    let result = (|| {
+        conn.execute(
+            "UPDATE balance SET points = points + ?1, updated_at = ?2 WHERE id = 1",
+            params![points, horodatage],
+        )
+        .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
+        ecrire_grand_livre(
+            conn,
+            vendeur,
+            acheteur,
+            TX_ACHAT_P2P,
+            points,
+            commande_id,
+            nom_vendeur,
+            horodatage,
+        )?;
+        resynchroniser_sous_unites(conn, horodatage)
+    })();
+    match result {
+        Ok(()) => conn
+            .execute_batch("COMMIT")
+            .map_err(|e| ErreurEscrow::Ecriture(e.to_string())),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
         }
     }
 }
@@ -295,10 +492,7 @@ fn ecrire_grand_livre(
         commande_id, vendeur, acheteur, points, horodatage
     ));
     let cadenas = hash_de_transaction(&format!("CADENAS:{}:{}", vendeur, horodatage));
-    let cle_universelle = hash_de_transaction(&format!(
-        "UQ_BORB_UNIVERSAL:{}",
-        horodatage / 30
-    ));
+    let cle_universelle = hash_de_transaction(&format!("UQ_BORB_UNIVERSAL:{}", horodatage / 30));
     let note = format!("P2P mobile · commande {}", commande_id);
 
     crate::local_history::enregistrer_transaction(
@@ -331,9 +525,14 @@ fn ecrire_grand_livre(
 /// Les sous-unités BORB sont le miroir de `balance.points` : elles suivent chaque
 /// mouvement, comme sur le chemin d'envoi classique. Publique pour que la
 /// conversion coffre ↔ portefeuille utilise la même correction.
-pub(crate) fn resynchroniser_sous_unites(conn: &Connection, horodatage: i64) -> Result<(), ErreurEscrow> {
+pub(crate) fn resynchroniser_sous_unites(
+    conn: &Connection,
+    horodatage: i64,
+) -> Result<(), ErreurEscrow> {
     let solde_apres: i64 = conn
-        .query_row("SELECT points FROM balance WHERE id = 1", [], |row| row.get(0))
+        .query_row("SELECT points FROM balance WHERE id = 1", [], |row| {
+            row.get(0)
+        })
         .map_err(|e| ErreurEscrow::Ecriture(e.to_string()))?;
     conn.execute(
         "UPDATE my_borb_units SET balance = ?1, updated_at = ?2 WHERE unit = 'BORB'",
@@ -375,10 +574,22 @@ mod tests {
 
     #[test]
     fn taux_et_montant_deformes_sont_refuses() {
-        assert_eq!(points_pour_devise(0.0, 2400.0), Err(ErreurEscrow::MontantNonValide));
-        assert_eq!(points_pour_devise(-10.0, 2400.0), Err(ErreurEscrow::MontantNonValide));
-        assert_eq!(points_pour_devise(10.0, 0.0), Err(ErreurEscrow::TauxNonValide));
-        assert_eq!(points_pour_devise(10.0, -2400.0), Err(ErreurEscrow::TauxNonValide));
+        assert_eq!(
+            points_pour_devise(0.0, 2400.0),
+            Err(ErreurEscrow::MontantNonValide)
+        );
+        assert_eq!(
+            points_pour_devise(-10.0, 2400.0),
+            Err(ErreurEscrow::MontantNonValide)
+        );
+        assert_eq!(
+            points_pour_devise(10.0, 0.0),
+            Err(ErreurEscrow::TauxNonValide)
+        );
+        assert_eq!(
+            points_pour_devise(10.0, -2400.0),
+            Err(ErreurEscrow::TauxNonValide)
+        );
         assert_eq!(
             points_pour_devise(f64::NAN, 2400.0),
             Err(ErreurEscrow::MontantNonValide)
@@ -393,7 +604,10 @@ mod tests {
         assert_eq!(points_pour_borb(12.345), Ok(1235));
         assert_eq!(points_pour_borb(0.0), Err(ErreurEscrow::MontantNonValide));
         assert_eq!(points_pour_borb(-2.0), Err(ErreurEscrow::MontantNonValide));
-        assert_eq!(points_pour_borb(f64::NAN), Err(ErreurEscrow::MontantNonValide));
+        assert_eq!(
+            points_pour_borb(f64::NAN),
+            Err(ErreurEscrow::MontantNonValide)
+        );
         // Moins d'un demi-point : rien à immobiliser, la commande est refusée.
         assert_eq!(points_pour_borb(0.004), Err(ErreurEscrow::MontantNonValide));
     }
@@ -413,10 +627,16 @@ mod tests {
     #[test]
     fn gel_et_degel_refusent_une_quantite_nulle() {
         // Horodatage et compte ignorés : la gardeprecede toute ouverture de base.
-        assert_eq!(geler("UQ-00000000", 0, 1), Err(ErreurEscrow::MontantNonValide));
-        assert_eq!(degeler("UQ-00000000", -5, 1), Err(ErreurEscrow::MontantNonValide));
         assert_eq!(
-            liberer("UQ-00000000", "UQ-996697110", 0, 1, 1),
+            geler("UQ-00000000", 0, 1),
+            Err(ErreurEscrow::MontantNonValide)
+        );
+        assert_eq!(
+            degeler("UQ-00000000", -5, 1),
+            Err(ErreurEscrow::MontantNonValide)
+        );
+        assert_eq!(
+            liberer("UQ-00000000", "UQ-00000001", 0, 1, 1),
             Err(ErreurEscrow::MontantNonValide)
         );
     }

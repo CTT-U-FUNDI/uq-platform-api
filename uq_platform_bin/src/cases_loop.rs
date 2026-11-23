@@ -18,9 +18,20 @@
 use serde::{Deserialize, Serialize};
 
 /// Les 6 cases, dans l'ordre du BlockOrb
-pub const NOMS: [&str; 6] = ["ocean", "nuages", "rivieres", "glaciers", "nappes", "vapeur"];
-pub const LABELS: [&str; 6] = ["Ocean", "Nuages", "Rivieres", "Glaciers", "Nappes", "Vapeur"];
-pub const ROLES: [&str; 6] = ["Tresor", "Frais", "Recompenses", "Epargne", "Credit", "Shield"];
+pub const NOMS: [&str; 6] = [
+    "ocean", "nuages", "rivieres", "glaciers", "nappes", "vapeur",
+];
+pub const LABELS: [&str; 6] = [
+    "Ocean", "Nuages", "Rivieres", "Glaciers", "Nappes", "Vapeur",
+];
+pub const ROLES: [&str; 6] = [
+    "Tresor",
+    "Frais",
+    "Recompenses",
+    "Epargne",
+    "Credit",
+    "Shield",
+];
 
 /// Seuils minimaux (% de la capacité initiale de chaque case)
 pub const SEUILS_PCT: [u64; 6] = [10, 5, 10, 5, 5, 5];
@@ -82,7 +93,11 @@ pub fn etat() -> EtatCases {
     for i in 0..6 {
         let solde = orb.cases[i];
         let capacite = CAPACITES_BORB[i] as f64 * femto_par_borb;
-        let pct = if capacite > 0.0 { solde as f64 / capacite * 100.0 } else { 0.0 };
+        let pct = if capacite > 0.0 {
+            solde as f64 / capacite * 100.0
+        } else {
+            0.0
+        };
         let bas = solde < seuil_femto(i);
         if bas {
             sous_seuil.push(NOMS[i].to_string());
@@ -97,7 +112,11 @@ pub fn etat() -> EtatCases {
             pct_capacite: pct,
             seuil_pct: SEUILS_PCT[i],
             sous_seuil: bas,
-            part_du_total_pct: if total > 0 { solde as f64 / total as f64 * 100.0 } else { 0.0 },
+            part_du_total_pct: if total > 0 {
+                solde as f64 / total as f64 * 100.0
+            } else {
+                0.0
+            },
         });
     }
 
@@ -149,7 +168,13 @@ pub struct ResultatRegulation {
 /// Alimente une case déficitaire depuis une case donneuse.
 /// Le transfert est plafonné à MAX_MOUVEMENT_PCT de la capacité de la case
 /// bénéficiaire, pour éviter les à-coups.
-fn transferer(orb: &mut crate::block_orb::BlockOrb, de: usize, vers: usize, motif: &str, mvt: &mut Vec<MouvementCase>) -> u128 {
+fn transferer(
+    orb: &mut crate::block_orb::BlockOrb,
+    de: usize,
+    vers: usize,
+    motif: &str,
+    mvt: &mut Vec<MouvementCase>,
+) -> u128 {
     let besoin = seuil_femto(vers).saturating_sub(orb.cases[vers]);
     if besoin == 0 {
         return 0;
@@ -186,17 +211,53 @@ pub fn auto_reguler() -> Result<ResultatRegulation, String> {
 
     // Cycle : Ocean(0) → Nuages(1) → Rivières(2) → Glaciers(3) → Nappes(4) → Vapeur(5) → Ocean(0)
     // ===== Ocean < 10% → Nuages alimente Ocean =====
-    transferer(&mut orb, 1, 0, "Ocean sous 10% — Nuages alimente Ocean", &mut mvt);
+    transferer(
+        &mut orb,
+        1,
+        0,
+        "Ocean sous 10% — Nuages alimente Ocean",
+        &mut mvt,
+    );
     // ===== Nuages < 5% → Rivières alimente Nuages =====
-    transferer(&mut orb, 2, 1, "Nuages sous 5% — Rivieres alimente Nuages", &mut mvt);
+    transferer(
+        &mut orb,
+        2,
+        1,
+        "Nuages sous 5% — Rivieres alimente Nuages",
+        &mut mvt,
+    );
     // ===== Rivières < 10% → Ocean alimente Rivières =====
-    transferer(&mut orb, 0, 2, "Rivieres sous 10% — Ocean alimente Rivieres", &mut mvt);
+    transferer(
+        &mut orb,
+        0,
+        2,
+        "Rivieres sous 10% — Ocean alimente Rivieres",
+        &mut mvt,
+    );
     // ===== Glaciers < 5% → Nappes alimente Glaciers =====
-    transferer(&mut orb, 4, 3, "Glaciers sous 5% — Nappes alimente Glaciers", &mut mvt);
+    transferer(
+        &mut orb,
+        4,
+        3,
+        "Glaciers sous 5% — Nappes alimente Glaciers",
+        &mut mvt,
+    );
     // ===== Nappes < 5% → Vapeur alimente Nappes =====
-    transferer(&mut orb, 5, 4, "Nappes sous 5% — Vapeur alimente Nappes", &mut mvt);
+    transferer(
+        &mut orb,
+        5,
+        4,
+        "Nappes sous 5% — Vapeur alimente Nappes",
+        &mut mvt,
+    );
     // ===== Vapeur < 5% → Ocean alimente Vapeur =====
-    transferer(&mut orb, 0, 5, "Vapeur sous 5% — Ocean alimente Vapeur", &mut mvt);
+    transferer(
+        &mut orb,
+        0,
+        5,
+        "Vapeur sous 5% — Ocean alimente Vapeur",
+        &mut mvt,
+    );
 
     if mvt.is_empty() {
         return Ok(ResultatRegulation {

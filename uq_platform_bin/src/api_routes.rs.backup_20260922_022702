@@ -1,0 +1,339 @@
+﻿use actix_web::{web, HttpResponse};
+use serde_json::json;
+use crate::api_handlers::*;
+use crate::user_handlers;
+use crate::player_routes;
+use crate::publication_routes;
+use crate::mini_routes;
+use crate::guardian_routes;
+
+pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+    cfg
+        .route("/", web::get().to(index))
+        .route("/api/health", web::get().to(health))
+        .route("/api/stats", web::get().to(stats))
+        .route("/api/price/gold", web::get().to(price_gold))
+        .route("/api/price/usd", web::get().to(price_usd))
+        .route("/api/blockchain/info", web::get().to(blockchain_info))
+        .route("/api/blockchain/supply", web::get().to(total_supply))
+        .route("/api/account/create", web::post().to(account_create))
+        .route("/api/account/verify", web::post().to(account_verify))
+        .route("/api/auth/verify-account", web::post().to(verify_account_exists))
+        .route("/api/account/me", web::get().to(account_me))
+        .route("/api/bubble/create", web::post().to(bubble_create))
+        .route("/api/bubble/transfer", web::post().to(bubble_transfer))
+        .route("/api/bubble/freeze", web::post().to(bubble_freeze))
+        .route("/api/bubble/unfreeze", web::post().to(bubble_unfreeze))
+        .route("/api/bubble/burn", web::post().to(bubble_burn))
+        .route("/api/bubble/lend", web::post().to(bubble_lend))
+        .route("/api/cases/stats", web::get().to(cases_stats))
+        .route("/api/cases/treasury", web::get().to(case_treasury))
+        .route("/api/cases/fees", web::get().to(case_fees))
+        .route("/api/cases/rewards", web::get().to(case_rewards))
+        .route("/api/cases/savings", web::get().to(case_savings))
+        .route("/api/cases/credit", web::get().to(case_credit))
+        .route("/api/cases/shield", web::get().to(case_shield))
+        .route("/api/ubi/info", web::get().to(ubi_info))
+        .route("/api/ubi/claim", web::post().to(ubi_claim))
+        .route("/api/exchange/order", web::post().to(exchange_order))
+        .route("/api/exchange/confirm", web::post().to(exchange_confirm))
+        .route("/api/exchange/complete", web::post().to(exchange_complete))
+        .route("/api/exchange/cancel", web::post().to(exchange_cancel))
+        .route("/api/exchange/sms", web::post().to(exchange_sms))
+        .route("/api/lending/offer", web::post().to(lending_offer))
+        .route("/api/lending/borrow", web::post().to(lending_borrow))
+        .route("/api/lending/repay", web::post().to(lending_repay))
+        .route("/api/lending/liquidate", web::post().to(lending_liquidate))
+        .route("/api/insurance/contribute", web::post().to(insurance_contribute))
+        .route("/api/insurance/claim", web::post().to(insurance_claim))
+        .route("/api/insurance/vote", web::post().to(insurance_vote))
+        .route("/api/stablecoin/mint", web::post().to(stablecoin_mint))
+        .route("/api/stablecoin/burn", web::post().to(stablecoin_burn))
+        .route("/api/stablecoin/ratio", web::get().to(stablecoin_ratio))
+        .route("/api/oracle/price", web::post().to(oracle_report))
+        .route("/api/oracle/current", web::get().to(oracle_current))
+        .route("/api/oracle/median", web::get().to(oracle_median))
+        .route("/api/oracle/validators", web::get().to(oracle_validators))
+        .route("/api/governance/proposal", web::post().to(governance_create))
+        .route("/api/governance/vote", web::post().to(governance_vote))
+        .route("/api/governance/execute", web::post().to(governance_execute))
+        .route("/api/governance/stats", web::get().to(governance_stats))
+        .route("/api/fraud/report", web::post().to(fraud_report))
+        .route("/api/fraud/blacklist", web::post().to(fraud_blacklist))
+        .route("/api/fraud/unblacklist", web::post().to(fraud_unblacklist))
+        .route("/api/reputation/endorse", web::post().to(reputation_endorse))
+        .route("/api/identity/create", web::post().to(identity_create))
+        .route("/api/identity/kyc", web::post().to(identity_kyc))
+        .route("/api/identity/certificate", web::post().to(identity_certificate))
+        .route("/api/escrow/create", web::post().to(escrow_create))
+        .route("/api/escrow/release", web::post().to(escrow_release))
+        .route("/api/escrow/refund", web::post().to(escrow_refund))
+        .route("/api/freeze/contract", web::post().to(freeze_create))
+        .route("/api/freeze/complete", web::post().to(freeze_complete))
+        .route("/api/freeze/early", web::post().to(freeze_early))
+        .route("/api/shield/key-lost", web::post().to(shield_key_lost))
+        .route("/api/shield/aid", web::post().to(shield_aid))
+        .route("/api/shield/approve", web::post().to(shield_approve))
+        .route("/api/micro-credit/request", web::post().to(micro_credit_request))
+        .route("/api/micro-credit/voucher", web::post().to(micro_credit_voucher))
+        .route("/api/micro-credit/fund", web::post().to(micro_credit_fund))
+        .route("/api/marketplace/publish", web::post().to(marketplace_publish))
+        .route("/api/marketplace/buy", web::post().to(marketplace_buy))
+        .route("/api/marketplace/complete", web::post().to(marketplace_complete))
+        .route("/api/offline/create", web::post().to(offline_create))
+        .route("/api/offline/verify", web::post().to(offline_verify))
+        .route("/api/offline/apply", web::post().to(offline_apply))
+        .route("/api/mailbox/send", web::post().to(mailbox_send))
+        .route("/api/mailbox/delete", web::post().to(mailbox_delete))
+        .route("/api/mailbox/stats", web::get().to(mailbox_stats))
+        .route("/api/validator/list", web::get().to(validator_list))
+        .route("/api/validator/validate", web::post().to(validator_validate))
+        .route("/api/arbitration/dispute", web::post().to(arbitration_dispute))
+        .route("/api/arbitration/vote", web::post().to(arbitration_vote))
+        .route("/api/arbitration/status", web::get().to(arbitration_status))
+        .route("/api/network/peers", web::get().to(network_peers))
+        .route("/api/network/status", web::get().to(network_status))
+        .route("/api/network/threats", web::get().to(network_threats))
+        .route("/api/d2d/connect", web::post().to(d2d_connect))
+        .route("/api/d2d/disconnect", web::post().to(d2d_disconnect))
+        .route("/api/d2d/scan", web::get().to(d2d_scan))
+        .route("/api/d2d/peers", web::get().to(d2d_peers))
+        .route("/api/mesh/relay", web::post().to(mesh_relay))
+        .route("/api/mesh/routing", web::get().to(mesh_routing))
+        .route("/api/mesh/route", web::get().to(mesh_route))
+        .route("/api/mesh/sellers", web::get().to(mesh_sellers))
+        .route("/api/frequency/hop", web::post().to(frequency_hop_now))
+        .route("/api/frequency/status", web::get().to(frequency_status))
+        .route("/api/phantom/create", web::post().to(phantom_create_channel))
+        .route("/api/phantom/channels", web::get().to(phantom_channels))
+        .route("/api/emergency/sos", web::post().to(emergency_sos))
+        .route("/api/emergency/beacon", web::get().to(emergency_beacon))
+        .route("/api/internet/sell", web::post().to(internet_sell))
+        .route("/api/transport/status", web::get().to(transport_status))
+        .route("/api/autopilot/status", web::get().to(autopilot_status))
+        .route("/api/security/status", web::get().to(security_status))
+        .route("/api/security/root", web::get().to(security_root_check))
+        .route("/api/security/emulator", web::get().to(security_emulator_check))
+        .route("/api/security/biometric", web::get().to(security_biometric_sync))
+        .route("/api/security/memory", web::get().to(security_memory_guard))
+        .route("/api/security/storage", web::get().to(security_secure_storage))
+        .route("/api/security/side-channel", web::get().to(security_side_channel))
+        .route("/api/security/ipc", web::get().to(security_trusted_ipc))
+        .route("/api/security/vtee", web::post().to(security_vtee_generate))
+        .route("/api/2fa/verify", web::post().to(twofa_verify))
+        .route("/api/2fa/enroll", web::post().to(twofa_enroll))
+        .route("/api/vtee/enclave", web::post().to(vtee_enclave))
+        .route("/api/vtee/attest", web::post().to(vtee_attest))
+        .route("/api/keys/derive", web::post().to(keys_derive))
+        .route("/api/secure/store", web::post().to(secure_store))
+        .route("/api/secure/retrieve", web::get().to(secure_retrieve))
+        .route("/api/chat/status", web::get().to(chat_status))
+        .route("/api/chat/send", web::post().to(chat_send))
+        .route("/api/chat/conversation", web::post().to(chat_conversation))
+        .route("/api/chat/encrypt", web::post().to(chat_encrypt))
+        .route("/api/data/market", web::get().to(data_market))
+        .route("/api/data/stats", web::get().to(data_stats))
+        .route("/api/data/publish", web::post().to(data_publish))
+        .route("/api/data/purchase", web::post().to(data_purchase))
+        .route("/api/data/tunnel", web::post().to(data_tunnel))
+        .route("/api/data/price", web::post().to(data_price))
+        .route("/api/shop/create", web::post().to(user_handlers::shop_create))
+        .route("/api/search", web::get().to(user_handlers::search))
+        .route("/api/location/update", web::post().to(user_handlers::location_update))
+        .route("/api/shops", web::get().to(shops_list))
+        .route("/api/shops/list", web::get().to(user_handlers::shop_list))
+        .route("/api/shop/product/add", web::post().to(user_handlers::product_add))
+        .route("/api/shop/product/buy", web::post().to(user_handlers::product_buy))
+        .route("/api/search/nearby", web::get().to(user_handlers::search_nearby))
+        .route("/api/location/distance", web::post().to(user_handlers::location_distance))
+        .route("/api/vault/status", web::get().to(vault_status))
+        .route("/api/vault/guardians", web::get().to(vault_guardians))
+        .route("/api/vault/recovery/status", web::get().to(vault_recovery_status))
+        .route("/api/vault/authenticity", web::get().to(vault_authenticity))
+        .route("/api/vault/compromised", web::get().to(vault_compromised))
+        .route("/api/vault/p2p/usage", web::get().to(vault_p2p_usage))
+        .route("/api/vault/split", web::post().to(vault_split))
+        .route("/api/vault/combine", web::post().to(vault_combine))
+        .route("/api/vault/guardian/replace", web::post().to(vault_guardian_replace))
+
+        // Lecteur UQ (player)
+        .route("/api/player/start", web::post().to(player_routes::player_start))
+        .route("/api/player/tick", web::post().to(player_routes::player_tick))
+        .route("/api/player/stop", web::post().to(player_routes::player_stop))
+        .route("/api/player/stats", web::get().to(player_routes::player_stats))
+        .route("/api/vault/proof", web::post().to(vault_proof))
+        .route("/api/vault/proof/verify", web::post().to(vault_proof_verify))
+        .route("/api/vault/recovery/start", web::post().to(vault_recovery_start))
+        .route("/api/vault/session", web::post().to(vault_session))
+        .route("/api/vault/p2p/store", web::post().to(vault_p2p_store))
+        .route("/api/validator/approvals", web::get().to(validator_approvals))
+        .route("/api/sellers", web::get().to(sellers_list))
+        .route("/api/mini/peers", web::get().to(mini_peers))
+        .route("/api/dao/stats", web::get().to(dao_stats))
+        .route("/api/publish", web::post().to(publish_item))
+        .route("/api/verify/youtube", web::post().to(verify_youtube))
+        .route("/api/verify/spotify", web::post().to(verify_spotify))
+        .route("/api/verify/instagram", web::post().to(verify_instagram))
+        .route("/api/verify/tiktok", web::post().to(verify_tiktok))
+        .route("/api/biometric/template", web::post().to(biometric_template))
+        .route("/api/biometric/verify", web::post().to(biometric_verify))
+        .route("/api/biometric/liveness", web::post().to(biometric_liveness))
+        .route("/api/biometric/spoofing", web::post().to(biometric_spoofing))
+        .route("/api/fixorb/units", web::get().to(fixorb_units_info))
+        .route("/api/fixorb/supply", web::get().to(fixorb_supply))
+        .route("/api/fixorb/convert", web::post().to(fixorb_convert))
+        .route("/api/fixorb/send", web::post().to(fixorb_send))
+        .route("/api/fixorb/receive/{id}", web::get().to(fixorb_receive))
+        .route("/api/fixorb/transactions/{id}", web::get().to(fixorb_transactions))
+        .route("/api/p2p/start", web::post().to(p2p_start))
+        .route("/api/p2p/send", web::post().to(p2p_send))
+        .route("/api/p2p/broadcast", web::post().to(p2p_broadcast))
+        .route("/api/p2p/peers", web::get().to(p2p_peers))
+        .route("/api/savings/contract", web::post().to(savings_contract))
+        .route("/api/savings/yield", web::get().to(savings_yield))
+        .route("/api/guardian/login", web::post().to(guardian_routes::guardian_login))
+        .route("/api/guardian/unlock", web::post().to(guardian_routes::guardian_unlock))
+        .route("/api/guardian/commands", web::get().to(guardian_routes::guardian_commands))
+        .route("/api/guardian/execute", web::post().to(guardian_routes::guardian_execute))
+        .route("/api/guardian/status", web::get().to(guardian_routes::guardian_status))
+        .route("/api/guardian/logout", web::post().to(guardian_routes::guardian_logout))
+        .route("/api/distribution/stats", web::get().to(distribution_stats))
+        .route("/api/distribution/treasury", web::get().to(distribution_treasury_status))
+        .route("/api/distribution/delis", web::get().to(distribution_delis_status))
+        .route("/api/distribution/sell-crypto", web::post().to(distribution_sell_crypto))
+        .route("/api/distribution/sell-p2p", web::post().to(distribution_sell_p2p))
+        .route("/api/distribution/recharge", web::post().to(distribution_auto_recharge))
+        .route("/api/distribution/claim", web::post().to(distribution_claim))
+        .route("/api/distribution/ubi", web::post().to(distribution_ubi_distribute))
+                // Journal individuel
+        .route("/api/journal/export/{account_id}", web::get().to(journal_export))
+        .route("/api/journal/summary/{account_id}", web::get().to(journal_summary))
+
+        // ═══════════════════════════════════════════════════════════════
+        // 🛒 ZANDO — ROUTES
+        // ═══════════════════════════════════════════════════════════════
+
+        // ─── ZANDO ÉLÉMENTS (6 routes) ───
+        .route("/api/zando/item/create", web::post().to(zando_item_create))
+        .route("/api/zando/items", web::get().to(zando_items_list))
+        .route("/api/zando/items/{shop_id}", web::get().to(zando_items_get))
+        .route("/api/zando/item/{id}", web::get().to(zando_item_get))
+        .route("/api/zando/item/{id}/update", web::post().to(zando_item_update))
+        .route("/api/zando/item/{id}/delete", web::post().to(zando_item_delete))
+        .route("/api/zando/item/{id}/publish", web::post().to(zando_item_publish))
+
+        // ─── ZANDO AGENTS (3 routes) ───
+        .route("/api/zando/agent/become", web::post().to(zando_agent_become))
+        .route("/api/zando/agents/{item_id}", web::get().to(zando_agents_get))
+        .route("/api/zando/agent/sale", web::post().to(zando_agent_sale))
+
+        // ─── ZANDO CONTACTS (5 routes) ───
+        .route("/api/zando/contacts/request", web::post().to(zando_contact_request))
+        .route("/api/zando/contacts/{id}/accept", web::post().to(zando_contact_accept))
+        .route("/api/zando/contacts/{id}/refuse", web::post().to(zando_contact_refuse))
+        .route("/api/zando/contacts/share", web::post().to(zando_contact_share))
+        .route("/api/zando/contacts/shared/{user_id}", web::get().to(zando_contacts_shared))
+        
+        // ─── ZANDO DRAFTS (3 routes) ───
+        .route("/api/zando/drafts", web::post().to(zando_draft_save))
+        .route("/api/zando/drafts/{id}", web::get().to(zando_draft_get))
+        .route("/api/zando/drafts/{id}", web::delete().to(zando_draft_delete))
+
+        // ─── CUSTOM TYPES (5 routes) ───
+        .route("/api/zando/custom-type/create", web::post().to(custom_type_create))
+        .route("/api/zando/custom-types", web::get().to(custom_types_list))
+        .route("/api/zando/custom-types/owner/{owner_id}", web::get().to(custom_types_by_owner))
+        .route("/api/zando/custom-type/{id}", web::get().to(custom_type_get))
+        .route("/api/zando/custom-type/{id}", web::delete().to(custom_type_delete))
+        .route("/api/uq/generate", web::post().to(uq_generate_address))
+
+
+        // ─── CONTACTS (5 routes) ───
+        .route("/api/contact/request", web::post().to(contact_request_create))
+        .route("/api/contact/request/{id}/accept", web::post().to(contact_request_accept))
+        .route("/api/contact/request/{id}/refuse", web::post().to(contact_request_refuse))
+        .route("/api/contact/share", web::post().to(contact_share))
+        .route("/api/contact/shared/{user_id}", web::get().to(contact_shared_get))
+
+        // ─── DRAFTS (2 routes) ───
+        .route("/api/draft/save", web::post().to(draft_save))
+        .route("/api/draft/{id}/delete", web::post().to(draft_delete))
+        // ═══════════════════════════════════════════════════════════════
+        // 🔗 ROUTES ORPHELINES — Handlers existants non connectés
+        // ═══════════════════════════════════════════════════════════════
+
+        // ─── COMPTE ───
+        .route("/api/account/{id}", web::get().to(account_get))
+        .route("/api/account/{id}/balance", web::get().to(account_balance))
+
+        // ─── BULLE ───
+        .route("/api/bubble/{id}", web::get().to(bubble_get))
+
+        // ─── UBI ───
+        .route("/api/ubi/check/{id}", web::get().to(ubi_check))
+
+        // ─── IDENTITÉ ───
+        .route("/api/identity/{id}", web::get().to(identity_get))
+        .route("/api/identity/{id}/verify", web::post().to(identity_verify))
+
+        // ─── GOUVERNANCE ───
+        .route("/api/governance/proposals", web::get().to(governance_list))
+
+        // ─── FRÉQUENCE ───
+        .route("/api/frequency/hop", web::post().to(frequency_hop))
+
+        // ─── CHAT ───
+        .route("/api/chat/messages/{id}", web::get().to(chat_messages))
+
+        // ─── BLACKKEY ───
+        .route("/api/blackkey/sign", web::post().to(blackkey_sign))
+        .route("/api/blackkey/decrypt", web::post().to(blackkey_decrypt))
+        .route("/api/blackkey/mutate", web::post().to(blackkey_mutate))
+        .route("/api/blackkey/integrity", web::get().to(blackkey_integrity))
+
+        // ─── FIXORB ───
+        .route("/api/fixorb/balance/{id}", web::get().to(fixorb_balance))
+
+        // ─── FRAUDE ───
+        .route("/api/fraud/history/{id}", web::get().to(fraud_history))
+        .route("/api/fraud/score/{id}", web::get().to(fraud_score))
+
+        // ─── MAILBOX ───
+        .route("/api/mailbox/{id}", web::get().to(mailbox_get))
+
+        // ─── RÉPUTATION ───
+        .route("/api/reputation/{id}", web::get().to(reputation_get))
+
+        // ─── INDEX ───
+        .route("/serve", web::get().to(serve_index))
+
+        // ─── BOUTIQUE (user_handlers) ───
+        .route("/api/shop/{id}", web::get().to(crate::user_handlers::shop_get))
+
+        // ─── CONNEXION (user_handlers) ───
+        .route("/api/connect/sell", web::post().to(crate::user_handlers::connect_sell))
+        .route("/api/connect/buy", web::post().to(crate::user_handlers::connect_buy))
+        .route("/api/connect/sellers", web::get().to(crate::user_handlers::connect_sellers))
+
+        // ─── PARRAINAGE (user_handlers) ───
+        .route("/api/referral/create", web::post().to(crate::user_handlers::referral_create))
+        .route("/api/referral/stats/{id}", web::get().to(crate::user_handlers::referral_stats))
+        .route("/api/referral/claim", web::post().to(crate::user_handlers::referral_claim))
+
+        // ─── NOTIFICATIONS (user_handlers) ───
+        .route("/api/notifications/{id}", web::get().to(crate::user_handlers::notifications_list))
+        .route("/api/notifications/read", web::post().to(crate::user_handlers::notifications_read))
+
+        // ─── DASHBOARD (user_handlers) ───
+        .route("/api/dashboard/{id}", web::get().to(crate::user_handlers::dashboard))
+        ;
+}
+
+
+
+
+
+
+
+
+

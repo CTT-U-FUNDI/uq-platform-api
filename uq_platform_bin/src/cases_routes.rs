@@ -143,7 +143,10 @@ pub async fn boucle_regulation() {
         }
         let m = crate::cases_loop::analyser_marche();
         if m.tendance != "equilibre" {
-            eprintln!("🌍 Marche : {} (offres={} demandes={})", m.tendance, m.offres, m.demandes);
+            eprintln!(
+                "🌍 Marche : {} (offres={} demandes={})",
+                m.tendance, m.offres, m.demandes
+            );
         }
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     }

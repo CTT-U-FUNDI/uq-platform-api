@@ -122,12 +122,18 @@ mod tests {
     fn un_compte_vient_d_etre_vu_est_actif() {
         let uq = "UQ-900000001";
         signaler(uq);
-        assert!(actif(uq), "la presence doit sortir de la mesure, pas d un defaut");
+        assert!(
+            actif(uq),
+            "la presence doit sortir de la mesure, pas d un defaut"
+        );
     }
 
     #[test]
     fn un_compte_jamais_vu_n_est_pas_actif() {
-        assert!(!actif("UQ-900000002"), "rien ne doit etre declare en ligne sans appel");
+        assert!(
+            !actif("UQ-900000002"),
+            "rien ne doit etre declare en ligne sans appel"
+        );
     }
 
     #[test]

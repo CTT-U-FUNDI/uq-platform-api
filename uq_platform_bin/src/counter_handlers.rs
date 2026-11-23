@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // COUNTER HANDLERS — 4 ROUTES
 // Le Compteur & Calculateur (7ème organe)
 // ====================
@@ -8,24 +8,28 @@ use serde_json::json;
 
 /// GET /api/counter/status
 pub async fn counter_status() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     // Compter les utilisateurs
-    let total_users: i64 = conn.query_row("SELECT COUNT(*) FROM uq_index", [], |r| r.get(0)).unwrap_or(0);
+    let total_users: i64 = conn
+        .query_row("SELECT COUNT(*) FROM uq_index", [], |r| r.get(0))
+        .unwrap_or(0);
 
     // Somme des 6 Cases (depuis seven_cases ou calculée)
     let mut stmt = match conn.prepare(
         "SELECT case_1_tresor, case_2_frais, case_3_recompenses, case_4_epargne,
                 case_5_credit, case_6_bouclier, case_7_comptes, sum_6_cases, total_7_cases,
                 invariant_valid, block_number
-         FROM seven_cases ORDER BY block_number DESC LIMIT 1"
+         FROM seven_cases ORDER BY block_number DESC LIMIT 1",
     ) {
         Ok(s) => s,
         Err(_) => {
@@ -92,8 +96,14 @@ pub async fn counter_status() -> HttpResponse {
 
 /// POST /api/counter/calculate
 pub async fn counter_calculate(body: web::Json<serde_json::Value>) -> HttpResponse {
-    let amount_borb = body.get("amount_borb").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let fee_percent = body.get("fee_percent").and_then(|v| v.as_f64()).unwrap_or(0.1);
+    let amount_borb = body
+        .get("amount_borb")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let fee_percent = body
+        .get("fee_percent")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.1);
 
     if amount_borb <= 0.0 {
         return HttpResponse::BadRequest().json(json!({
@@ -139,25 +149,29 @@ pub async fn counter_calculate(body: web::Json<serde_json::Value>) -> HttpRespon
 
 /// GET /api/counter/transactions
 pub async fn counter_transactions() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT id, block_number, tx_id, from_user, to_user, amount_borb,
                 fee_borb, fee_type, created_at
-         FROM counter_transactions ORDER BY created_at DESC LIMIT 100"
+         FROM counter_transactions ORDER BY created_at DESC LIMIT 100",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "transactions": []
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "transactions": []
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -176,7 +190,9 @@ pub async fn counter_transactions() -> HttpResponse {
 
     let mut transactions = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { transactions.push(row); }
+        for row in r.flatten() {
+            transactions.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({
@@ -188,24 +204,28 @@ pub async fn counter_transactions() -> HttpResponse {
 
 /// GET /api/counter/rights
 pub async fn counter_rights() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT case_name, right_percentage, total_received, last_received_at
-         FROM counter_case_rights"
+         FROM counter_case_rights",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "rights": default_rights()
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "rights": default_rights()
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -219,7 +239,9 @@ pub async fn counter_rights() -> HttpResponse {
 
     let mut rights = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { rights.push(row); }
+        for row in r.flatten() {
+            rights.push(row);
+        }
     }
 
     if rights.is_empty() {
@@ -246,8 +268,6 @@ fn default_rights() -> Vec<serde_json::Value> {
     ]
 }
 
-
-
 // ====================
 // PRECISION INFINIE - Extensible jusqu'a l'infiniment petit
 // ====================
@@ -255,7 +275,7 @@ fn default_rights() -> Vec<serde_json::Value> {
 /// Calcule la precision d'un montant BORB
 /// Extensible : femto -> atto -> zepto -> yocto -> ronto -> quecto -> ...
 pub fn calculate_infinite_precision(amount_borb: f64) -> String {
-    let units: [( &str, f64); 11] = [
+    let units: [(&str, f64); 11] = [
         ("BORB", 1.0),
         ("borb", 1e-4),
         ("mborb", 1e-6),

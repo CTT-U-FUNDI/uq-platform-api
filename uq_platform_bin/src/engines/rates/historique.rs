@@ -118,7 +118,10 @@ pub fn enregistrer_dans(
 fn nettoyer(conn: &Connection) {
     let maintenant = chrono::Utc::now().timestamp();
     let age_max = maintenant - RETENTION_JOURS * 86_400;
-    let _ = conn.execute("DELETE FROM rates_history WHERE timestamp < ?1", params![age_max]);
+    let _ = conn.execute(
+        "DELETE FROM rates_history WHERE timestamp < ?1",
+        params![age_max],
+    );
     let _ = conn.execute(
         "DELETE FROM rates_history WHERE rowid NOT IN (
              SELECT rowid FROM (
@@ -137,7 +140,12 @@ pub fn points(devise: &str, depuis_secs: i64, source: Option<&str>) -> Vec<Value
     points_dans(&chemin_db(), devise, depuis_secs, source)
 }
 
-pub fn points_dans(chemin: &str, devise: &str, depuis_secs: i64, source: Option<&str>) -> Vec<Value> {
+pub fn points_dans(
+    chemin: &str,
+    devise: &str,
+    depuis_secs: i64,
+    source: Option<&str>,
+) -> Vec<Value> {
     let conn = match ouvrir_chemin(chemin) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
@@ -276,7 +284,12 @@ pub fn premier_point() -> Option<i64> {
 pub fn compter_lignes() -> i64 {
     ouvrir()
         .ok()
-        .and_then(|c| c.query_row("SELECT COUNT(*) FROM rates_history", [], |l| l.get::<_, i64>(0)).ok())
+        .and_then(|c| {
+            c.query_row("SELECT COUNT(*) FROM rates_history", [], |l| {
+                l.get::<_, i64>(0)
+            })
+            .ok()
+        })
         .unwrap_or(0)
 }
 
@@ -315,10 +328,7 @@ mod tests {
     }
 
     fn map_devise(entries: &[(&str, f64)]) -> HashMap<String, f64> {
-        entries
-            .iter()
-            .map(|(c, v)| (c.to_string(), *v))
-            .collect()
+        entries.iter().map(|(c, v)| (c.to_string(), *v)).collect()
     }
 
     #[test]
@@ -334,7 +344,10 @@ mod tests {
         observations.insert("bcc".to_string(), map_devise(&[("CDF", 2301.0)]));
 
         let ecrits = enregistrer_dans(&chemin, maintenant, &rates, &observations).unwrap();
-        assert_eq!(ecrits, 4, "USD exclu, CDF et EUR en agrégat + 2 observations");
+        assert_eq!(
+            ecrits, 4,
+            "USD exclu, CDF et EUR en agrégat + 2 observations"
+        );
 
         let points_agregat = points_dans(&chemin, "CDF", 3600, Some("agregat"));
         assert_eq!(points_agregat.len(), 1);
@@ -377,9 +390,15 @@ mod tests {
         let maintenant = chrono::Utc::now().timestamp();
         let rates = map_devise(&[("USD", 1.0), ("CDF", 2309.0)]);
         let mut observations: HashMap<String, HashMap<String, f64>> = HashMap::new();
-        observations.insert("er-api".to_string(), map_devise(&[("USD", 1.0), ("CDF", 2309.0)]));
+        observations.insert(
+            "er-api".to_string(),
+            map_devise(&[("USD", 1.0), ("CDF", 2309.0)]),
+        );
         enregistrer_dans(&chemin, maintenant, &rates, &observations).unwrap();
-        assert!(points_dans(&chemin, "USD", 3600, None).is_empty(), "USD ne doit pas être journalisé");
+        assert!(
+            points_dans(&chemin, "USD", 3600, None).is_empty(),
+            "USD ne doit pas être journalisé"
+        );
         liberer(&chemin);
     }
 
@@ -394,19 +413,43 @@ mod tests {
         let mut observations: HashMap<String, HashMap<String, f64>> = HashMap::new();
         observations.insert("er-api".to_string(), map_devise(&[("CDF", 2312.0)]));
         // Premier cycle : le forex avait répondu.
-        enregistrer_dans(&chemin, t_anctre, &map_devise(&[("CDF", 2309.26)]), &observations).unwrap();
+        enregistrer_dans(
+            &chemin,
+            t_anctre,
+            &map_devise(&[("CDF", 2309.26)]),
+            &observations,
+        )
+        .unwrap();
         // Cycle plus récent : seule la crypto a parlé.
         let mut crypto: HashMap<String, HashMap<String, f64>> = HashMap::new();
         crypto.insert("coingecko".to_string(), map_devise(&[("BTC", 77646.0)]));
-        enregistrer_dans(chemin.as_str(), t_tardif, &map_devise(&[("BTC", 77646.0)]), &crypto).unwrap();
+        enregistrer_dans(
+            chemin.as_str(),
+            t_tardif,
+            &map_devise(&[("BTC", 77646.0)]),
+            &crypto,
+        )
+        .unwrap();
 
         let souvenir = dernieres_observations_dans(&chemin);
-        let cdf = souvenir.iter().find(|p| p.devise == "CDF").expect("CDF retrouvé");
-        assert_eq!(cdf.valeur, 2309.26, "la valeur servie, pas le dire d'er-api");
+        let cdf = souvenir
+            .iter()
+            .find(|p| p.devise == "CDF")
+            .expect("CDF retrouvé");
+        assert_eq!(
+            cdf.valeur, 2309.26,
+            "la valeur servie, pas le dire d'er-api"
+        );
         assert_eq!(cdf.source, "agregat");
-        assert_eq!(cdf.horodatage, t_anctre, "avec SA date, pas celle du cycle courant");
+        assert_eq!(
+            cdf.horodatage, t_anctre,
+            "avec SA date, pas celle du cycle courant"
+        );
 
-        let btc = souvenir.iter().find(|p| p.devise == "BTC").expect("BTC retrouvé");
+        let btc = souvenir
+            .iter()
+            .find(|p| p.devise == "BTC")
+            .expect("BTC retrouvé");
         assert_eq!(btc.horodatage, t_tardif);
 
         assert!(
@@ -420,7 +463,11 @@ mod tests {
     #[test]
     fn snapshot_survit_au_processus() {
         let chemin = base_isolation("snapshot");
-        enregistrer_snapshot_dans(&chemin, r#"{"rates":{"CDF":2309.26},"source":"mediane"}"#, 1_000);
+        enregistrer_snapshot_dans(
+            &chemin,
+            r#"{"rates":{"CDF":2309.26},"source":"mediane"}"#,
+            1_000,
+        );
         let relu = charger_snapshot_dans(&chemin).expect("snapshot relisible");
         assert_eq!(relu["rates"]["CDF"].as_f64(), Some(2309.26));
         liberer(&chemin);

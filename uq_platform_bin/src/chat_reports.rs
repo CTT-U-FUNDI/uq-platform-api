@@ -15,14 +15,12 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use rusqlite::{params, Connection};
 use serde_json::json;
 
+const ANCRE: &str = "uq_index.db";
+const CHEMIN_ANCRE_ABSOLU: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db");
+
 /// Le relatif d'abord, comme partout dans ce projet : un bac de test isole peut
 /// lire sa propre copie du registre sans jamais toucher a celui de la prod.
-fn chemins_index() -> [String; 2] {
-    [
-        crate::uq_index::uq_index_path(),
-        concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db").to_string(),
-    ]
-}
+const CHEMINS: [&str; 2] = [ANCRE, CHEMIN_ANCRE_ABSOLU];
 
 const TABLE_SQL: &str = "
 CREATE TABLE IF NOT EXISTS chat_reports (
@@ -47,11 +45,11 @@ const DESCRIPTION_MAX_CAR: usize = 1000;
 const PREUVE_MAX_CHARS: usize = 900_000;
 
 fn ouvrir() -> Result<Connection, HttpResponse> {
-    for chemin in chemins_index() {
-        if !std::path::Path::new(&chemin).exists() {
+    for chemin in CHEMINS {
+        if !std::path::Path::new(chemin).exists() {
             continue;
         }
-        match Connection::open(&chemin) {
+        match Connection::open(chemin) {
             Ok(conn) => {
                 let _ = conn.execute_batch(TABLE_SQL);
                 return Ok(conn);
@@ -74,11 +72,7 @@ fn normaliser(uq: &str) -> String {
 /// Signalement deja ouvert entre les deux memes comptes : la moderation n'a pas
 /// besoin de dix lignes identiques, et un compte ne peut pas empiler des motifs
 /// pour peser plus lourd.
-pub fn signalement_deja_ouvert(
-    conn: &Connection,
-    reporter: &str,
-    cible: &str,
-) -> Option<i64> {
+pub fn signalement_deja_ouvert(conn: &Connection, reporter: &str, cible: &str) -> Option<i64> {
     conn.query_row(
         "SELECT id FROM chat_reports
          WHERE reporter_uq = ?1 AND target_uq = ?2 AND statut = 'en_attente'
@@ -252,7 +246,10 @@ pub async fn chat_signalements_list(
         Err(response) => return response,
     };
     let sql = if statut.is_empty() {
-        format!("SELECT {} FROM chat_reports ORDER BY created_at DESC LIMIT 200", COLONNES)
+        format!(
+            "SELECT {} FROM chat_reports ORDER BY created_at DESC LIMIT 200",
+            COLONNES
+        )
     } else {
         format!(
             "SELECT {} FROM chat_reports WHERE statut = ?1 ORDER BY created_at DESC LIMIT 200",
@@ -261,7 +258,8 @@ pub async fn chat_signalements_list(
     };
     let sortie = if statut.is_empty() {
         conn.prepare(&sql).and_then(|mut stmt| {
-            stmt.query_map([], |row| ligne(row))?.collect::<Result<Vec<_>, _>>()
+            stmt.query_map([], |row| ligne(row))?
+                .collect::<Result<Vec<_>, _>>()
         })
     } else {
         conn.prepare(&sql).and_then(|mut stmt| {
@@ -340,13 +338,7 @@ mod tests {
         conn
     }
 
-    fn inserer(
-        conn: &Connection,
-        reporter: &str,
-        cible: &str,
-        motif: &str,
-        statut: &str,
-    ) -> i64 {
+    fn inserer(conn: &Connection, reporter: &str, cible: &str, motif: &str, statut: &str) -> i64 {
         conn.execute(
             "INSERT INTO chat_reports (reporter_uq, target_uq, motif, description, statut, created_at)
              VALUES (?1, ?2, ?3, '', ?4, 1)",

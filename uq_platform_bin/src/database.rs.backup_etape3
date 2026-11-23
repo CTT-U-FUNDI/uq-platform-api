@@ -1,0 +1,1277 @@
+use std::fs;
+use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock, atomic::{AtomicU64, Ordering}};
+use std::thread;
+use std::time::Duration;
+use serde::{Serialize, Deserialize};
+use r2d2::{Pool, PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
+use uq_blockchain::constants::TOTAL_FIXORB;
+/// Base de donnÃƒÆ’Ã†'Ãƒ"šÃ‚Â©es persistante JSON
+pub struct Database {
+    data: Arc<Mutex<DbData>>,
+    file_path: String,
+    sqlite_path: String,
+    sqlite_pool: Arc<Pool<SqliteConnectionManager>>,
+    persist_json: bool,
+    // WAL instance for durable append-only logging
+    pub wal: Arc<crate::wal::Wal>,
+    // transactions counter since last snapshot
+    pub tx_since_snapshot: Arc<AtomicU64>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbData {
+    pub publications: Vec<serde_json::Value>,
+    pub interests: Vec<serde_json::Value>,
+    pub claims: Vec<serde_json::Value>,
+    pub loans: Vec<serde_json::Value>,
+    pub exchange_orders: Vec<serde_json::Value>,
+    pub sanctions: Vec<serde_json::Value>,
+    pub marketers: Vec<serde_json::Value>,
+    pub kyc_records: Vec<serde_json::Value>,
+    pub offline_txs: Vec<serde_json::Value>,
+    pub fragments: Vec<serde_json::Value>,
+    pub player_sessions: Vec<serde_json::Value>,
+    pub connections: Vec<serde_json::Value>,
+    pub bubbles: Vec<serde_json::Value>,
+    pub fees: Vec<serde_json::Value>,
+    pub votes: Vec<serde_json::Value>,
+    pub accounts: Vec<Account>,
+    pub transactions: Vec<TransactionRecord>,
+    pub six_cases: Vec<CaseBalance>,
+    pub ubi_claims: Vec<UbiClaim>,
+    pub proposals: Vec<Proposal>,
+    pub messages: Vec<Message>,
+    pub offers: Vec<Offer>,
+    pub sessions: Vec<Session>,
+    pub notifications: Vec<serde_json::Value>,
+    pub savings_contracts: Vec<serde_json::Value>,
+    pub nanties: Vec<serde_json::Value>,
+    pub debts: Vec<serde_json::Value>,
+    pub creator_prices: Vec<serde_json::Value>,
+    pub total_streamed: u128,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Account {
+    pub id: String,
+    pub public_key: Vec<u8>,
+    pub balance_bubbles: u64,
+    pub balance_points: u64,
+    pub kyc_verified: bool,
+    pub created_at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionRecord {
+    pub id: String,
+    pub sender: String,
+    pub recipient: String,
+    pub amount_points: u64,
+    pub fee_points: u64,
+    pub timestamp: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaseBalance {
+    pub name: String,
+    pub balance: u64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UbiClaim {
+    pub account_id: String,
+    pub last_claim_at: i64,
+    pub streak_days: u64,
+    pub total_claimed: u64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Proposal {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub proposer: String,
+    pub votes_for: u64,
+    pub votes_against: u64,
+    pub status: String,
+    pub created_at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub id: String,
+    pub sender: String,
+    pub recipient: String,
+    pub content: String,
+    pub delivered: bool,
+    pub timestamp: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Offer {
+    pub id: String,
+    pub seller: String,
+    pub description: String,
+    pub price_per_mb: u64,
+    pub total_size_mb: u64,
+    pub active: bool,
+    pub created_at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub id: String,
+    pub account_id: String,
+    pub token: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+impl Database {
+    pub fn shared(file_path: &str) -> Arc<Database> {
+        static DB_INSTANCE: OnceLock<Arc<Database>> = OnceLock::new();
+        DB_INSTANCE
+            .get_or_init(|| Arc::new(Database::new(file_path)))
+            .clone()
+    }
+
+    /// Crée ou ouvre la base de données (JSON + SQLite)
+    pub fn new(file_path: &str) -> Self {
+        let initial_data = if Path::new(file_path).exists() {
+            let content = fs::read_to_string(file_path).unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or_else(|_| Database::default_data())
+        } else {
+            Database::default_data()
+        };
+
+        let sqlite_path = if file_path.ends_with(".json") {
+            file_path.trim_end_matches(".json").to_string() + ".db"
+        } else {
+            file_path.to_string() + ".db"
+        };
+
+        // create r2d2 pool for sqlite
+        let manager = SqliteConnectionManager::file(&sqlite_path);
+        let pool = Pool::builder()
+            .max_size(15)
+            .build(manager)
+            .expect("Failed to create sqlite r2d2 pool");
+
+        let persist_json = std::env::var("UQ_KEEP_JSON").map(|v| {
+            let vl = v.to_lowercase();
+            !(vl == "0" || vl == "false")
+        }).unwrap_or(false);
+
+        // Open or create WAL (use env WAL_DIR or default)
+        let wal_dir = std::env::var("WAL_DIR").unwrap_or_else(|_| "./data/wal".to_string());
+        let wal = match crate::wal::Wal::open(wal_dir) {
+            Ok(w) => Arc::new(w),
+            Err(e) => {
+                eprintln!("Failed to open WAL: {}", e);
+                // As a fallback create a dummy in-memory wal by opening default dir
+                Arc::new(crate::wal::Wal::open("./data/wal").expect("Failed to create fallback WAL"))
+            }
+        };
+
+        let db = Self {
+            data: Arc::new(Mutex::new(initial_data)),
+            file_path: file_path.to_string(),
+            sqlite_path: sqlite_path.clone(),
+            sqlite_pool: Arc::new(pool),
+            persist_json,
+            wal: wal.clone(),
+            tx_since_snapshot: Arc::new(AtomicU64::new(0)),
+        };
+
+        // initialiser sqlite (création des tables)
+        if let Err(e) = db.init_sqlite() {
+            eprintln!("Failed to init sqlite: {}", e);
+        }
+
+        // Migrer les données JSON existantes vers SQLite si la base est encore vide
+        if let Err(e) = db.migrate_json_to_sqlite() {
+            eprintln!("Failed to migrate json to sqlite: {}", e);
+        }
+
+        db.save();
+
+        // Replay WAL entries since last snapshot into in-memory state (idempotent by op_id)
+        {
+            if let Ok(last_meta) = db.wal.read_meta() {
+                let last_snapshot_seq = last_meta.unwrap_or(0u64);
+                if let Ok(entries) = db.wal.read_all() {
+                    for entry in entries.into_iter().filter(|e| e.seq > last_snapshot_seq) {
+                        if entry.op_type == "tx" {
+                            let sender = entry.payload.get("sender").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let recipient = entry.payload.get("recipient").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let amount = entry.payload.get("amount_points").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let fee = entry.payload.get("fee_points").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let timestamp = entry.payload.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(chrono::Utc::now().timestamp());
+
+                            // idempotency: skip if transaction already present in memory
+                            let exists = {
+                                let d = db.data.lock().unwrap();
+                                d.transactions.iter().any(|t| t.id == entry.op_id)
+                            };
+                            if exists { continue; }
+
+                            // apply to in-memory state
+                            {
+                                let mut d = db.data.lock().unwrap();
+                                d.transactions.push(TransactionRecord {
+                                    id: entry.op_id.clone(),
+                                    sender: sender.clone(),
+                                    recipient: recipient.clone(),
+                                    amount_points: amount as u64,
+                                    fee_points: fee as u64,
+                                    timestamp,
+                                });
+                                if let Some(s) = d.accounts.iter_mut().find(|a| a.id == sender) {
+                                    s.balance_points = s.balance_points.saturating_sub(amount as u64);
+                                }
+                                if let Some(r) = d.accounts.iter_mut().find(|a| a.id == recipient) {
+                                    r.balance_points = r.balance_points.saturating_add(amount as u64);
+                                }
+                            }
+
+                            // persist to sqlite best-effort
+                            if let Ok(conn) = db.sqlite_pool.get() {
+                                let _ = conn.execute(
+                                    "INSERT OR IGNORE INTO transactions (id, sender, recipient, amount_points, fee_points, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                                    rusqlite::params![entry.op_id, sender, recipient, amount as i64, fee as i64, timestamp],
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Spawn snapshot worker: performs periodic snapshots (in a background thread)
+        {
+            let wal_clone = db.wal.clone();
+            let pool_clone = db.sqlite_pool.clone();
+            let data_clone = db.data.clone();
+            let tx_counter = db.tx_since_snapshot.clone();
+
+            // config from env
+            let snapshot_interval_secs = std::env::var("SNAPSHOT_INTERVAL_SECS").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(10u64);
+            let snapshot_tx_threshold = std::env::var("SNAPSHOT_TX_THRESHOLD").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(5000u64);
+
+            thread::Builder::new().name("snapshot-worker".into()).spawn(move || {
+                loop {
+                    // wait up to the configured interval, but wake earlier if tx threshold reached
+                    for _ in 0..snapshot_interval_secs {
+                        thread::sleep(Duration::from_secs(1));
+                        let c = tx_counter.load(Ordering::SeqCst);
+                        if c >= snapshot_tx_threshold {
+                            break; // proceed to snapshot immediately
+                        }
+                    }
+
+                    // build snapshot from in-memory state (short lock)
+                    let snapshot_data = {
+                        match data_clone.lock() {
+                            Ok(d) => serde_json::to_string(&*d).ok(),
+                            Err(_) => None,
+                        }
+                    };
+                    if snapshot_data.is_none() {
+                        continue;
+                    }
+
+                    // determine last wal seq
+                    let last_seq = {
+                        let entries_result = wal_clone.read_all();
+                        eprintln!("SNAPSHOT DEBUG: read_all() a retourné {:?}", entries_result.as_ref().map(|e| e.len()));
+                        match entries_result {
+                            Ok(entries) => entries.last().map(|e| e.seq).unwrap_or(0),
+                            Err(_) => 0,
+                        }
+                    };
+
+                    // persist snapshot into sqlite atomically
+                    if let Ok(mut conn) = pool_clone.get() {
+                        if let Ok(tx) = conn.transaction() {
+                            // Replace accounts
+                            if let Ok(d) = data_clone.lock() {
+                                let _ = tx.execute("DELETE FROM accounts", []);
+                                for acc in d.accounts.iter() {
+                                    let _ = tx.execute(
+                                        "INSERT OR REPLACE INTO accounts (id, public_key, balance_bubbles, balance_points, kyc_verified, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                                        rusqlite::params![acc.id, acc.public_key.as_slice(), acc.balance_bubbles as i64, acc.balance_points as i64, if acc.kyc_verified {1i64} else {0i64}, acc.created_at],
+                                    );
+                                }
+
+                                // Replace transactions
+                                let _ = tx.execute("DELETE FROM transactions", []);
+                                for tr in d.transactions.iter() {
+                                    let _ = tx.execute(
+                                        "INSERT OR REPLACE INTO transactions (id, sender, recipient, amount_points, fee_points, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                                        rusqlite::params![tr.id, tr.sender, tr.recipient, tr.amount_points as i64, tr.fee_points as i64, tr.timestamp],
+                                    );
+                                }
+
+                                // Optionally persist other tables as needed (offers, sessions, ubi_claims)
+                            }
+
+                            if tx.commit().is_ok() {
+                                // write wal meta then rotate wal up to last_seq
+                                match wal_clone.write_meta(last_seq) {
+    Ok(()) => eprintln!("SNAPSHOT OK: wal.meta mis à jour avec seq = {}", last_seq),
+    Err(e) => eprintln!("SNAPSHOT ERROR: write_meta a échoué: {}", e),
+}
+                                let _ = wal_clone.rotate_after(last_seq);
+                                // reset counter
+                                tx_counter.store(0, Ordering::SeqCst);
+                            }
+                        }
+                    }
+                }
+            }).ok();
+        }
+
+        db
+    }
+    /// DonnÃƒÆ’Ã†'Ãƒ"šÃ‚Â©es par dÃƒÆ’Ã†'Ãƒ"šÃ‚Â©faut avec les 6 cases
+    fn default_data() -> DbData {
+        DbData {
+            accounts: Vec::new(),
+            publications: Vec::new(),
+            interests: Vec::new(),
+            claims: Vec::new(),
+            loans: Vec::new(),
+            exchange_orders: Vec::new(),
+            sanctions: Vec::new(),
+            marketers: Vec::new(),
+            kyc_records: Vec::new(),
+            offline_txs: Vec::new(),
+            fragments: Vec::new(),
+            player_sessions: Vec::new(),
+            notifications: Vec::new(),
+            savings_contracts: Vec::new(),
+            nanties: Vec::new(),
+            debts: Vec::new(),
+            creator_prices: Vec::new(),
+            total_streamed: 0,
+            connections: Vec::new(),
+            bubbles: Vec::new(),
+            fees: Vec::new(),
+            votes: Vec::new(),
+            transactions: Vec::new(),
+            six_cases: vec![
+                CaseBalance { name: "Treasury".to_string(), balance: 31_120_000_000 },
+                CaseBalance { name: "Fees".to_string(), balance: 2_240_000_000 },
+                CaseBalance { name: "Rewards".to_string(), balance: 2_240_000_000 },
+                CaseBalance { name: "Savings".to_string(), balance: 2_240_000_000 },
+                CaseBalance { name: "Credit".to_string(), balance: 1_320_000_000 },
+                CaseBalance { name: "Shield".to_string(), balance: 840_000_000 },
+            ],
+            ubi_claims: Vec::new(),
+            proposals: Vec::new(),
+            messages: Vec::new(),
+            offers: Vec::new(),
+            sessions: Vec::new(),
+        }
+    }
+    /// Sauvegarde sur disque (JSON) "” désactivée par défaut, contrôlée par UQ_KEEP_JSON env
+    fn save(&self) {
+        if !self.persist_json { return; }
+        if let Ok(data) = self.data.lock() {
+            if let Ok(json_str) = serde_json::to_string_pretty(&*data) {
+                let _ = fs::write(&self.file_path, json_str);
+            }
+        }
+    }
+
+    /// Initialise la base SQLite et crée les tables si elles n'existent pas
+    fn init_sqlite(&self) -> Result<(), rusqlite::Error> {
+        // use pooled connection
+        let conn = self.sqlite_pool.get().map_err(|_e| rusqlite::Error::InvalidQuery)?;
+        conn.execute_batch("PRAGMA journal_mode = WAL;
+            CREATE TABLE IF NOT EXISTS accounts (
+                id TEXT PRIMARY KEY,
+                public_key BLOB,
+                balance_bubbles INTEGER,
+                balance_points INTEGER,
+                kyc_verified INTEGER,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS transactions (
+                id TEXT PRIMARY KEY,
+                sender TEXT,
+                recipient TEXT,
+                amount_points INTEGER,
+                fee_points INTEGER,
+                timestamp INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS publications (
+                id TEXT PRIMARY KEY,
+                json TEXT
+            );
+            CREATE TABLE IF NOT EXISTS offers (
+                id TEXT PRIMARY KEY,
+                seller TEXT,
+                description TEXT,
+                price_per_mb INTEGER,
+                total_size_mb INTEGER,
+                active INTEGER,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS ubi_claims (
+                account_id TEXT PRIMARY KEY,
+                last_claim_at INTEGER,
+                streak_days INTEGER,
+                total_claimed INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                account_id TEXT,
+                token TEXT,
+                created_at INTEGER,
+                expires_at INTEGER
+            );
+
+            -- ═══════════════════════════════════════════════════════════
+            -- TABLE journals — Journal individuel par compte
+            -- ═══════════════════════════════════════════════════════════
+            CREATE TABLE IF NOT EXISTS journals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id TEXT NOT NULL,
+                tx_type TEXT NOT NULL,
+                amount_points INTEGER NOT NULL,
+                fee_points INTEGER DEFAULT 0,
+                counterparty TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_journals_account ON journals (account_id);
+-- indices for performance
+            CREATE INDEX IF NOT EXISTS idx_accounts_id ON accounts (id);
+            CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions (sender);
+            CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions (recipient);
+            CREATE INDEX IF NOT EXISTS idx_offers_created_at ON offers (created_at);
+        ")?;
+        Ok(())
+    }
+
+    /// Importe les données JSON existantes dans SQLite si les tables sont vides
+    fn migrate_json_to_sqlite(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // use pooled connection to avoid opening raw connections repeatedly
+        let mut conn = match self.sqlite_pool.get() {
+            Ok(c) => c,
+            Err(e) => return Err(Box::new(e)),
+        };
+
+        // Charger le JSON en mémoire
+        let data = self.data.lock().unwrap().clone();
+
+        let tx = conn.transaction()?;
+        // accounts: importer si table vide
+        let accounts_count: i64 = tx.query_row("SELECT COUNT(1) FROM accounts", [], |r| r.get(0)).unwrap_or(0);
+        if accounts_count == 0 {
+            for acc in data.accounts.iter() {
+                let _ = tx.execute(
+                    "INSERT OR IGNORE INTO accounts (id, public_key, balance_bubbles, balance_points, kyc_verified, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![acc.id, acc.public_key.as_slice(), acc.balance_bubbles as i64, acc.balance_points as i64, if acc.kyc_verified {1i64} else {0i64}, acc.created_at],
+                );
+            }
+        }
+        // transactions: importer si table vide
+        let tx_count: i64 = tx.query_row("SELECT COUNT(1) FROM transactions", [], |r| r.get(0)).unwrap_or(0);
+        if tx_count == 0 {
+            for tr in data.transactions.iter() {
+                let _ = tx.execute(
+                    "INSERT OR IGNORE INTO transactions (id, sender, recipient, amount_points, fee_points, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![tr.id, tr.sender, tr.recipient, tr.amount_points as i64, tr.fee_points as i64, tr.timestamp],
+                );
+            }
+        }
+        // publications: importer si table vide
+        let pub_count: i64 = tx.query_row("SELECT COUNT(1) FROM publications", [], |r| r.get(0)).unwrap_or(0);
+        if pub_count == 0 {
+            for p in data.publications.iter() {
+                let id = p.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("pub_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+                let json_str = serde_json::to_string(p)?;
+                let _ = tx.execute(
+                    "INSERT OR IGNORE INTO publications (id, json) VALUES (?1, ?2)",
+                    rusqlite::params![id, json_str],
+                );
+            }
+        }
+        // offers: importer si table vide
+        let offers_count: i64 = tx.query_row("SELECT COUNT(1) FROM offers", [], |r| r.get(0)).unwrap_or(0);
+        if offers_count == 0 {
+            for o in data.offers.iter() {
+                let _ = tx.execute(
+                    "INSERT OR IGNORE INTO offers (id, seller, description, price_per_mb, total_size_mb, active, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![o.id, o.seller, o.description, o.price_per_mb as i64, o.total_size_mb as i64, if o.active {1i64} else {0i64}, o.created_at],
+                );
+            }
+        }
+        // ubi_claims: importer si table vide
+        let ubi_count: i64 = tx.query_row("SELECT COUNT(1) FROM ubi_claims", [], |r| r.get(0)).unwrap_or(0);
+        if ubi_count == 0 {
+            for u in data.ubi_claims.iter() {
+                let _ = tx.execute(
+                    "INSERT OR IGNORE INTO ubi_claims (account_id, last_claim_at, streak_days, total_claimed) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![u.account_id, u.last_claim_at, u.streak_days as i64, u.total_claimed as i64],
+                );
+            }
+        }
+        // sessions: importer si table vide
+        let sess_count: i64 = tx.query_row("SELECT COUNT(1) FROM sessions", [], |r| r.get(0)).unwrap_or(0);
+        if sess_count == 0 {
+            for s in data.sessions.iter() {
+                let _ = tx.execute(
+                    "INSERT OR IGNORE INTO sessions (id, account_id, token, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![s.id, s.account_id, s.token, s.created_at, s.expires_at],
+                );
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+    /// Crée un compte (JSON + SQLite)
+    pub fn create_account(&self, id: &str, public_key: &[u8]) {
+        // Insert into JSON in-memory structure
+        {
+            let mut data = self.data.lock().unwrap();
+            if !data.accounts.iter().any(|a| a.id == id) {
+                data.accounts.push(Account {
+                    id: id.to_string(),
+                    public_key: public_key.to_vec(),
+                    balance_bubbles: 0,
+                    balance_points: 0,
+                    kyc_verified: false,
+                    created_at: chrono::Utc::now().timestamp(),
+                });
+            }
+        }
+        // Persist to sqlite via pool
+        if let Ok(conn) = self.sqlite_pool.get() {
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO accounts (id, public_key, balance_bubbles, balance_points, kyc_verified, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![id, public_key, 0i64, 0i64, 0i64, chrono::Utc::now().timestamp()],
+            );
+        }
+        self.save();
+    }
+    /// Récupère le solde d'un compte (préférence SQLite)
+    pub fn get_balance(&self, id: &str) -> (u64, u64) {
+        if let Ok(conn) = self.sqlite_pool.get() {
+            let mut stmt = match conn.prepare("SELECT balance_bubbles, balance_points FROM accounts WHERE id = ?1") {
+                Ok(s) => s,
+                Err(_) => return (0,0),
+            };
+            let mut rows = stmt.query(rusqlite::params![id]).unwrap();
+            if let Ok(Some(row)) = rows.next() {
+                let b: i64 = row.get(0).unwrap_or(0);
+                let p: i64 = row.get(1).unwrap_or(0);
+                return (b as u64, p as u64);
+            }
+        }
+        // Fallback to in-memory JSON
+        let data = self.data.lock().unwrap();
+        data.accounts.iter()
+            .find(|a| a.id == id)
+            .map(|a| (a.balance_bubbles, a.balance_points))
+            .unwrap_or((0, 0))
+    }
+    /// Enregistre une transaction (JSON + SQLite)
+    pub fn record_transaction(&self, sender: &str, recipient: &str, amount_points: u64, fee_points: u64) {
+        // First, append to WAL (durable append-only source)
+        let payload = serde_json::json!({
+            "sender": sender,
+            "recipient": recipient,
+            "amount_points": amount_points,
+            "fee_points": fee_points,
+            "timestamp": chrono::Utc::now().timestamp(),
+        });
+        match self.wal.append("tx", payload.clone()) {
+            Ok(_entry) => {
+                // proceed to update in-memory state
+                let mut data = self.data.lock().unwrap();
+                let id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+                data.transactions.push(TransactionRecord {
+                    id: id.clone(),
+                    sender: sender.to_string(),
+                    recipient: recipient.to_string(),
+                    amount_points,
+                    fee_points,
+                    timestamp: chrono::Utc::now().timestamp(),
+                });
+                // update balances in memory (simple deduct/credit if accounts exist)
+                if let Some(s) = data.accounts.iter_mut().find(|a| a.id == sender) {
+                    s.balance_points = s.balance_points.saturating_sub(amount_points);
+                }
+                if let Some(r) = data.accounts.iter_mut().find(|a| a.id == recipient) {
+                    r.balance_points = r.balance_points.saturating_add(amount_points);
+                }
+                drop(data);
+
+                // Also persist to SQLite (best-effort, checkpointing async via snapshots)
+                if let Ok(conn) = self.sqlite_pool.get() {
+                    let id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+                    let _ = conn.execute(
+                        "INSERT INTO transactions (id, sender, recipient, amount_points, fee_points, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                        rusqlite::params![id, sender, recipient, amount_points as i64, fee_points as i64, chrono::Utc::now().timestamp()],
+
+
+
+                    );
+                }
+
+                // Optionally persist JSON file
+                self.save();
+                // increment counter used by snapshot worker
+                self.tx_since_snapshot.fetch_add(1, Ordering::SeqCst);
+            }
+            Err(e) => {
+                eprintln!("Failed to append to WAL: {}", e);
+                // Do not apply transaction to memory if WAL append fails "” WAL is source of truth
+            }
+        }
+    }
+    /// RÃƒÆ’Ã†'Ãƒ"šÃ‚Â©cupÃƒÆ’Ã†'Ãƒ"šÃ‚Â¨re les stats des 6 cases
+    pub fn get_cases_stats(&self) -> Vec<(String, u64)> {
+        let data = self.data.lock().unwrap();
+        data.six_cases.iter().map(|c| (c.name.clone(), c.balance)).collect()
+    }
+    /// RÃƒÆ’Ã†'Ãƒ"šÃ‚Â©clame l'UBI
+    pub fn claim_ubi(&self, account_id: &str, amount_points: u64) {
+        {
+            let mut data = self.data.lock().unwrap();
+            let now = chrono::Utc::now().timestamp();
+            if let Some(claim) = data.ubi_claims.iter_mut().find(|c| c.account_id == account_id) {
+                claim.last_claim_at = now;
+                claim.streak_days += 1;
+                claim.total_claimed += amount_points;
+            } else {
+                data.ubi_claims.push(UbiClaim {
+                    account_id: account_id.to_string(),
+                    last_claim_at: now,
+                    streak_days: 1,
+                    total_claimed: amount_points,
+                });
+            }
+        }
+        self.save();
+    }
+    /// CrÃƒÆ’Ã†'Ãƒ"šÃ‚Â©e une proposition DAO
+    pub fn create_proposal(&self, title: &str, description: &str, proposer: &str) {
+        {
+            let mut data = self.data.lock().unwrap();
+            let id = format!("prop_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            data.proposals.push(Proposal {
+                id,
+                title: title.to_string(),
+                description: description.to_string(),
+                proposer: proposer.to_string(),
+                votes_for: 0,
+                votes_against: 0,
+                status: "open".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            });
+        }
+        self.save();
+    }
+    /// Envoie un message
+    pub fn send_message(&self, sender: &str, recipient: &str, content: &str) {
+        {
+            let mut data = self.data.lock().unwrap();
+            let id = format!("msg_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            data.messages.push(Message {
+                id,
+                sender: sender.to_string(),
+                recipient: recipient.to_string(),
+                content: content.to_string(),
+                delivered: false,
+                timestamp: chrono::Utc::now().timestamp(),
+            });
+        }
+        self.save();
+    }
+    /// Publie une offre (JSON + SQLite)
+    pub fn publish_offer(&self, seller: &str, description: &str, price_per_mb: u64, total_size_mb: u64) {
+        let id = format!("offer_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        // JSON
+        {
+            let mut data = self.data.lock().unwrap();
+            data.offers.push(Offer {
+                id: id.clone(),
+                seller: seller.to_string(),
+                description: description.to_string(),
+                price_per_mb,
+                total_size_mb,
+                active: true,
+                created_at: chrono::Utc::now().timestamp(),
+            });
+        }
+        // SQLite via pool
+        if let Ok(conn) = self.sqlite_pool.get() {
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO offers (id, seller, description, price_per_mb, total_size_mb, active, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![id, seller, description, price_per_mb as i64, total_size_mb as i64, 1i64, chrono::Utc::now().timestamp()],
+            );
+        }
+        self.save();
+    }
+    /// Crée une session
+    pub fn create_session(&self, account_id: &str, token: &str, expires_at: i64) {
+        {
+            let mut data = self.data.lock().unwrap();
+            let id = format!("sess_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            data.sessions.push(Session {
+                id,
+                account_id: account_id.to_string(),
+                token: token.to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+                expires_at,
+            });
+        }
+        // also persist session to sqlite via pool
+        if let Ok(conn) = self.sqlite_pool.get() {
+            let id = format!("sess_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO sessions (id, account_id, token, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![id, account_id, token, chrono::Utc::now().timestamp(), expires_at],
+            );
+        }
+        self.save();
+    }
+    /// Récupère les statistiques générales
+    pub fn get_stats(&self) -> serde_json::Value {
+        let data = self.data.lock().unwrap();
+        serde_json::json!({
+            "accounts": data.accounts.len(),
+            "transactions": data.transactions.len(),
+            "proposals": data.proposals.len(),
+            "messages": data.messages.len(),
+            "offers": data.offers.len(),
+            "sessions": data.sessions.len(),
+            "ubi_claims": data.ubi_claims.len()
+        })
+    }
+    /// Vérifie que les 6 cases totalisent bien TOTAL_FIXORB
+    pub fn verify_total_invariant(&self) -> bool {
+        let data = self.data.lock().unwrap();
+        let total: u128 = data.six_cases.iter().map(|c| c.balance as u128).sum();
+        total == TOTAL_FIXORB as u128
+    }
+    // === MÃ‰THODES DE PERSISTANCE ===
+    /// Sauvegarde une publication (JSON + SQLite)
+    pub fn save_publication(&self, pub_data: serde_json::Value) {
+        // Add to in-memory JSON
+        let id = pub_data.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("pub_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+        {
+            let mut data = self.data.lock().unwrap();
+            data.publications.push(pub_data.clone());
+        }
+        // Persist in sqlite via pool
+        if let Ok(conn) = self.sqlite_pool.get() {
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO publications (id, json) VALUES (?1, ?2)",
+                rusqlite::params![&id, serde_json::to_string(&pub_data).unwrap_or_default()],
+            );
+        }
+        self.save();
+    }
+    /// Sauvegarde un intÃƒÆ’Ã†'Ãƒ"šÃ‚Â©rÃƒÆ’Ã†'Ãƒ"šÃ‚Âªt
+    pub fn save_interest(&self, interest_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.interests.push(interest_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde une rÃƒÆ’Ã†'Ãƒ"šÃ‚Â©clamation d'assurance
+    pub fn save_claim(&self, claim_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.claims.push(claim_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un prÃƒÆ’Ã†'Ãƒ"šÃ‚Âªt
+    pub fn save_loan(&self, loan_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.loans.push(loan_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un ordre d'ÃƒÆ’Ã†'Ãƒ"šÃ‚Â©change
+    pub fn save_exchange_order(&self, order_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.exchange_orders.push(order_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde une sanction
+    pub fn save_sanction(&self, sanction_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.sanctions.push(sanction_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un Marketer
+    pub fn save_marketer(&self, marketer_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.marketers.push(marketer_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un enregistrement KYC
+    pub fn save_kyc(&self, kyc_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.kyc_records.push(kyc_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde une transaction hors ligne
+    pub fn save_offline_tx(&self, tx_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.offline_txs.push(tx_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un fragment
+    pub fn save_fragment(&self, fragment_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.fragments.push(fragment_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde une session de lecture
+    pub fn save_player_session(&self, session_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.player_sessions.push(session_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde une connexion
+    pub fn save_connection(&self, connection_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.connections.push(connection_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde une bulle
+    pub fn save_bubble(&self, bubble_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.bubbles.push(bubble_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un frais collectÃƒÆ’Ã†'Ãƒ"šÃ‚Â©
+    pub fn save_fee(&self, fee_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.fees.push(fee_data);
+        }
+        self.save();
+    }
+    /// Sauvegarde un vote
+    pub fn save_vote(&self, vote_data: serde_json::Value) {
+        {
+            let mut data = self.data.lock().unwrap();
+            data.votes.push(vote_data);
+        }
+        self.save();
+    }
+    /// Récupère toutes les offres (préférence SQLite)
+    pub fn get_all_offers(&self) -> Vec<Offer> {
+        if let Ok(conn) = rusqlite::Connection::open(&self.sqlite_path) {
+            let mut stmt = match conn.prepare("SELECT id, seller, description, price_per_mb, total_size_mb, active, created_at FROM offers ORDER BY created_at DESC") {
+                Ok(s) => s,
+                Err(_) => return Vec::new(),
+            };
+            let rows = stmt.query_map([], |row| {
+                Ok(Offer {
+                    id: row.get(0)?,
+                    seller: row.get(1)?,
+                    description: row.get(2)?,
+                    price_per_mb: row.get::<_, i64>(3)? as u64,
+                    total_size_mb: row.get::<_, i64>(4)? as u64,
+                    active: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                })
+            });
+            if let Ok(iter) = rows {
+                return iter.filter_map(Result::ok).collect();
+            }
+        }
+        // fallback to JSON
+        let data = self.data.lock().unwrap();
+        data.offers.clone()
+    }
+    /// Récupère toutes les boutiques (préférence SQLite)
+    pub fn get_all_shops(&self) -> Vec<serde_json::Value> {
+        if let Ok(conn) = rusqlite::Connection::open(&self.sqlite_path) {
+            let mut stmt = match conn.prepare("SELECT json FROM publications ORDER BY rowid DESC") {
+                Ok(s) => s,
+                Err(_) => return Vec::new(),
+            };
+            let rows = stmt.query_map([], |row| {
+                let s: String = row.get(0)?;
+                let v: serde_json::Value = serde_json::from_str(&s).unwrap_or(serde_json::json!({}));
+                Ok(v)
+            });
+            if let Ok(iter) = rows {
+                return iter.filter_map(Result::ok).collect();
+            }
+        }
+        let data = self.data.lock().unwrap();
+        data.publications.iter().map(|p| serde_json::json!(p)).collect()
+    }
+
+    /// Récupère le dashboard d'un utilisateur
+    pub fn get_dashboard(&self, user_id: &str) -> serde_json::Value {
+        let data = self.data.lock().unwrap();
+        let tx_count = data.transactions.iter().filter(|t| t.sender == user_id || t.recipient == user_id).count();
+        let msg_count = data.messages.iter().filter(|m| m.recipient == user_id && !m.delivered).count();
+        let offers_count = data.offers.iter().filter(|o| o.seller == user_id && o.active).count();
+        
+        serde_json::json!({
+            "user_id": user_id,
+            "stats": {
+                "balance_bubbles": 0,
+                "balance_points": 0,
+                "value_usd": 0.0,
+                "transactions_count": tx_count,
+                "messages_unread": msg_count,
+                "offers_active": offers_count,
+                "referral_count": 0,
+                "referral_earnings": 0,
+                "ubi_claimed_today": false,
+                "ubi_total_claimed": 0
+            }
+        })
+    }
+
+    /// Sauvegarde une notification
+    pub fn save_notification(&self, user_id: &str, content: &str) {
+        let mut data = self.data.lock().unwrap();
+        let notif = serde_json::json!({
+            "id": format!("notif_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+            "user_id": user_id,
+            "content": content,
+            "read": false,
+            "created_at": chrono::Utc::now().timestamp()
+        });
+        data.notifications.push(notif);
+        drop(data);
+        self.save();
+    }
+
+    /// Récupère les notifications d'un utilisateur
+    pub fn get_notifications(&self, user_id: &str) -> Vec<serde_json::Value> {
+        let data = self.data.lock().unwrap();
+        data.notifications.iter()
+            .filter(|n| n["user_id"] == user_id)
+            .cloned()
+            .collect()
+    }
+    // ═══════════════════════════════════════════════════════════════
+    // MÃ‰THODES POUR LE RECYCLAGE DES INACTIFS
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// Récupère le timestamp de dernière activité
+    pub fn get_last_activity(&self, account_id: &str) -> u64 {
+        let data = self.data.lock().unwrap();
+        data.accounts.iter()
+            .find(|a| a.id == account_id)
+            .map(|a| a.created_at as u64)
+            .unwrap_or(0)
+    }
+    
+    /// Met Ã  jour le timestamp de dernière activité
+    pub fn update_last_activity(&self, account_id: &str, timestamp: u64) {
+        let mut data = self.data.lock().unwrap();
+        if let Some(account) = data.accounts.iter_mut().find(|a| a.id == account_id) {
+            // last_activity_date n'existe pas "” on utilise created_at
+        }
+        drop(data);
+        self.save();
+    }
+    
+    /// Recycle un compte inactif (5/10/50 ans)
+    pub fn recycle_inactive(&self, account_id: &str, years_inactive: u64) -> Result<u128, String> {
+        let mut data = self.data.lock().unwrap();
+        let amount = data.accounts.iter()
+            .find(|a| a.id == account_id)
+            .map(|a| a.balance_points as u128)
+            .unwrap_or(0);
+        
+        let recycle = match years_inactive {
+            0..=5 => 0,
+            5..=10 => amount * (years_inactive - 5) as u128 / 1000,
+            10..=50 => amount / 2,
+            _ => amount,
+        };
+        
+        if recycle > 0 {
+            // Transférer au Trésor
+            if let Some(case) = data.six_cases.iter_mut().find(|c| c.name == "Treasury") {
+                case.balance = case.balance.saturating_add(recycle as u64);
+            }
+            // Réduire le solde du compte
+            if let Some(account) = data.accounts.iter_mut().find(|a| a.id == account_id) {
+                account.balance_points = account.balance_points.saturating_sub(recycle as u64);
+            }
+        }
+        
+        drop(data);
+        self.save();
+        Ok(recycle)
+    }
+    
+    /// Récupère les comptes inactifs depuis X années
+    pub fn get_inactive_accounts(&self, years: u64) -> Vec<String> {
+        let data = self.data.lock().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        data.accounts.iter()
+            .filter(|a| {
+                let last = a.created_at;
+                (now - last) > (years as i64 * 365 * 24 * 3600)
+            })
+            .map(|a| a.id.clone())
+            .collect()
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // MÃ‰THODES POUR L'Ã‰PARGNE
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// Récupère les intérêts du crédit sur la dernière année
+    pub fn get_credit_interests_last_year(&self) -> u128 {
+        let data = self.data.lock().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let one_year_ago = now - 365 * 24 * 3600;
+        
+        data.transactions.iter()
+            .filter(|tx| tx.timestamp > one_year_ago)
+            .map(|tx| (tx.amount_points as u128) * 5 / 100)  // 5% d'intérêt estimé
+            .sum()
+    }
+    
+    /// Sauvegarde un contrat d'épargne
+    pub fn save_contract(&self, contract_id: &str, account_id: &str, amount: u128, start: i64, end: i64) {
+        let mut data = self.data.lock().unwrap();
+        let contract = serde_json::json!({
+            "id": contract_id,
+            "account_id": account_id,
+            "amount": amount,
+            "start_time": start,
+            "end_time": end,
+            "active": true
+        });
+        data.savings_contracts.push(contract);
+        drop(data);
+        self.save();
+    }
+    
+    /// Compte les contrats actifs
+    pub fn get_contract_count(&self) -> u64 {
+        let data = self.data.lock().unwrap();
+        data.savings_contracts.iter()
+            .filter(|c| c["active"] == true)
+            .count() as u64
+    }
+    
+    /// Distribue les rendements aux épargnants
+    pub fn distribute_savings_yield(&self, total_yield: u128) {
+        let mut data = self.data.lock().unwrap();
+        let contract_count = data.savings_contracts.len() as u128;
+        if contract_count > 0 {
+            let per_contract = total_yield / contract_count;
+            for contract in data.savings_contracts.iter_mut() {
+                if let Some(amount) = contract["amount"].as_u64() {
+                    contract["amount"] = serde_json::json!(amount as u128 + per_contract);
+                }
+            }
+        }
+        drop(data);
+        self.save();
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // MÃ‰THODES POUR LE CRÃ‰DIT (FIXORB NÃ‰GATIF)
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// Nantit les épargnes comme garantie
+    pub fn nantir_savings(&self, account_id: &str, amount: u128) {
+        let mut data = self.data.lock().unwrap();
+        let entry = serde_json::json!({
+            "account_id": account_id,
+            "amount": amount,
+            "timestamp": chrono::Utc::now().timestamp()
+        });
+        data.nanties.push(entry);
+        drop(data);
+        self.save();
+    }
+    
+    /// Enregistre une dette
+    pub fn set_debt(&self, account_id: &str, amount: u128) {
+        let mut data = self.data.lock().unwrap();
+        let debt = serde_json::json!({
+            "account_id": account_id,
+            "amount": amount,
+            "created_at": chrono::Utc::now().timestamp()
+        });
+        data.debts.push(debt);
+        drop(data);
+        self.save();
+    }
+    
+    /// Récupère la dette d'un compte
+    pub fn get_debt(&self, account_id: &str) -> u128 {
+        let data = self.data.lock().unwrap();
+        data.debts.iter()
+            .filter(|d| d["account_id"] == account_id)
+            .map(|d| d["amount"].as_u64().unwrap_or(0) as u128)
+            .sum()
+    }
+    
+    /// Récupère les garanties nanties
+    pub fn get_nanties(&self, account_id: &str) -> u128 {
+        let data = self.data.lock().unwrap();
+        data.nanties.iter()
+            .filter(|n| n["account_id"] == account_id)
+            .map(|n| n["amount"].as_u64().unwrap_or(0) as u128)
+            .sum()
+    }
+    
+    /// Transfère les garanties saisies au Crédit
+    pub fn transfer_to_credit(&self, account_id: &str, amount: u128) {
+        let mut data = self.data.lock().unwrap();
+        if let Some(case) = data.six_cases.iter_mut().find(|c| c.name == "Credit") {
+            case.balance = case.balance.saturating_add(amount as u64);
+        }
+        drop(data);
+        self.save();
+    }
+    
+    /// Total des dettes actives
+    pub fn get_total_debt(&self) -> u128 {
+        let data = self.data.lock().unwrap();
+        data.debts.iter()
+            .map(|d| d["amount"].as_u64().unwrap_or(0) as u128)
+            .sum()
+    }
+    
+    /// Nombre de prêteurs actifs
+    pub fn get_lender_count(&self) -> u64 {
+        let data = self.data.lock().unwrap();
+        data.debts.len() as u64
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // MÃ‰THODES POUR LE ROBINET 90/10
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// Le créateur fixe son prix par seconde
+    pub fn set_creator_price(&self, creator_id: &str, price_per_second: u128) {
+        let mut data = self.data.lock().unwrap();
+        let entry = serde_json::json!({
+            "creator_id": creator_id,
+            "price_per_second": price_per_second
+        });
+        data.creator_prices.push(entry);
+        drop(data);
+        self.save();
+    }
+    
+    /// Paiement atomique du contenu (7 transferts)
+    pub fn atomic_content_payment(
+        &self,
+        creator_id: &str,
+        creator_amount: u128,
+        treasury: u128, fees: u128, rewards: u128,
+        savings: u128, credit: u128, shield: u128
+    ) -> Result<(), String> {
+        let mut data = self.data.lock().unwrap();
+        let cases = [
+            ("creator", creator_amount),
+            ("Treasury", treasury),
+            ("Fees", fees),
+            ("Rewards", rewards),
+            ("Savings", savings),
+            ("Credit", credit),
+            ("Shield", shield),
+        ];
+        
+        for (case_name, amount) in cases.iter() {
+            if let Some(case) = data.six_cases.iter_mut().find(|c| c.name == *case_name) {
+                case.balance = case.balance.saturating_add(*amount as u64);
+            }
+        }
+        
+        drop(data);
+        self.save();
+        Ok(())
+    }
+    
+    /// Total streamé
+    pub fn get_total_streamed(&self) -> u128 {
+        let data = self.data.lock().unwrap();
+        data.total_streamed
+    }
+    /// Récupère le journal individuel d'un compte
+    pub fn get_journal(&self, account_id: &str) -> Vec<serde_json::Value> {
+        let conn = match self.sqlite_pool.get() {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+        
+        let mut stmt = match conn.prepare(
+            "SELECT id, tx_type, amount_points, fee_points, counterparty, created_at 
+             FROM journals WHERE account_id = ?1 ORDER BY created_at DESC LIMIT 1000"
+        ) {
+            Ok(s) => s,
+            Err(_) => return vec![],
+        };
+        
+        let rows = match stmt.query_map(rusqlite::params![account_id], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "tx_type": row.get::<_, String>(1)?,
+                "amount_points": row.get::<_, i64>(2)?,
+                "fee_points": row.get::<_, i64>(3)?,
+                "counterparty": row.get::<_, Option<String>>(4)?,
+                "created_at": row.get::<_, String>(5)?,
+            }))
+        }) {
+            Ok(r) => r,
+            Err(_) => return vec![],
+        };
+        
+        let mut result = Vec::new();
+        for row in rows {
+            if let Ok(entry) = row {
+                result.push(entry);
+            }
+        }
+        result
+    }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

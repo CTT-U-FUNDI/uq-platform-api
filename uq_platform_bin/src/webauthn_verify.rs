@@ -75,7 +75,8 @@ pub fn encodage_base64url(donnees: &[u8]) -> String {
     let mut out = String::with_capacity((donnees.len() + 2) / 3 * 4);
     let mut i = 0;
     while i + 3 <= donnees.len() {
-        let n = ((donnees[i] as u32) << 16) | ((donnees[i + 1] as u32) << 8) | donnees[i + 2] as u32;
+        let n =
+            ((donnees[i] as u32) << 16) | ((donnees[i + 1] as u32) << 8) | donnees[i + 2] as u32;
         out.push(ALPHABET[((n >> 18) & 63) as usize] as char);
         out.push(ALPHABET[((n >> 12) & 63) as usize] as char);
         out.push(ALPHABET[((n >> 6) & 63) as usize] as char);
@@ -132,10 +133,7 @@ impl Cbor {
 
     fn cle(&self, cherche: &Cbor) -> Option<&Cbor> {
         match self {
-            Cbor::Carte(entrees) => entrees
-                .iter()
-                .find(|(k, _)| k == cherche)
-                .map(|(_, v)| v),
+            Cbor::Carte(entrees) => entrees.iter().find(|(k, _)| k == cherche).map(|(_, v)| v),
             _ => None,
         }
     }
@@ -160,7 +158,8 @@ fn reading(d: &[u8], pos: usize, n: usize) -> Result<&[u8], String> {
     if n > TAILLE_MAX {
         return Err("troncon CBOR trop long".to_string());
     }
-    d.get(pos..pos + n).ok_or_else(|| "CBOR tronque".to_string())
+    d.get(pos..pos + n)
+        .ok_or_else(|| "CBOR tronque".to_string())
 }
 
 fn en_tete(d: &[u8], pos: &mut usize) -> Result<(u8, u64), String> {
@@ -188,9 +187,7 @@ fn en_tete(d: &[u8], pos: &mut usize) -> Result<(u8, u64), String> {
         27 => {
             let s = reading(d, *pos, 8)?;
             *pos += 8;
-            u64::from_be_bytes([
-                s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
-            ])
+            u64::from_be_bytes([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
         }
         31 => return Err("longueurs CBOR indefinies non acceptees".to_string()),
         other => return Err(format!("entete CBOR invalide (additional {})", other)),
@@ -289,7 +286,9 @@ pub fn analyser_auth_data(d: &[u8]) -> Result<DonneesAuthentificateur, String> {
         }
         let long = u16::from_be_bytes([d[53], d[54]]) as usize;
         let debut = 55usize;
-        let fin = debut.checked_add(long).ok_or("longueur de credential invalide")?;
+        let fin = debut
+            .checked_add(long)
+            .ok_or("longueur de credential invalide")?;
         if fin > d.len() {
             return Err("longueur de credential hors authData".to_string());
         }
@@ -399,12 +398,10 @@ impl ConfigRp {
     /// /api/webauthn/register/begin : meme autorite pour l'enrollment et la
     /// verification.
     pub fn par_defaut() -> Self {
-        let rp_id =
-            std::env::var("UQ_WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
+        let rp_id = std::env::var("UQ_WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
         let origines = std::env::var("UQ_WEBAUTHN_ORIGINES")
             .map(|brut| {
-                brut
-                    .split(',')
+                brut.split(',')
                     .map(|o| o.trim().to_string())
                     .filter(|o| !o.is_empty())
                     .collect::<Vec<String>>()
@@ -630,7 +627,10 @@ mod tests {
             decodage_base64url(&credential.credential_id).unwrap(),
             hex::decode(CRED_ID_HEX).unwrap()
         );
-        assert_eq!(credential.credential_id, encodage_base64url(&hex::decode(CRED_ID_HEX).unwrap()));
+        assert_eq!(
+            credential.credential_id,
+            encodage_base64url(&hex::decode(CRED_ID_HEX).unwrap())
+        );
     }
 
     #[test]

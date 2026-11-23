@@ -1,4 +1,4 @@
-﻿use serde_json::json;
+use serde_json::json;
 
 /// Trait pour toutes les commandes
 pub trait UqCommand: Send + Sync {
@@ -14,17 +14,19 @@ pub struct CommandRegistry {
 
 impl CommandRegistry {
     pub fn new() -> Self {
-        Self { commands: Vec::new() }
+        Self {
+            commands: Vec::new(),
+        }
     }
-    
+
     pub fn register(&mut self, cmd: Box<dyn UqCommand>) {
         self.commands.push(cmd);
     }
-    
+
     pub fn get_all(&self) -> &Vec<Box<dyn UqCommand>> {
         &self.commands
     }
-    
+
     pub fn execute(&self, name: &str, args: &str) -> Option<String> {
         for cmd in &self.commands {
             if cmd.name() == name {
@@ -41,8 +43,12 @@ impl CommandRegistry {
 
 pub struct BorbSupplyCommand;
 impl UqCommand for BorbSupplyCommand {
-    fn name(&self) -> &str { "borb supply" }
-    fn description(&self) -> &str { "Voir la masse monétaire" }
+    fn name(&self) -> &str {
+        "borb supply"
+    }
+    fn description(&self) -> &str {
+        "Voir la masse monétaire"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total_supply":40_000_000_000u64}).to_string()
     }
@@ -50,8 +56,12 @@ impl UqCommand for BorbSupplyCommand {
 
 pub struct BorbPriceCommand;
 impl UqCommand for BorbPriceCommand {
-    fn name(&self) -> &str { "borb price" }
-    fn description(&self) -> &str { "Voir le prix actuel" }
+    fn name(&self) -> &str {
+        "borb price"
+    }
+    fn description(&self) -> &str {
+        "Voir le prix actuel"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","price_usd":1.0,"indexed_gold":true}).to_string()
     }
@@ -59,17 +69,26 @@ impl UqCommand for BorbPriceCommand {
 
 pub struct BorbUnitsCommand;
 impl UqCommand for BorbUnitsCommand {
-    fn name(&self) -> &str { "borb units" }
-    fn description(&self) -> &str { "Voir les unités" }
+    fn name(&self) -> &str {
+        "borb units"
+    }
+    fn description(&self) -> &str {
+        "Voir les unités"
+    }
     fn execute(&self, _args: &str) -> String {
-        json!({"status":"success","units":["BORB","borb","mborb","nborb","pborb","fborb"]}).to_string()
+        json!({"status":"success","units":["BORB","borb","mborb","nborb","pborb","fborb"]})
+            .to_string()
     }
 }
 
 pub struct BorbConvertCommand;
 impl UqCommand for BorbConvertCommand {
-    fn name(&self) -> &str { "borb convert" }
-    fn description(&self) -> &str { "Convertir des BORB" }
+    fn name(&self) -> &str {
+        "borb convert"
+    }
+    fn description(&self) -> &str {
+        "Convertir des BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","converted":true}).to_string()
     }
@@ -77,8 +96,12 @@ impl UqCommand for BorbConvertCommand {
 
 pub struct BorbBalanceCommand;
 impl UqCommand for BorbBalanceCommand {
-    fn name(&self) -> &str { "borb balance" }
-    fn description(&self) -> &str { "Voir le solde" }
+    fn name(&self) -> &str {
+        "borb balance"
+    }
+    fn description(&self) -> &str {
+        "Voir le solde"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","balance_borb":0}).to_string()
     }
@@ -86,8 +109,12 @@ impl UqCommand for BorbBalanceCommand {
 
 pub struct BorbTransferCommand;
 impl UqCommand for BorbTransferCommand {
-    fn name(&self) -> &str { "borb transfer" }
-    fn description(&self) -> &str { "Transférer des BORB" }
+    fn name(&self) -> &str {
+        "borb transfer"
+    }
+    fn description(&self) -> &str {
+        "Transférer des BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","transferred":true}).to_string()
     }
@@ -95,8 +122,12 @@ impl UqCommand for BorbTransferCommand {
 
 pub struct BorbDistributeCommand;
 impl UqCommand for BorbDistributeCommand {
-    fn name(&self) -> &str { "borb distribute" }
-    fn description(&self) -> &str { "Distribuer des BORB" }
+    fn name(&self) -> &str {
+        "borb distribute"
+    }
+    fn description(&self) -> &str {
+        "Distribuer des BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","distributed":true}).to_string()
     }
@@ -104,8 +135,12 @@ impl UqCommand for BorbDistributeCommand {
 
 pub struct BorbFreezeCommand;
 impl UqCommand for BorbFreezeCommand {
-    fn name(&self) -> &str { "borb freeze" }
-    fn description(&self) -> &str { "Geler des BORB" }
+    fn name(&self) -> &str {
+        "borb freeze"
+    }
+    fn description(&self) -> &str {
+        "Geler des BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","frozen":true}).to_string()
     }
@@ -113,8 +148,12 @@ impl UqCommand for BorbFreezeCommand {
 
 pub struct BorbUnfreezeCommand;
 impl UqCommand for BorbUnfreezeCommand {
-    fn name(&self) -> &str { "borb unfreeze" }
-    fn description(&self) -> &str { "Dégeler des BORB" }
+    fn name(&self) -> &str {
+        "borb unfreeze"
+    }
+    fn description(&self) -> &str {
+        "Dégeler des BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","unfrozen":true}).to_string()
     }
@@ -122,8 +161,12 @@ impl UqCommand for BorbUnfreezeCommand {
 
 pub struct BorbLendCommand;
 impl UqCommand for BorbLendCommand {
-    fn name(&self) -> &str { "borb lend" }
-    fn description(&self) -> &str { "Prêter des BORB" }
+    fn name(&self) -> &str {
+        "borb lend"
+    }
+    fn description(&self) -> &str {
+        "Prêter des BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","lent":true}).to_string()
     }
@@ -131,8 +174,12 @@ impl UqCommand for BorbLendCommand {
 
 pub struct BorbRepayCommand;
 impl UqCommand for BorbRepayCommand {
-    fn name(&self) -> &str { "borb repay" }
-    fn description(&self) -> &str { "Rembourser un prêt" }
+    fn name(&self) -> &str {
+        "borb repay"
+    }
+    fn description(&self) -> &str {
+        "Rembourser un prêt"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","repaid":true}).to_string()
     }
@@ -140,8 +187,12 @@ impl UqCommand for BorbRepayCommand {
 
 pub struct BorbDebtCommand;
 impl UqCommand for BorbDebtCommand {
-    fn name(&self) -> &str { "borb debt" }
-    fn description(&self) -> &str { "Voir les dettes" }
+    fn name(&self) -> &str {
+        "borb debt"
+    }
+    fn description(&self) -> &str {
+        "Voir les dettes"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total_debt":0}).to_string()
     }
@@ -149,8 +200,12 @@ impl UqCommand for BorbDebtCommand {
 
 pub struct BorbHistoryCommand;
 impl UqCommand for BorbHistoryCommand {
-    fn name(&self) -> &str { "borb history" }
-    fn description(&self) -> &str { "Historique BORB" }
+    fn name(&self) -> &str {
+        "borb history"
+    }
+    fn description(&self) -> &str {
+        "Historique BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","transactions":[]}).to_string()
     }
@@ -158,8 +213,12 @@ impl UqCommand for BorbHistoryCommand {
 
 pub struct BorbStatsCommand;
 impl UqCommand for BorbStatsCommand {
-    fn name(&self) -> &str { "borb stats" }
-    fn description(&self) -> &str { "Statistiques BORB" }
+    fn name(&self) -> &str {
+        "borb stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques BORB"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","circulation":0}).to_string()
     }
@@ -167,8 +226,12 @@ impl UqCommand for BorbStatsCommand {
 
 pub struct BorbVelocityCommand;
 impl UqCommand for BorbVelocityCommand {
-    fn name(&self) -> &str { "borb velocity" }
-    fn description(&self) -> &str { "Vélocité" }
+    fn name(&self) -> &str {
+        "borb velocity"
+    }
+    fn description(&self) -> &str {
+        "Vélocité"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","velocity":0.0}).to_string()
     }
@@ -176,8 +239,12 @@ impl UqCommand for BorbVelocityCommand {
 
 pub struct BorbExtensionCommand;
 impl UqCommand for BorbExtensionCommand {
-    fn name(&self) -> &str { "borb extension" }
-    fn description(&self) -> &str { "Extension fractale" }
+    fn name(&self) -> &str {
+        "borb extension"
+    }
+    fn description(&self) -> &str {
+        "Extension fractale"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","extension_active":true}).to_string()
     }
@@ -189,8 +256,12 @@ impl UqCommand for BorbExtensionCommand {
 
 pub struct CasesStatsCommand;
 impl UqCommand for CasesStatsCommand {
-    fn name(&self) -> &str { "cases stats" }
-    fn description(&self) -> &str { "Voir les 6 cases" }
+    fn name(&self) -> &str {
+        "cases stats"
+    }
+    fn description(&self) -> &str {
+        "Voir les 6 cases"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","cases":6,"total":40_000_000_000u64}).to_string()
     }
@@ -198,8 +269,12 @@ impl UqCommand for CasesStatsCommand {
 
 pub struct TreasuryStatusCommand;
 impl UqCommand for TreasuryStatusCommand {
-    fn name(&self) -> &str { "treasury status" }
-    fn description(&self) -> &str { "État du Treasury" }
+    fn name(&self) -> &str {
+        "treasury status"
+    }
+    fn description(&self) -> &str {
+        "État du Treasury"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","treasury_active":true}).to_string()
     }
@@ -211,8 +286,12 @@ impl UqCommand for TreasuryStatusCommand {
 
 pub struct SystemStatusCommand;
 impl UqCommand for SystemStatusCommand {
-    fn name(&self) -> &str { "system status" }
-    fn description(&self) -> &str { "État du système" }
+    fn name(&self) -> &str {
+        "system status"
+    }
+    fn description(&self) -> &str {
+        "État du système"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","uptime":"ok"}).to_string()
     }
@@ -220,8 +299,12 @@ impl UqCommand for SystemStatusCommand {
 
 pub struct ServerStartCommand;
 impl UqCommand for ServerStartCommand {
-    fn name(&self) -> &str { "server start" }
-    fn description(&self) -> &str { "Démarrer le serveur" }
+    fn name(&self) -> &str {
+        "server start"
+    }
+    fn description(&self) -> &str {
+        "Démarrer le serveur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","started":true}).to_string()
     }
@@ -229,8 +312,12 @@ impl UqCommand for ServerStartCommand {
 
 pub struct ServerStopCommand;
 impl UqCommand for ServerStopCommand {
-    fn name(&self) -> &str { "server stop" }
-    fn description(&self) -> &str { "Arrêter le serveur" }
+    fn name(&self) -> &str {
+        "server stop"
+    }
+    fn description(&self) -> &str {
+        "Arrêter le serveur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","stopped":true}).to_string()
     }
@@ -238,8 +325,12 @@ impl UqCommand for ServerStopCommand {
 
 pub struct ServerRestartCommand;
 impl UqCommand for ServerRestartCommand {
-    fn name(&self) -> &str { "server restart" }
-    fn description(&self) -> &str { "Redémarrer" }
+    fn name(&self) -> &str {
+        "server restart"
+    }
+    fn description(&self) -> &str {
+        "Redémarrer"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","restarted":true}).to_string()
     }
@@ -247,8 +338,12 @@ impl UqCommand for ServerRestartCommand {
 
 pub struct ServerStatusCommand;
 impl UqCommand for ServerStatusCommand {
-    fn name(&self) -> &str { "server status" }
-    fn description(&self) -> &str { "Statut du serveur" }
+    fn name(&self) -> &str {
+        "server status"
+    }
+    fn description(&self) -> &str {
+        "Statut du serveur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","running":true}).to_string()
     }
@@ -256,8 +351,12 @@ impl UqCommand for ServerStatusCommand {
 
 pub struct ServerLogsCommand;
 impl UqCommand for ServerLogsCommand {
-    fn name(&self) -> &str { "server logs" }
-    fn description(&self) -> &str { "Voir les logs" }
+    fn name(&self) -> &str {
+        "server logs"
+    }
+    fn description(&self) -> &str {
+        "Voir les logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","logs":[]}).to_string()
     }
@@ -265,8 +364,12 @@ impl UqCommand for ServerLogsCommand {
 
 pub struct ServerBackupCommand;
 impl UqCommand for ServerBackupCommand {
-    fn name(&self) -> &str { "server backup" }
-    fn description(&self) -> &str { "Sauvegarder" }
+    fn name(&self) -> &str {
+        "server backup"
+    }
+    fn description(&self) -> &str {
+        "Sauvegarder"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","backup_created":true}).to_string()
     }
@@ -274,8 +377,12 @@ impl UqCommand for ServerBackupCommand {
 
 pub struct ServerConfigCommand;
 impl UqCommand for ServerConfigCommand {
-    fn name(&self) -> &str { "server config" }
-    fn description(&self) -> &str { "Configuration" }
+    fn name(&self) -> &str {
+        "server config"
+    }
+    fn description(&self) -> &str {
+        "Configuration"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","config":"ok"}).to_string()
     }
@@ -283,8 +390,12 @@ impl UqCommand for ServerConfigCommand {
 
 pub struct ServerUptimeCommand;
 impl UqCommand for ServerUptimeCommand {
-    fn name(&self) -> &str { "server uptime" }
-    fn description(&self) -> &str { "Temps de fonctionnement" }
+    fn name(&self) -> &str {
+        "server uptime"
+    }
+    fn description(&self) -> &str {
+        "Temps de fonctionnement"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","uptime_seconds":0}).to_string()
     }
@@ -292,8 +403,12 @@ impl UqCommand for ServerUptimeCommand {
 
 pub struct HelpServerCommand;
 impl UqCommand for HelpServerCommand {
-    fn name(&self) -> &str { "help server" }
-    fn description(&self) -> &str { "Aide serveur" }
+    fn name(&self) -> &str {
+        "help server"
+    }
+    fn description(&self) -> &str {
+        "Aide serveur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","commands_available":40}).to_string()
     }
@@ -305,8 +420,12 @@ impl UqCommand for HelpServerCommand {
 
 pub struct RoutesListCommand;
 impl UqCommand for RoutesListCommand {
-    fn name(&self) -> &str { "routes list" }
-    fn description(&self) -> &str { "Voir les routes" }
+    fn name(&self) -> &str {
+        "routes list"
+    }
+    fn description(&self) -> &str {
+        "Voir les routes"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","routes":207}).to_string()
     }
@@ -314,8 +433,12 @@ impl UqCommand for RoutesListCommand {
 
 pub struct RoutesCountCommand;
 impl UqCommand for RoutesCountCommand {
-    fn name(&self) -> &str { "routes count" }
-    fn description(&self) -> &str { "Compter les routes" }
+    fn name(&self) -> &str {
+        "routes count"
+    }
+    fn description(&self) -> &str {
+        "Compter les routes"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","count":207}).to_string()
     }
@@ -323,8 +446,12 @@ impl UqCommand for RoutesCountCommand {
 
 pub struct LogsLevelCommand;
 impl UqCommand for LogsLevelCommand {
-    fn name(&self) -> &str { "logs level" }
-    fn description(&self) -> &str { "Niveau de log" }
+    fn name(&self) -> &str {
+        "logs level"
+    }
+    fn description(&self) -> &str {
+        "Niveau de log"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","level":"INFO"}).to_string()
     }
@@ -332,8 +459,12 @@ impl UqCommand for LogsLevelCommand {
 
 pub struct LogsClearCommand;
 impl UqCommand for LogsClearCommand {
-    fn name(&self) -> &str { "logs clear" }
-    fn description(&self) -> &str { "Effacer les logs" }
+    fn name(&self) -> &str {
+        "logs clear"
+    }
+    fn description(&self) -> &str {
+        "Effacer les logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","message":"Logs effacés"}).to_string()
     }
@@ -341,8 +472,12 @@ impl UqCommand for LogsClearCommand {
 
 pub struct LogsStatsCommand;
 impl UqCommand for LogsStatsCommand {
-    fn name(&self) -> &str { "logs stats" }
-    fn description(&self) -> &str { "Statistiques des logs" }
+    fn name(&self) -> &str {
+        "logs stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques des logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total_logs":0}).to_string()
     }
@@ -350,8 +485,12 @@ impl UqCommand for LogsStatsCommand {
 
 pub struct UsersListCommand;
 impl UqCommand for UsersListCommand {
-    fn name(&self) -> &str { "users list" }
-    fn description(&self) -> &str { "Liste des utilisateurs" }
+    fn name(&self) -> &str {
+        "users list"
+    }
+    fn description(&self) -> &str {
+        "Liste des utilisateurs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","users":[]}).to_string()
     }
@@ -359,8 +498,12 @@ impl UqCommand for UsersListCommand {
 
 pub struct UsersCountCommand;
 impl UqCommand for UsersCountCommand {
-    fn name(&self) -> &str { "users count" }
-    fn description(&self) -> &str { "Compter les utilisateurs" }
+    fn name(&self) -> &str {
+        "users count"
+    }
+    fn description(&self) -> &str {
+        "Compter les utilisateurs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total":1}).to_string()
     }
@@ -368,8 +511,12 @@ impl UqCommand for UsersCountCommand {
 
 pub struct StatsGlobalCommand;
 impl UqCommand for StatsGlobalCommand {
-    fn name(&self) -> &str { "stats global" }
-    fn description(&self) -> &str { "Statistiques globales" }
+    fn name(&self) -> &str {
+        "stats global"
+    }
+    fn description(&self) -> &str {
+        "Statistiques globales"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","global":"ok"}).to_string()
     }
@@ -377,8 +524,12 @@ impl UqCommand for StatsGlobalCommand {
 
 pub struct IaStatusCommand;
 impl UqCommand for IaStatusCommand {
-    fn name(&self) -> &str { "ia status" }
-    fn description(&self) -> &str { "État de l'IA" }
+    fn name(&self) -> &str {
+        "ia status"
+    }
+    fn description(&self) -> &str {
+        "État de l'IA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","ia_active":false}).to_string()
     }
@@ -386,8 +537,12 @@ impl UqCommand for IaStatusCommand {
 
 pub struct SecurityStatusCommand;
 impl UqCommand for SecurityStatusCommand {
-    fn name(&self) -> &str { "security status" }
-    fn description(&self) -> &str { "État sécurité" }
+    fn name(&self) -> &str {
+        "security status"
+    }
+    fn description(&self) -> &str {
+        "État sécurité"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","secure":true}).to_string()
     }
@@ -395,8 +550,12 @@ impl UqCommand for SecurityStatusCommand {
 
 pub struct PublishCommand;
 impl UqCommand for PublishCommand {
-    fn name(&self) -> &str { "publish" }
-    fn description(&self) -> &str { "Publier" }
+    fn name(&self) -> &str {
+        "publish"
+    }
+    fn description(&self) -> &str {
+        "Publier"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","published":true}).to_string()
     }
@@ -404,13 +563,16 @@ impl UqCommand for PublishCommand {
 
 pub struct PluginsListCommand;
 impl UqCommand for PluginsListCommand {
-    fn name(&self) -> &str { "plugins list" }
-    fn description(&self) -> &str { "Voir les plugins" }
+    fn name(&self) -> &str {
+        "plugins list"
+    }
+    fn description(&self) -> &str {
+        "Voir les plugins"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","plugins":[]}).to_string()
     }
 }
-
 
 // ==========================================================
 // COMMANDES DAO (10)
@@ -418,8 +580,12 @@ impl UqCommand for PluginsListCommand {
 
 pub struct DaoProposalsCommand;
 impl UqCommand for DaoProposalsCommand {
-    fn name(&self) -> &str { "dao proposals" }
-    fn description(&self) -> &str { "Voir les propositions" }
+    fn name(&self) -> &str {
+        "dao proposals"
+    }
+    fn description(&self) -> &str {
+        "Voir les propositions"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","proposals":[]}).to_string()
     }
@@ -427,8 +593,12 @@ impl UqCommand for DaoProposalsCommand {
 
 pub struct DaoCreateCommand;
 impl UqCommand for DaoCreateCommand {
-    fn name(&self) -> &str { "dao create" }
-    fn description(&self) -> &str { "Créer une proposition" }
+    fn name(&self) -> &str {
+        "dao create"
+    }
+    fn description(&self) -> &str {
+        "Créer une proposition"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","created":true}).to_string()
     }
@@ -436,8 +606,12 @@ impl UqCommand for DaoCreateCommand {
 
 pub struct DaoVoteCommand;
 impl UqCommand for DaoVoteCommand {
-    fn name(&self) -> &str { "dao vote" }
-    fn description(&self) -> &str { "Voter sur une proposition" }
+    fn name(&self) -> &str {
+        "dao vote"
+    }
+    fn description(&self) -> &str {
+        "Voter sur une proposition"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","voted":true}).to_string()
     }
@@ -445,8 +619,12 @@ impl UqCommand for DaoVoteCommand {
 
 pub struct DaoExecuteCommand;
 impl UqCommand for DaoExecuteCommand {
-    fn name(&self) -> &str { "dao execute" }
-    fn description(&self) -> &str { "Exécuter une proposition" }
+    fn name(&self) -> &str {
+        "dao execute"
+    }
+    fn description(&self) -> &str {
+        "Exécuter une proposition"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","executed":true}).to_string()
     }
@@ -454,8 +632,12 @@ impl UqCommand for DaoExecuteCommand {
 
 pub struct DaoStatsCommand;
 impl UqCommand for DaoStatsCommand {
-    fn name(&self) -> &str { "dao stats" }
-    fn description(&self) -> &str { "Statistiques DAO" }
+    fn name(&self) -> &str {
+        "dao stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques DAO"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total_votes":0}).to_string()
     }
@@ -463,8 +645,12 @@ impl UqCommand for DaoStatsCommand {
 
 pub struct DaoValidatorsCommand;
 impl UqCommand for DaoValidatorsCommand {
-    fn name(&self) -> &str { "dao validators" }
-    fn description(&self) -> &str { "Voir les validateurs" }
+    fn name(&self) -> &str {
+        "dao validators"
+    }
+    fn description(&self) -> &str {
+        "Voir les validateurs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","validators":10}).to_string()
     }
@@ -472,8 +658,12 @@ impl UqCommand for DaoValidatorsCommand {
 
 pub struct DaoApprovalsCommand;
 impl UqCommand for DaoApprovalsCommand {
-    fn name(&self) -> &str { "dao approvals" }
-    fn description(&self) -> &str { "Approbations en attente" }
+    fn name(&self) -> &str {
+        "dao approvals"
+    }
+    fn description(&self) -> &str {
+        "Approbations en attente"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","pending":0}).to_string()
     }
@@ -481,8 +671,12 @@ impl UqCommand for DaoApprovalsCommand {
 
 pub struct DaoReportCommand;
 impl UqCommand for DaoReportCommand {
-    fn name(&self) -> &str { "dao report" }
-    fn description(&self) -> &str { "Rapport de gouvernance" }
+    fn name(&self) -> &str {
+        "dao report"
+    }
+    fn description(&self) -> &str {
+        "Rapport de gouvernance"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -490,8 +684,12 @@ impl UqCommand for DaoReportCommand {
 
 pub struct DaoProposalCommand;
 impl UqCommand for DaoProposalCommand {
-    fn name(&self) -> &str { "dao proposal" }
-    fn description(&self) -> &str { "Détails d'une proposition" }
+    fn name(&self) -> &str {
+        "dao proposal"
+    }
+    fn description(&self) -> &str {
+        "Détails d'une proposition"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","proposal":null}).to_string()
     }
@@ -499,8 +697,12 @@ impl UqCommand for DaoProposalCommand {
 
 pub struct DaoValidatorCommand;
 impl UqCommand for DaoValidatorCommand {
-    fn name(&self) -> &str { "dao validator" }
-    fn description(&self) -> &str { "Détails d'un validateur" }
+    fn name(&self) -> &str {
+        "dao validator"
+    }
+    fn description(&self) -> &str {
+        "Détails d'un validateur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","validator":null}).to_string()
     }
@@ -512,8 +714,12 @@ impl UqCommand for DaoValidatorCommand {
 
 pub struct AiAskCommand;
 impl UqCommand for AiAskCommand {
-    fn name(&self) -> &str { "ai ask" }
-    fn description(&self) -> &str { "Poser une question à l'IA" }
+    fn name(&self) -> &str {
+        "ai ask"
+    }
+    fn description(&self) -> &str {
+        "Poser une question à l'IA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","answer":"IA en arrière-plan"}).to_string()
     }
@@ -521,8 +727,12 @@ impl UqCommand for AiAskCommand {
 
 pub struct AiAnalyzeCommand;
 impl UqCommand for AiAnalyzeCommand {
-    fn name(&self) -> &str { "ai analyze" }
-    fn description(&self) -> &str { "Analyse approfondie" }
+    fn name(&self) -> &str {
+        "ai analyze"
+    }
+    fn description(&self) -> &str {
+        "Analyse approfondie"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","analysis":"ok"}).to_string()
     }
@@ -530,8 +740,12 @@ impl UqCommand for AiAnalyzeCommand {
 
 pub struct AiDetectCommand;
 impl UqCommand for AiDetectCommand {
-    fn name(&self) -> &str { "ai detect" }
-    fn description(&self) -> &str { "Détecter le métier" }
+    fn name(&self) -> &str {
+        "ai detect"
+    }
+    fn description(&self) -> &str {
+        "Détecter le métier"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","metier":"inconnu"}).to_string()
     }
@@ -539,8 +753,12 @@ impl UqCommand for AiDetectCommand {
 
 pub struct AiSuggestCommand;
 impl UqCommand for AiSuggestCommand {
-    fn name(&self) -> &str { "ai suggest" }
-    fn description(&self) -> &str { "Suggérer un prix" }
+    fn name(&self) -> &str {
+        "ai suggest"
+    }
+    fn description(&self) -> &str {
+        "Suggérer un prix"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","suggested_price":0}).to_string()
     }
@@ -548,8 +766,12 @@ impl UqCommand for AiSuggestCommand {
 
 pub struct AiGenerateCommand;
 impl UqCommand for AiGenerateCommand {
-    fn name(&self) -> &str { "ai generate" }
-    fn description(&self) -> &str { "Générer un titre" }
+    fn name(&self) -> &str {
+        "ai generate"
+    }
+    fn description(&self) -> &str {
+        "Générer un titre"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","title":"Titre généré"}).to_string()
     }
@@ -557,8 +779,12 @@ impl UqCommand for AiGenerateCommand {
 
 pub struct AiMarketCommand;
 impl UqCommand for AiMarketCommand {
-    fn name(&self) -> &str { "ai market" }
-    fn description(&self) -> &str { "Analyser le marché" }
+    fn name(&self) -> &str {
+        "ai market"
+    }
+    fn description(&self) -> &str {
+        "Analyser le marché"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","market":"ok"}).to_string()
     }
@@ -566,8 +792,12 @@ impl UqCommand for AiMarketCommand {
 
 pub struct AiReportCommand;
 impl UqCommand for AiReportCommand {
-    fn name(&self) -> &str { "ai report" }
-    fn description(&self) -> &str { "Rapport automatique" }
+    fn name(&self) -> &str {
+        "ai report"
+    }
+    fn description(&self) -> &str {
+        "Rapport automatique"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -575,8 +805,12 @@ impl UqCommand for AiReportCommand {
 
 pub struct AiAlertCommand;
 impl UqCommand for AiAlertCommand {
-    fn name(&self) -> &str { "ai alert" }
-    fn description(&self) -> &str { "Alertes de l'IA" }
+    fn name(&self) -> &str {
+        "ai alert"
+    }
+    fn description(&self) -> &str {
+        "Alertes de l'IA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","alerts":[]}).to_string()
     }
@@ -584,8 +818,12 @@ impl UqCommand for AiAlertCommand {
 
 pub struct AiRecommendCommand;
 impl UqCommand for AiRecommendCommand {
-    fn name(&self) -> &str { "ai recommend" }
-    fn description(&self) -> &str { "Recommandations" }
+    fn name(&self) -> &str {
+        "ai recommend"
+    }
+    fn description(&self) -> &str {
+        "Recommandations"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","recommendations":[]}).to_string()
     }
@@ -593,8 +831,12 @@ impl UqCommand for AiRecommendCommand {
 
 pub struct AiExecuteCommand;
 impl UqCommand for AiExecuteCommand {
-    fn name(&self) -> &str { "ai execute" }
-    fn description(&self) -> &str { "Exécuter via l'IA" }
+    fn name(&self) -> &str {
+        "ai execute"
+    }
+    fn description(&self) -> &str {
+        "Exécuter via l'IA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","executed":true}).to_string()
     }
@@ -602,8 +844,12 @@ impl UqCommand for AiExecuteCommand {
 
 pub struct AiChatCommand;
 impl UqCommand for AiChatCommand {
-    fn name(&self) -> &str { "ai chat" }
-    fn description(&self) -> &str { "Conversation avec l'IA" }
+    fn name(&self) -> &str {
+        "ai chat"
+    }
+    fn description(&self) -> &str {
+        "Conversation avec l'IA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","chat":true}).to_string()
     }
@@ -611,8 +857,12 @@ impl UqCommand for AiChatCommand {
 
 pub struct AiStatusCommand;
 impl UqCommand for AiStatusCommand {
-    fn name(&self) -> &str { "ai status" }
-    fn description(&self) -> &str { "État de l'IA" }
+    fn name(&self) -> &str {
+        "ai status"
+    }
+    fn description(&self) -> &str {
+        "État de l'IA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","ia_active":false}).to_string()
     }
@@ -628,8 +878,12 @@ impl UqCommand for AiStatusCommand {
 
 pub struct P2pStatusCommand;
 impl UqCommand for P2pStatusCommand {
-    fn name(&self) -> &str { "p2p status" }
-    fn description(&self) -> &str { "État du réseau P2P" }
+    fn name(&self) -> &str {
+        "p2p status"
+    }
+    fn description(&self) -> &str {
+        "État du réseau P2P"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","network":"ready"}).to_string()
     }
@@ -637,8 +891,12 @@ impl UqCommand for P2pStatusCommand {
 
 pub struct P2pPeersCommand;
 impl UqCommand for P2pPeersCommand {
-    fn name(&self) -> &str { "p2p peers" }
-    fn description(&self) -> &str { "Liste des pairs" }
+    fn name(&self) -> &str {
+        "p2p peers"
+    }
+    fn description(&self) -> &str {
+        "Liste des pairs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","peers":[]}).to_string()
     }
@@ -646,8 +904,12 @@ impl UqCommand for P2pPeersCommand {
 
 pub struct P2pScanCommand;
 impl UqCommand for P2pScanCommand {
-    fn name(&self) -> &str { "p2p scan" }
-    fn description(&self) -> &str { "Scanner les pairs proches" }
+    fn name(&self) -> &str {
+        "p2p scan"
+    }
+    fn description(&self) -> &str {
+        "Scanner les pairs proches"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","scanning":true}).to_string()
     }
@@ -655,8 +917,12 @@ impl UqCommand for P2pScanCommand {
 
 pub struct P2pConnectCommand;
 impl UqCommand for P2pConnectCommand {
-    fn name(&self) -> &str { "p2p connect" }
-    fn description(&self) -> &str { "Connecter à un pair" }
+    fn name(&self) -> &str {
+        "p2p connect"
+    }
+    fn description(&self) -> &str {
+        "Connecter à un pair"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","connected":true}).to_string()
     }
@@ -664,8 +930,12 @@ impl UqCommand for P2pConnectCommand {
 
 pub struct P2pDisconnectCommand;
 impl UqCommand for P2pDisconnectCommand {
-    fn name(&self) -> &str { "p2p disconnect" }
-    fn description(&self) -> &str { "Déconnecter un pair" }
+    fn name(&self) -> &str {
+        "p2p disconnect"
+    }
+    fn description(&self) -> &str {
+        "Déconnecter un pair"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","disconnected":true}).to_string()
     }
@@ -673,8 +943,12 @@ impl UqCommand for P2pDisconnectCommand {
 
 pub struct P2pRelayCommand;
 impl UqCommand for P2pRelayCommand {
-    fn name(&self) -> &str { "p2p relay" }
-    fn description(&self) -> &str { "Relayer un message" }
+    fn name(&self) -> &str {
+        "p2p relay"
+    }
+    fn description(&self) -> &str {
+        "Relayer un message"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","relayed":true}).to_string()
     }
@@ -682,8 +956,12 @@ impl UqCommand for P2pRelayCommand {
 
 pub struct P2pMeshCommand;
 impl UqCommand for P2pMeshCommand {
-    fn name(&self) -> &str { "p2p mesh" }
-    fn description(&self) -> &str { "Voir le maillage" }
+    fn name(&self) -> &str {
+        "p2p mesh"
+    }
+    fn description(&self) -> &str {
+        "Voir le maillage"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","mesh_nodes":0}).to_string()
     }
@@ -691,8 +969,12 @@ impl UqCommand for P2pMeshCommand {
 
 pub struct P2pFrequencyCommand;
 impl UqCommand for P2pFrequencyCommand {
-    fn name(&self) -> &str { "p2p frequency" }
-    fn description(&self) -> &str { "Voir les fréquences" }
+    fn name(&self) -> &str {
+        "p2p frequency"
+    }
+    fn description(&self) -> &str {
+        "Voir les fréquences"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","frequency":"2.4GHz"}).to_string()
     }
@@ -700,8 +982,12 @@ impl UqCommand for P2pFrequencyCommand {
 
 pub struct P2pHopCommand;
 impl UqCommand for P2pHopCommand {
-    fn name(&self) -> &str { "p2p hop" }
-    fn description(&self) -> &str { "Saut de fréquence" }
+    fn name(&self) -> &str {
+        "p2p hop"
+    }
+    fn description(&self) -> &str {
+        "Saut de fréquence"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","hopped":true}).to_string()
     }
@@ -709,8 +995,12 @@ impl UqCommand for P2pHopCommand {
 
 pub struct P2pPhantomCommand;
 impl UqCommand for P2pPhantomCommand {
-    fn name(&self) -> &str { "p2p phantom" }
-    fn description(&self) -> &str { "Créer un canal fantôme" }
+    fn name(&self) -> &str {
+        "p2p phantom"
+    }
+    fn description(&self) -> &str {
+        "Créer un canal fantôme"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","phantom_created":true}).to_string()
     }
@@ -718,8 +1008,12 @@ impl UqCommand for P2pPhantomCommand {
 
 pub struct P2pSosCommand;
 impl UqCommand for P2pSosCommand {
-    fn name(&self) -> &str { "p2p sos" }
-    fn description(&self) -> &str { "Lancer une alerte SOS" }
+    fn name(&self) -> &str {
+        "p2p sos"
+    }
+    fn description(&self) -> &str {
+        "Lancer une alerte SOS"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","sos_broadcast":true}).to_string()
     }
@@ -727,8 +1021,12 @@ impl UqCommand for P2pSosCommand {
 
 pub struct P2pThreatsCommand;
 impl UqCommand for P2pThreatsCommand {
-    fn name(&self) -> &str { "p2p threats" }
-    fn description(&self) -> &str { "Menaces réseau" }
+    fn name(&self) -> &str {
+        "p2p threats"
+    }
+    fn description(&self) -> &str {
+        "Menaces réseau"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","threats":0}).to_string()
     }
@@ -736,8 +1034,12 @@ impl UqCommand for P2pThreatsCommand {
 
 pub struct P2pD2dScanCommand;
 impl UqCommand for P2pD2dScanCommand {
-    fn name(&self) -> &str { "p2p d2d_scan" }
-    fn description(&self) -> &str { "Scanner D2D" }
+    fn name(&self) -> &str {
+        "p2p d2d_scan"
+    }
+    fn description(&self) -> &str {
+        "Scanner D2D"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","d2d_scanning":true}).to_string()
     }
@@ -745,8 +1047,12 @@ impl UqCommand for P2pD2dScanCommand {
 
 pub struct P2pD2dPeersCommand;
 impl UqCommand for P2pD2dPeersCommand {
-    fn name(&self) -> &str { "p2p d2d_peers" }
-    fn description(&self) -> &str { "Pairs D2D" }
+    fn name(&self) -> &str {
+        "p2p d2d_peers"
+    }
+    fn description(&self) -> &str {
+        "Pairs D2D"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","d2d_peers":[]}).to_string()
     }
@@ -754,8 +1060,12 @@ impl UqCommand for P2pD2dPeersCommand {
 
 pub struct P2pInternetSellCommand;
 impl UqCommand for P2pInternetSellCommand {
-    fn name(&self) -> &str { "p2p internet_sell" }
-    fn description(&self) -> &str { "Vendre de la connexion" }
+    fn name(&self) -> &str {
+        "p2p internet_sell"
+    }
+    fn description(&self) -> &str {
+        "Vendre de la connexion"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","selling":true}).to_string()
     }
@@ -763,8 +1073,12 @@ impl UqCommand for P2pInternetSellCommand {
 
 pub struct P2pReportCommand;
 impl UqCommand for P2pReportCommand {
-    fn name(&self) -> &str { "p2p report" }
-    fn description(&self) -> &str { "Rapport du réseau" }
+    fn name(&self) -> &str {
+        "p2p report"
+    }
+    fn description(&self) -> &str {
+        "Rapport du réseau"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -772,13 +1086,16 @@ impl UqCommand for P2pReportCommand {
 
 pub struct P2pEmergencyCommand;
 impl UqCommand for P2pEmergencyCommand {
-    fn name(&self) -> &str { "p2p emergency" }
-    fn description(&self) -> &str { "Mode urgence" }
+    fn name(&self) -> &str {
+        "p2p emergency"
+    }
+    fn description(&self) -> &str {
+        "Mode urgence"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","emergency_active":false}).to_string()
     }
 }
-
 
 // ==========================================================
 // COMMANDES STUDIOS (15)
@@ -786,8 +1103,12 @@ impl UqCommand for P2pEmergencyCommand {
 
 pub struct StudioListCommand;
 impl UqCommand for StudioListCommand {
-    fn name(&self) -> &str { "studio list" }
-    fn description(&self) -> &str { "Liste des studios" }
+    fn name(&self) -> &str {
+        "studio list"
+    }
+    fn description(&self) -> &str {
+        "Liste des studios"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","studios":[]}).to_string()
     }
@@ -795,8 +1116,12 @@ impl UqCommand for StudioListCommand {
 
 pub struct StudioCreateCommand;
 impl UqCommand for StudioCreateCommand {
-    fn name(&self) -> &str { "studio create" }
-    fn description(&self) -> &str { "Créer un studio" }
+    fn name(&self) -> &str {
+        "studio create"
+    }
+    fn description(&self) -> &str {
+        "Créer un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","created":true}).to_string()
     }
@@ -804,8 +1129,12 @@ impl UqCommand for StudioCreateCommand {
 
 pub struct StudioDeleteCommand;
 impl UqCommand for StudioDeleteCommand {
-    fn name(&self) -> &str { "studio delete" }
-    fn description(&self) -> &str { "Supprimer un studio" }
+    fn name(&self) -> &str {
+        "studio delete"
+    }
+    fn description(&self) -> &str {
+        "Supprimer un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","deleted":true}).to_string()
     }
@@ -813,8 +1142,12 @@ impl UqCommand for StudioDeleteCommand {
 
 pub struct StudioBoostCommand;
 impl UqCommand for StudioBoostCommand {
-    fn name(&self) -> &str { "studio boost" }
-    fn description(&self) -> &str { "Booster un studio" }
+    fn name(&self) -> &str {
+        "studio boost"
+    }
+    fn description(&self) -> &str {
+        "Booster un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","boosted":true}).to_string()
     }
@@ -822,8 +1155,12 @@ impl UqCommand for StudioBoostCommand {
 
 pub struct StudioStatsCommand;
 impl UqCommand for StudioStatsCommand {
-    fn name(&self) -> &str { "studio stats" }
-    fn description(&self) -> &str { "Statistiques d'un studio" }
+    fn name(&self) -> &str {
+        "studio stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques d'un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","views":0}).to_string()
     }
@@ -831,8 +1168,12 @@ impl UqCommand for StudioStatsCommand {
 
 pub struct StudioProductsCommand;
 impl UqCommand for StudioProductsCommand {
-    fn name(&self) -> &str { "studio products" }
-    fn description(&self) -> &str { "Produits d'un studio" }
+    fn name(&self) -> &str {
+        "studio products"
+    }
+    fn description(&self) -> &str {
+        "Produits d'un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","products":[]}).to_string()
     }
@@ -840,8 +1181,12 @@ impl UqCommand for StudioProductsCommand {
 
 pub struct StudioServicesCommand;
 impl UqCommand for StudioServicesCommand {
-    fn name(&self) -> &str { "studio services" }
-    fn description(&self) -> &str { "Services d'un studio" }
+    fn name(&self) -> &str {
+        "studio services"
+    }
+    fn description(&self) -> &str {
+        "Services d'un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","services":[]}).to_string()
     }
@@ -849,8 +1194,12 @@ impl UqCommand for StudioServicesCommand {
 
 pub struct StudioSearchCommand;
 impl UqCommand for StudioSearchCommand {
-    fn name(&self) -> &str { "studio search" }
-    fn description(&self) -> &str { "Rechercher un studio" }
+    fn name(&self) -> &str {
+        "studio search"
+    }
+    fn description(&self) -> &str {
+        "Rechercher un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","results":[]}).to_string()
     }
@@ -858,8 +1207,12 @@ impl UqCommand for StudioSearchCommand {
 
 pub struct StudioVerifyCommand;
 impl UqCommand for StudioVerifyCommand {
-    fn name(&self) -> &str { "studio verify" }
-    fn description(&self) -> &str { "Vérifier un studio" }
+    fn name(&self) -> &str {
+        "studio verify"
+    }
+    fn description(&self) -> &str {
+        "Vérifier un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","verified":true}).to_string()
     }
@@ -867,8 +1220,12 @@ impl UqCommand for StudioVerifyCommand {
 
 pub struct StudioVentesCommand;
 impl UqCommand for StudioVentesCommand {
-    fn name(&self) -> &str { "studio ventes" }
-    fn description(&self) -> &str { "Ventes d'un studio" }
+    fn name(&self) -> &str {
+        "studio ventes"
+    }
+    fn description(&self) -> &str {
+        "Ventes d'un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","ventes":0}).to_string()
     }
@@ -876,8 +1233,12 @@ impl UqCommand for StudioVentesCommand {
 
 pub struct StudioContactsCommand;
 impl UqCommand for StudioContactsCommand {
-    fn name(&self) -> &str { "studio contacts" }
-    fn description(&self) -> &str { "Contacts reçus" }
+    fn name(&self) -> &str {
+        "studio contacts"
+    }
+    fn description(&self) -> &str {
+        "Contacts reçus"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","contacts":0}).to_string()
     }
@@ -885,8 +1246,12 @@ impl UqCommand for StudioContactsCommand {
 
 pub struct StudioFilterCommand;
 impl UqCommand for StudioFilterCommand {
-    fn name(&self) -> &str { "studio filter" }
-    fn description(&self) -> &str { "Filtrer les studios" }
+    fn name(&self) -> &str {
+        "studio filter"
+    }
+    fn description(&self) -> &str {
+        "Filtrer les studios"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","filtered":[]}).to_string()
     }
@@ -894,8 +1259,12 @@ impl UqCommand for StudioFilterCommand {
 
 pub struct StudioExportCommand;
 impl UqCommand for StudioExportCommand {
-    fn name(&self) -> &str { "studio export" }
-    fn description(&self) -> &str { "Exporter les studios" }
+    fn name(&self) -> &str {
+        "studio export"
+    }
+    fn description(&self) -> &str {
+        "Exporter les studios"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","exported":true}).to_string()
     }
@@ -903,8 +1272,12 @@ impl UqCommand for StudioExportCommand {
 
 pub struct StudioUnboostCommand;
 impl UqCommand for StudioUnboostCommand {
-    fn name(&self) -> &str { "studio unboost" }
-    fn description(&self) -> &str { "Retirer le boost" }
+    fn name(&self) -> &str {
+        "studio unboost"
+    }
+    fn description(&self) -> &str {
+        "Retirer le boost"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","unboosted":true}).to_string()
     }
@@ -912,8 +1285,12 @@ impl UqCommand for StudioUnboostCommand {
 
 pub struct StudioViewsCommand;
 impl UqCommand for StudioViewsCommand {
-    fn name(&self) -> &str { "studio views" }
-    fn description(&self) -> &str { "Vues d'un studio" }
+    fn name(&self) -> &str {
+        "studio views"
+    }
+    fn description(&self) -> &str {
+        "Vues d'un studio"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","views":0}).to_string()
     }
@@ -925,8 +1302,12 @@ impl UqCommand for StudioViewsCommand {
 
 pub struct UbiInfoCommand;
 impl UqCommand for UbiInfoCommand {
-    fn name(&self) -> &str { "ubi info" }
-    fn description(&self) -> &str { "Informations UBI" }
+    fn name(&self) -> &str {
+        "ubi info"
+    }
+    fn description(&self) -> &str {
+        "Informations UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","daily_points":2}).to_string()
     }
@@ -934,8 +1315,12 @@ impl UqCommand for UbiInfoCommand {
 
 pub struct UbiClaimCommand;
 impl UqCommand for UbiClaimCommand {
-    fn name(&self) -> &str { "ubi claim" }
-    fn description(&self) -> &str { "Réclamer l'UBI" }
+    fn name(&self) -> &str {
+        "ubi claim"
+    }
+    fn description(&self) -> &str {
+        "Réclamer l'UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","claimed":true}).to_string()
     }
@@ -943,8 +1328,12 @@ impl UqCommand for UbiClaimCommand {
 
 pub struct UbiCheckCommand;
 impl UqCommand for UbiCheckCommand {
-    fn name(&self) -> &str { "ubi check" }
-    fn description(&self) -> &str { "Vérifier l'éligibilité" }
+    fn name(&self) -> &str {
+        "ubi check"
+    }
+    fn description(&self) -> &str {
+        "Vérifier l'éligibilité"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","eligible":true}).to_string()
     }
@@ -952,8 +1341,12 @@ impl UqCommand for UbiCheckCommand {
 
 pub struct UbiDistributeCommand;
 impl UqCommand for UbiDistributeCommand {
-    fn name(&self) -> &str { "ubi distribute" }
-    fn description(&self) -> &str { "Distribuer l'UBI" }
+    fn name(&self) -> &str {
+        "ubi distribute"
+    }
+    fn description(&self) -> &str {
+        "Distribuer l'UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","distributed":true}).to_string()
     }
@@ -961,8 +1354,12 @@ impl UqCommand for UbiDistributeCommand {
 
 pub struct UbiStatsCommand;
 impl UqCommand for UbiStatsCommand {
-    fn name(&self) -> &str { "ubi stats" }
-    fn description(&self) -> &str { "Statistiques UBI" }
+    fn name(&self) -> &str {
+        "ubi stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total_distributed":0}).to_string()
     }
@@ -970,8 +1367,12 @@ impl UqCommand for UbiStatsCommand {
 
 pub struct UbiHistoryCommand;
 impl UqCommand for UbiHistoryCommand {
-    fn name(&self) -> &str { "ubi history" }
-    fn description(&self) -> &str { "Historique UBI" }
+    fn name(&self) -> &str {
+        "ubi history"
+    }
+    fn description(&self) -> &str {
+        "Historique UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","history":[]}).to_string()
     }
@@ -979,8 +1380,12 @@ impl UqCommand for UbiHistoryCommand {
 
 pub struct UbiPauseCommand;
 impl UqCommand for UbiPauseCommand {
-    fn name(&self) -> &str { "ubi pause" }
-    fn description(&self) -> &str { "Pauser l'UBI" }
+    fn name(&self) -> &str {
+        "ubi pause"
+    }
+    fn description(&self) -> &str {
+        "Pauser l'UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","paused":true}).to_string()
     }
@@ -988,8 +1393,12 @@ impl UqCommand for UbiPauseCommand {
 
 pub struct UbiResumeCommand;
 impl UqCommand for UbiResumeCommand {
-    fn name(&self) -> &str { "ubi resume" }
-    fn description(&self) -> &str { "Reprendre l'UBI" }
+    fn name(&self) -> &str {
+        "ubi resume"
+    }
+    fn description(&self) -> &str {
+        "Reprendre l'UBI"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","resumed":true}).to_string()
     }
@@ -1001,8 +1410,12 @@ impl UqCommand for UbiResumeCommand {
 
 pub struct BullesTotalCommand;
 impl UqCommand for BullesTotalCommand {
-    fn name(&self) -> &str { "bulles total" }
-    fn description(&self) -> &str { "Total des bulles" }
+    fn name(&self) -> &str {
+        "bulles total"
+    }
+    fn description(&self) -> &str {
+        "Total des bulles"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total":0}).to_string()
     }
@@ -1010,8 +1423,12 @@ impl UqCommand for BullesTotalCommand {
 
 pub struct BullesConvertiesCommand;
 impl UqCommand for BullesConvertiesCommand {
-    fn name(&self) -> &str { "bulles converties" }
-    fn description(&self) -> &str { "Bulles converties" }
+    fn name(&self) -> &str {
+        "bulles converties"
+    }
+    fn description(&self) -> &str {
+        "Bulles converties"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","converted":0}).to_string()
     }
@@ -1019,8 +1436,12 @@ impl UqCommand for BullesConvertiesCommand {
 
 pub struct BullesGeleesCommand;
 impl UqCommand for BullesGeleesCommand {
-    fn name(&self) -> &str { "bulles gelées" }
-    fn description(&self) -> &str { "Bulles gelées" }
+    fn name(&self) -> &str {
+        "bulles gelées"
+    }
+    fn description(&self) -> &str {
+        "Bulles gelées"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","frozen":0}).to_string()
     }
@@ -1028,8 +1449,12 @@ impl UqCommand for BullesGeleesCommand {
 
 pub struct BullesCirculantesCommand;
 impl UqCommand for BullesCirculantesCommand {
-    fn name(&self) -> &str { "bulles circulantes" }
-    fn description(&self) -> &str { "Bulles en circulation" }
+    fn name(&self) -> &str {
+        "bulles circulantes"
+    }
+    fn description(&self) -> &str {
+        "Bulles en circulation"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","circulating":0}).to_string()
     }
@@ -1037,8 +1462,12 @@ impl UqCommand for BullesCirculantesCommand {
 
 pub struct BullesCreateCommand;
 impl UqCommand for BullesCreateCommand {
-    fn name(&self) -> &str { "bulles create" }
-    fn description(&self) -> &str { "Créer des bulles" }
+    fn name(&self) -> &str {
+        "bulles create"
+    }
+    fn description(&self) -> &str {
+        "Créer des bulles"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","created":true}).to_string()
     }
@@ -1046,8 +1475,12 @@ impl UqCommand for BullesCreateCommand {
 
 pub struct BullesTransferCommand;
 impl UqCommand for BullesTransferCommand {
-    fn name(&self) -> &str { "bulles transfer" }
-    fn description(&self) -> &str { "Transférer des bulles" }
+    fn name(&self) -> &str {
+        "bulles transfer"
+    }
+    fn description(&self) -> &str {
+        "Transférer des bulles"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","transferred":true}).to_string()
     }
@@ -1055,13 +1488,16 @@ impl UqCommand for BullesTransferCommand {
 
 pub struct BullesReportCommand;
 impl UqCommand for BullesReportCommand {
-    fn name(&self) -> &str { "bulles report" }
-    fn description(&self) -> &str { "Rapport des bulles" }
+    fn name(&self) -> &str {
+        "bulles report"
+    }
+    fn description(&self) -> &str {
+        "Rapport des bulles"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
 }
-
 
 // ==========================================================
 // COMMANDES VAULT (16)
@@ -1069,8 +1505,12 @@ impl UqCommand for BullesReportCommand {
 
 pub struct VaultStatusCommand;
 impl UqCommand for VaultStatusCommand {
-    fn name(&self) -> &str { "vault status" }
-    fn description(&self) -> &str { "État du Vault" }
+    fn name(&self) -> &str {
+        "vault status"
+    }
+    fn description(&self) -> &str {
+        "État du Vault"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","shamir":"3/5"}).to_string()
     }
@@ -1078,8 +1518,12 @@ impl UqCommand for VaultStatusCommand {
 
 pub struct VaultSplitCommand;
 impl UqCommand for VaultSplitCommand {
-    fn name(&self) -> &str { "vault split" }
-    fn description(&self) -> &str { "Diviser une clé" }
+    fn name(&self) -> &str {
+        "vault split"
+    }
+    fn description(&self) -> &str {
+        "Diviser une clé"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","fragments":5}).to_string()
     }
@@ -1087,8 +1531,12 @@ impl UqCommand for VaultSplitCommand {
 
 pub struct VaultCombineCommand;
 impl UqCommand for VaultCombineCommand {
-    fn name(&self) -> &str { "vault combine" }
-    fn description(&self) -> &str { "Reconstruire une clé" }
+    fn name(&self) -> &str {
+        "vault combine"
+    }
+    fn description(&self) -> &str {
+        "Reconstruire une clé"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","combined":true}).to_string()
     }
@@ -1096,8 +1544,12 @@ impl UqCommand for VaultCombineCommand {
 
 pub struct VaultGuardiansCommand;
 impl UqCommand for VaultGuardiansCommand {
-    fn name(&self) -> &str { "vault guardians" }
-    fn description(&self) -> &str { "Voir les guardians" }
+    fn name(&self) -> &str {
+        "vault guardians"
+    }
+    fn description(&self) -> &str {
+        "Voir les guardians"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","guardians":[]}).to_string()
     }
@@ -1105,8 +1557,12 @@ impl UqCommand for VaultGuardiansCommand {
 
 pub struct VaultReplaceCommand;
 impl UqCommand for VaultReplaceCommand {
-    fn name(&self) -> &str { "vault replace" }
-    fn description(&self) -> &str { "Remplacer un guardian" }
+    fn name(&self) -> &str {
+        "vault replace"
+    }
+    fn description(&self) -> &str {
+        "Remplacer un guardian"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","replaced":true}).to_string()
     }
@@ -1114,8 +1570,12 @@ impl UqCommand for VaultReplaceCommand {
 
 pub struct VaultCompromisedCommand;
 impl UqCommand for VaultCompromisedCommand {
-    fn name(&self) -> &str { "vault compromised" }
-    fn description(&self) -> &str { "Marquer un guardian compromis" }
+    fn name(&self) -> &str {
+        "vault compromised"
+    }
+    fn description(&self) -> &str {
+        "Marquer un guardian compromis"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","marked":true}).to_string()
     }
@@ -1123,8 +1583,12 @@ impl UqCommand for VaultCompromisedCommand {
 
 pub struct VaultAuthenticityCommand;
 impl UqCommand for VaultAuthenticityCommand {
-    fn name(&self) -> &str { "vault authenticity" }
-    fn description(&self) -> &str { "Vérifier l'authenticité" }
+    fn name(&self) -> &str {
+        "vault authenticity"
+    }
+    fn description(&self) -> &str {
+        "Vérifier l'authenticité"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","authentic":true}).to_string()
     }
@@ -1132,8 +1596,12 @@ impl UqCommand for VaultAuthenticityCommand {
 
 pub struct VaultP2pStoreCommand;
 impl UqCommand for VaultP2pStoreCommand {
-    fn name(&self) -> &str { "vault p2p_store" }
-    fn description(&self) -> &str { "État du stockage P2P" }
+    fn name(&self) -> &str {
+        "vault p2p_store"
+    }
+    fn description(&self) -> &str {
+        "État du stockage P2P"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","usage":0.0}).to_string()
     }
@@ -1141,8 +1609,12 @@ impl UqCommand for VaultP2pStoreCommand {
 
 pub struct VaultReportCommand;
 impl UqCommand for VaultReportCommand {
-    fn name(&self) -> &str { "vault report" }
-    fn description(&self) -> &str { "Rapport du Vault" }
+    fn name(&self) -> &str {
+        "vault report"
+    }
+    fn description(&self) -> &str {
+        "Rapport du Vault"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -1154,8 +1626,12 @@ impl UqCommand for VaultReportCommand {
 
 pub struct RecycleListCommand;
 impl UqCommand for RecycleListCommand {
-    fn name(&self) -> &str { "recycle list" }
-    fn description(&self) -> &str { "Comptes inactifs" }
+    fn name(&self) -> &str {
+        "recycle list"
+    }
+    fn description(&self) -> &str {
+        "Comptes inactifs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","inactive":[]}).to_string()
     }
@@ -1163,8 +1639,12 @@ impl UqCommand for RecycleListCommand {
 
 pub struct RecycleRunCommand;
 impl UqCommand for RecycleRunCommand {
-    fn name(&self) -> &str { "recycle run" }
-    fn description(&self) -> &str { "Recycler maintenant" }
+    fn name(&self) -> &str {
+        "recycle run"
+    }
+    fn description(&self) -> &str {
+        "Recycler maintenant"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","recycled":true}).to_string()
     }
@@ -1172,8 +1652,12 @@ impl UqCommand for RecycleRunCommand {
 
 pub struct RecycleScheduleCommand;
 impl UqCommand for RecycleScheduleCommand {
-    fn name(&self) -> &str { "recycle schedule" }
-    fn description(&self) -> &str { "Programmer le recyclage" }
+    fn name(&self) -> &str {
+        "recycle schedule"
+    }
+    fn description(&self) -> &str {
+        "Programmer le recyclage"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","scheduled":true}).to_string()
     }
@@ -1181,8 +1665,12 @@ impl UqCommand for RecycleScheduleCommand {
 
 pub struct RecycleCancelCommand;
 impl UqCommand for RecycleCancelCommand {
-    fn name(&self) -> &str { "recycle cancel" }
-    fn description(&self) -> &str { "Annuler la programmation" }
+    fn name(&self) -> &str {
+        "recycle cancel"
+    }
+    fn description(&self) -> &str {
+        "Annuler la programmation"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","cancelled":true}).to_string()
     }
@@ -1190,8 +1678,12 @@ impl UqCommand for RecycleCancelCommand {
 
 pub struct RecycleHistoryCommand;
 impl UqCommand for RecycleHistoryCommand {
-    fn name(&self) -> &str { "recycle history" }
-    fn description(&self) -> &str { "Historique du recyclage" }
+    fn name(&self) -> &str {
+        "recycle history"
+    }
+    fn description(&self) -> &str {
+        "Historique du recyclage"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","history":[]}).to_string()
     }
@@ -1199,8 +1691,12 @@ impl UqCommand for RecycleHistoryCommand {
 
 pub struct RecycleStatsCommand;
 impl UqCommand for RecycleStatsCommand {
-    fn name(&self) -> &str { "recycle stats" }
-    fn description(&self) -> &str { "Statistiques du recyclage" }
+    fn name(&self) -> &str {
+        "recycle stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques du recyclage"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","total_recycled":0}).to_string()
     }
@@ -1208,8 +1704,12 @@ impl UqCommand for RecycleStatsCommand {
 
 pub struct RecycleAmountCommand;
 impl UqCommand for RecycleAmountCommand {
-    fn name(&self) -> &str { "recycle amount" }
-    fn description(&self) -> &str { "BORB recyclés" }
+    fn name(&self) -> &str {
+        "recycle amount"
+    }
+    fn description(&self) -> &str {
+        "BORB recyclés"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","amount":0}).to_string()
     }
@@ -1217,8 +1717,12 @@ impl UqCommand for RecycleAmountCommand {
 
 pub struct RecycleFeesCommand;
 impl UqCommand for RecycleFeesCommand {
-    fn name(&self) -> &str { "recycle fees" }
-    fn description(&self) -> &str { "Frais de registre collectés" }
+    fn name(&self) -> &str {
+        "recycle fees"
+    }
+    fn description(&self) -> &str {
+        "Frais de registre collectés"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","fees":0}).to_string()
     }
@@ -1226,8 +1730,12 @@ impl UqCommand for RecycleFeesCommand {
 
 pub struct RecycleNextCommand;
 impl UqCommand for RecycleNextCommand {
-    fn name(&self) -> &str { "recycle next" }
-    fn description(&self) -> &str { "Prochaine époque" }
+    fn name(&self) -> &str {
+        "recycle next"
+    }
+    fn description(&self) -> &str {
+        "Prochaine époque"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","next_epoch":"inconnu"}).to_string()
     }
@@ -1235,8 +1743,12 @@ impl UqCommand for RecycleNextCommand {
 
 pub struct RecycleReportCommand;
 impl UqCommand for RecycleReportCommand {
-    fn name(&self) -> &str { "recycle report" }
-    fn description(&self) -> &str { "Rapport du recyclage" }
+    fn name(&self) -> &str {
+        "recycle report"
+    }
+    fn description(&self) -> &str {
+        "Rapport du recyclage"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -1248,8 +1760,12 @@ impl UqCommand for RecycleReportCommand {
 
 pub struct AnalyticsTransactionsCommand;
 impl UqCommand for AnalyticsTransactionsCommand {
-    fn name(&self) -> &str { "analytics transactions" }
-    fn description(&self) -> &str { "Graphique transactions" }
+    fn name(&self) -> &str {
+        "analytics transactions"
+    }
+    fn description(&self) -> &str {
+        "Graphique transactions"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","data":[]}).to_string()
     }
@@ -1257,8 +1773,12 @@ impl UqCommand for AnalyticsTransactionsCommand {
 
 pub struct AnalyticsVolumeCommand;
 impl UqCommand for AnalyticsVolumeCommand {
-    fn name(&self) -> &str { "analytics volume" }
-    fn description(&self) -> &str { "Graphique volume" }
+    fn name(&self) -> &str {
+        "analytics volume"
+    }
+    fn description(&self) -> &str {
+        "Graphique volume"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","volume":0}).to_string()
     }
@@ -1266,8 +1786,12 @@ impl UqCommand for AnalyticsVolumeCommand {
 
 pub struct AnalyticsP2pCommand;
 impl UqCommand for AnalyticsP2pCommand {
-    fn name(&self) -> &str { "analytics p2p" }
-    fn description(&self) -> &str { "Graphique P2P" }
+    fn name(&self) -> &str {
+        "analytics p2p"
+    }
+    fn description(&self) -> &str {
+        "Graphique P2P"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","p2p_data":[]}).to_string()
     }
@@ -1275,8 +1799,12 @@ impl UqCommand for AnalyticsP2pCommand {
 
 pub struct AnalyticsPlayerCommand;
 impl UqCommand for AnalyticsPlayerCommand {
-    fn name(&self) -> &str { "analytics player" }
-    fn description(&self) -> &str { "Graphique lecteur" }
+    fn name(&self) -> &str {
+        "analytics player"
+    }
+    fn description(&self) -> &str {
+        "Graphique lecteur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","player_data":[]}).to_string()
     }
@@ -1284,8 +1812,12 @@ impl UqCommand for AnalyticsPlayerCommand {
 
 pub struct AnalyticsStudiosCommand;
 impl UqCommand for AnalyticsStudiosCommand {
-    fn name(&self) -> &str { "analytics studios" }
-    fn description(&self) -> &str { "Graphique studios" }
+    fn name(&self) -> &str {
+        "analytics studios"
+    }
+    fn description(&self) -> &str {
+        "Graphique studios"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","studio_data":[]}).to_string()
     }
@@ -1293,8 +1825,12 @@ impl UqCommand for AnalyticsStudiosCommand {
 
 pub struct AnalyticsCasesCommand;
 impl UqCommand for AnalyticsCasesCommand {
-    fn name(&self) -> &str { "analytics cases" }
-    fn description(&self) -> &str { "Camembert des 6 cases" }
+    fn name(&self) -> &str {
+        "analytics cases"
+    }
+    fn description(&self) -> &str {
+        "Camembert des 6 cases"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","cases_data":[]}).to_string()
     }
@@ -1302,8 +1838,12 @@ impl UqCommand for AnalyticsCasesCommand {
 
 pub struct AnalyticsExportCommand;
 impl UqCommand for AnalyticsExportCommand {
-    fn name(&self) -> &str { "analytics export" }
-    fn description(&self) -> &str { "Exporter un graphique" }
+    fn name(&self) -> &str {
+        "analytics export"
+    }
+    fn description(&self) -> &str {
+        "Exporter un graphique"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","exported":true}).to_string()
     }
@@ -1311,8 +1851,12 @@ impl UqCommand for AnalyticsExportCommand {
 
 pub struct AnalyticsReportCommand;
 impl UqCommand for AnalyticsReportCommand {
-    fn name(&self) -> &str { "analytics report" }
-    fn description(&self) -> &str { "Rapport analytique complet" }
+    fn name(&self) -> &str {
+        "analytics report"
+    }
+    fn description(&self) -> &str {
+        "Rapport analytique complet"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -1320,8 +1864,12 @@ impl UqCommand for AnalyticsReportCommand {
 
 pub struct AnalyticsExportCsvCommand;
 impl UqCommand for AnalyticsExportCsvCommand {
-    fn name(&self) -> &str { "analytics export_csv" }
-    fn description(&self) -> &str { "Exporter en CSV" }
+    fn name(&self) -> &str {
+        "analytics export_csv"
+    }
+    fn description(&self) -> &str {
+        "Exporter en CSV"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","csv_exported":true}).to_string()
     }
@@ -1329,13 +1877,16 @@ impl UqCommand for AnalyticsExportCsvCommand {
 
 pub struct AnalyticsHeatmapCommand;
 impl UqCommand for AnalyticsHeatmapCommand {
-    fn name(&self) -> &str { "analytics heatmap" }
-    fn description(&self) -> &str { "Carte de chaleur" }
+    fn name(&self) -> &str {
+        "analytics heatmap"
+    }
+    fn description(&self) -> &str {
+        "Carte de chaleur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","heatmap":[]}).to_string()
     }
 }
-
 
 // ==========================================================
 // COMMANDES COMPTES (15)
@@ -1343,8 +1894,12 @@ impl UqCommand for AnalyticsHeatmapCommand {
 
 pub struct AccountListCommand;
 impl UqCommand for AccountListCommand {
-    fn name(&self) -> &str { "account list" }
-    fn description(&self) -> &str { "Liste des comptes" }
+    fn name(&self) -> &str {
+        "account list"
+    }
+    fn description(&self) -> &str {
+        "Liste des comptes"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","accounts":[]}).to_string()
     }
@@ -1352,8 +1907,12 @@ impl UqCommand for AccountListCommand {
 
 pub struct AccountCreateCommand;
 impl UqCommand for AccountCreateCommand {
-    fn name(&self) -> &str { "account create" }
-    fn description(&self) -> &str { "Créer un compte" }
+    fn name(&self) -> &str {
+        "account create"
+    }
+    fn description(&self) -> &str {
+        "Créer un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","created":true}).to_string()
     }
@@ -1361,8 +1920,12 @@ impl UqCommand for AccountCreateCommand {
 
 pub struct AccountCloseCommand;
 impl UqCommand for AccountCloseCommand {
-    fn name(&self) -> &str { "account close" }
-    fn description(&self) -> &str { "Fermer un compte" }
+    fn name(&self) -> &str {
+        "account close"
+    }
+    fn description(&self) -> &str {
+        "Fermer un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","closed":true}).to_string()
     }
@@ -1370,8 +1933,12 @@ impl UqCommand for AccountCloseCommand {
 
 pub struct AccountBlockCommand;
 impl UqCommand for AccountBlockCommand {
-    fn name(&self) -> &str { "account block" }
-    fn description(&self) -> &str { "Bloquer un compte" }
+    fn name(&self) -> &str {
+        "account block"
+    }
+    fn description(&self) -> &str {
+        "Bloquer un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","blocked":true}).to_string()
     }
@@ -1379,8 +1946,12 @@ impl UqCommand for AccountBlockCommand {
 
 pub struct AccountUnblockCommand;
 impl UqCommand for AccountUnblockCommand {
-    fn name(&self) -> &str { "account unblock" }
-    fn description(&self) -> &str { "Débloquer un compte" }
+    fn name(&self) -> &str {
+        "account unblock"
+    }
+    fn description(&self) -> &str {
+        "Débloquer un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","unblocked":true}).to_string()
     }
@@ -1388,8 +1959,12 @@ impl UqCommand for AccountUnblockCommand {
 
 pub struct AccountActivityCommand;
 impl UqCommand for AccountActivityCommand {
-    fn name(&self) -> &str { "account activity" }
-    fn description(&self) -> &str { "Activité d'un compte" }
+    fn name(&self) -> &str {
+        "account activity"
+    }
+    fn description(&self) -> &str {
+        "Activité d'un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","activity":[]}).to_string()
     }
@@ -1397,8 +1972,12 @@ impl UqCommand for AccountActivityCommand {
 
 pub struct AccountStatsCommand;
 impl UqCommand for AccountStatsCommand {
-    fn name(&self) -> &str { "account stats" }
-    fn description(&self) -> &str { "Statistiques d'un compte" }
+    fn name(&self) -> &str {
+        "account stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques d'un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","stats":{}}).to_string()
     }
@@ -1406,8 +1985,12 @@ impl UqCommand for AccountStatsCommand {
 
 pub struct AccountMessagesCommand;
 impl UqCommand for AccountMessagesCommand {
-    fn name(&self) -> &str { "account messages" }
-    fn description(&self) -> &str { "Messages d'un compte" }
+    fn name(&self) -> &str {
+        "account messages"
+    }
+    fn description(&self) -> &str {
+        "Messages d'un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","messages":[]}).to_string()
     }
@@ -1415,8 +1998,12 @@ impl UqCommand for AccountMessagesCommand {
 
 pub struct AccountTransactionsCommand;
 impl UqCommand for AccountTransactionsCommand {
-    fn name(&self) -> &str { "account transactions" }
-    fn description(&self) -> &str { "Transactions d'un compte" }
+    fn name(&self) -> &str {
+        "account transactions"
+    }
+    fn description(&self) -> &str {
+        "Transactions d'un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","transactions":[]}).to_string()
     }
@@ -1424,8 +2011,12 @@ impl UqCommand for AccountTransactionsCommand {
 
 pub struct AccountDettesCommand;
 impl UqCommand for AccountDettesCommand {
-    fn name(&self) -> &str { "account dettes" }
-    fn description(&self) -> &str { "Dettes d'un compte" }
+    fn name(&self) -> &str {
+        "account dettes"
+    }
+    fn description(&self) -> &str {
+        "Dettes d'un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","dettes":0}).to_string()
     }
@@ -1433,8 +2024,12 @@ impl UqCommand for AccountDettesCommand {
 
 pub struct AccountReputationCommand;
 impl UqCommand for AccountReputationCommand {
-    fn name(&self) -> &str { "account reputation" }
-    fn description(&self) -> &str { "Réputation d'un compte" }
+    fn name(&self) -> &str {
+        "account reputation"
+    }
+    fn description(&self) -> &str {
+        "Réputation d'un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","score":0}).to_string()
     }
@@ -1442,8 +2037,12 @@ impl UqCommand for AccountReputationCommand {
 
 pub struct AccountKycCommand;
 impl UqCommand for AccountKycCommand {
-    fn name(&self) -> &str { "account kyc" }
-    fn description(&self) -> &str { "Vérifier KYC" }
+    fn name(&self) -> &str {
+        "account kyc"
+    }
+    fn description(&self) -> &str {
+        "Vérifier KYC"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","kyc_verified":false}).to_string()
     }
@@ -1451,8 +2050,12 @@ impl UqCommand for AccountKycCommand {
 
 pub struct AccountSearchCommand;
 impl UqCommand for AccountSearchCommand {
-    fn name(&self) -> &str { "account search" }
-    fn description(&self) -> &str { "Rechercher un compte" }
+    fn name(&self) -> &str {
+        "account search"
+    }
+    fn description(&self) -> &str {
+        "Rechercher un compte"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","results":[]}).to_string()
     }
@@ -1460,8 +2063,12 @@ impl UqCommand for AccountSearchCommand {
 
 pub struct AccountFilterCommand;
 impl UqCommand for AccountFilterCommand {
-    fn name(&self) -> &str { "account filter" }
-    fn description(&self) -> &str { "Filtrer les comptes" }
+    fn name(&self) -> &str {
+        "account filter"
+    }
+    fn description(&self) -> &str {
+        "Filtrer les comptes"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","filtered":[]}).to_string()
     }
@@ -1469,8 +2076,12 @@ impl UqCommand for AccountFilterCommand {
 
 pub struct AccountExportCommand;
 impl UqCommand for AccountExportCommand {
-    fn name(&self) -> &str { "account export" }
-    fn description(&self) -> &str { "Exporter les comptes" }
+    fn name(&self) -> &str {
+        "account export"
+    }
+    fn description(&self) -> &str {
+        "Exporter les comptes"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","exported":true}).to_string()
     }
@@ -1482,8 +2093,12 @@ impl UqCommand for AccountExportCommand {
 
 pub struct ExchangeOrdersCommand;
 impl UqCommand for ExchangeOrdersCommand {
-    fn name(&self) -> &str { "exchange orders" }
-    fn description(&self) -> &str { "Voir les ordres" }
+    fn name(&self) -> &str {
+        "exchange orders"
+    }
+    fn description(&self) -> &str {
+        "Voir les ordres"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","orders":[]}).to_string()
     }
@@ -1491,8 +2106,12 @@ impl UqCommand for ExchangeOrdersCommand {
 
 pub struct ExchangeOrderCommand;
 impl UqCommand for ExchangeOrderCommand {
-    fn name(&self) -> &str { "exchange order" }
-    fn description(&self) -> &str { "Détails d'un ordre" }
+    fn name(&self) -> &str {
+        "exchange order"
+    }
+    fn description(&self) -> &str {
+        "Détails d'un ordre"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","order":null}).to_string()
     }
@@ -1500,8 +2119,12 @@ impl UqCommand for ExchangeOrderCommand {
 
 pub struct ExchangeCancelCommand;
 impl UqCommand for ExchangeCancelCommand {
-    fn name(&self) -> &str { "exchange cancel" }
-    fn description(&self) -> &str { "Annuler un ordre" }
+    fn name(&self) -> &str {
+        "exchange cancel"
+    }
+    fn description(&self) -> &str {
+        "Annuler un ordre"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","cancelled":true}).to_string()
     }
@@ -1509,8 +2132,12 @@ impl UqCommand for ExchangeCancelCommand {
 
 pub struct ExchangeEscrowsCommand;
 impl UqCommand for ExchangeEscrowsCommand {
-    fn name(&self) -> &str { "exchange escrows" }
-    fn description(&self) -> &str { "Voir les escrows" }
+    fn name(&self) -> &str {
+        "exchange escrows"
+    }
+    fn description(&self) -> &str {
+        "Voir les escrows"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","escrows":[]}).to_string()
     }
@@ -1518,8 +2145,12 @@ impl UqCommand for ExchangeEscrowsCommand {
 
 pub struct ExchangeReleaseCommand;
 impl UqCommand for ExchangeReleaseCommand {
-    fn name(&self) -> &str { "exchange release" }
-    fn description(&self) -> &str { "Libérer un escrow" }
+    fn name(&self) -> &str {
+        "exchange release"
+    }
+    fn description(&self) -> &str {
+        "Libérer un escrow"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","released":true}).to_string()
     }
@@ -1527,8 +2158,12 @@ impl UqCommand for ExchangeReleaseCommand {
 
 pub struct ExchangeFreezeCommand;
 impl UqCommand for ExchangeFreezeCommand {
-    fn name(&self) -> &str { "exchange freeze" }
-    fn description(&self) -> &str { "Geler un échange" }
+    fn name(&self) -> &str {
+        "exchange freeze"
+    }
+    fn description(&self) -> &str {
+        "Geler un échange"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","frozen":true}).to_string()
     }
@@ -1536,8 +2171,12 @@ impl UqCommand for ExchangeFreezeCommand {
 
 pub struct ExchangeHistoryCommand;
 impl UqCommand for ExchangeHistoryCommand {
-    fn name(&self) -> &str { "exchange history" }
-    fn description(&self) -> &str { "Historique" }
+    fn name(&self) -> &str {
+        "exchange history"
+    }
+    fn description(&self) -> &str {
+        "Historique"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","history":[]}).to_string()
     }
@@ -1545,8 +2184,12 @@ impl UqCommand for ExchangeHistoryCommand {
 
 pub struct ExchangeVolumeCommand;
 impl UqCommand for ExchangeVolumeCommand {
-    fn name(&self) -> &str { "exchange volume" }
-    fn description(&self) -> &str { "Volume d'échange" }
+    fn name(&self) -> &str {
+        "exchange volume"
+    }
+    fn description(&self) -> &str {
+        "Volume d'échange"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","volume":0}).to_string()
     }
@@ -1554,8 +2197,12 @@ impl UqCommand for ExchangeVolumeCommand {
 
 pub struct ExchangeCommissionsCommand;
 impl UqCommand for ExchangeCommissionsCommand {
-    fn name(&self) -> &str { "exchange commissions" }
-    fn description(&self) -> &str { "Voir les commissions" }
+    fn name(&self) -> &str {
+        "exchange commissions"
+    }
+    fn description(&self) -> &str {
+        "Voir les commissions"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","commissions":0}).to_string()
     }
@@ -1563,8 +2210,12 @@ impl UqCommand for ExchangeCommissionsCommand {
 
 pub struct ExchangeAnnoncesCommand;
 impl UqCommand for ExchangeAnnoncesCommand {
-    fn name(&self) -> &str { "exchange annonces" }
-    fn description(&self) -> &str { "Annonces P2P" }
+    fn name(&self) -> &str {
+        "exchange annonces"
+    }
+    fn description(&self) -> &str {
+        "Annonces P2P"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","annonces":[]}).to_string()
     }
@@ -1572,8 +2223,12 @@ impl UqCommand for ExchangeAnnoncesCommand {
 
 pub struct ExchangeLitigesCommand;
 impl UqCommand for ExchangeLitigesCommand {
-    fn name(&self) -> &str { "exchange litiges" }
-    fn description(&self) -> &str { "Voir les litiges" }
+    fn name(&self) -> &str {
+        "exchange litiges"
+    }
+    fn description(&self) -> &str {
+        "Voir les litiges"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","litiges":[]}).to_string()
     }
@@ -1581,8 +2236,12 @@ impl UqCommand for ExchangeLitigesCommand {
 
 pub struct ExchangeArbitrerCommand;
 impl UqCommand for ExchangeArbitrerCommand {
-    fn name(&self) -> &str { "exchange arbitrer" }
-    fn description(&self) -> &str { "Arbitrer un litige" }
+    fn name(&self) -> &str {
+        "exchange arbitrer"
+    }
+    fn description(&self) -> &str {
+        "Arbitrer un litige"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","arbitrated":true}).to_string()
     }
@@ -1590,8 +2249,12 @@ impl UqCommand for ExchangeArbitrerCommand {
 
 pub struct ExchangeMatchCommand;
 impl UqCommand for ExchangeMatchCommand {
-    fn name(&self) -> &str { "exchange match" }
-    fn description(&self) -> &str { "Matcher un ordre" }
+    fn name(&self) -> &str {
+        "exchange match"
+    }
+    fn description(&self) -> &str {
+        "Matcher un ordre"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","matched":true}).to_string()
     }
@@ -1599,8 +2262,12 @@ impl UqCommand for ExchangeMatchCommand {
 
 pub struct ExchangeReportCommand;
 impl UqCommand for ExchangeReportCommand {
-    fn name(&self) -> &str { "exchange report" }
-    fn description(&self) -> &str { "Rapport d'échange" }
+    fn name(&self) -> &str {
+        "exchange report"
+    }
+    fn description(&self) -> &str {
+        "Rapport d'échange"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -1612,8 +2279,12 @@ impl UqCommand for ExchangeReportCommand {
 
 pub struct PlayerSessionsCommand;
 impl UqCommand for PlayerSessionsCommand {
-    fn name(&self) -> &str { "player sessions" }
-    fn description(&self) -> &str { "Sessions actives" }
+    fn name(&self) -> &str {
+        "player sessions"
+    }
+    fn description(&self) -> &str {
+        "Sessions actives"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","sessions":[]}).to_string()
     }
@@ -1621,8 +2292,12 @@ impl UqCommand for PlayerSessionsCommand {
 
 pub struct PlayerStartCommand;
 impl UqCommand for PlayerStartCommand {
-    fn name(&self) -> &str { "player start" }
-    fn description(&self) -> &str { "Démarrer une session" }
+    fn name(&self) -> &str {
+        "player start"
+    }
+    fn description(&self) -> &str {
+        "Démarrer une session"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","started":true}).to_string()
     }
@@ -1630,8 +2305,12 @@ impl UqCommand for PlayerStartCommand {
 
 pub struct PlayerStopCommand;
 impl UqCommand for PlayerStopCommand {
-    fn name(&self) -> &str { "player stop" }
-    fn description(&self) -> &str { "Arrêter une session" }
+    fn name(&self) -> &str {
+        "player stop"
+    }
+    fn description(&self) -> &str {
+        "Arrêter une session"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","stopped":true}).to_string()
     }
@@ -1639,8 +2318,12 @@ impl UqCommand for PlayerStopCommand {
 
 pub struct PlayerStatsCommand;
 impl UqCommand for PlayerStatsCommand {
-    fn name(&self) -> &str { "player stats" }
-    fn description(&self) -> &str { "Statistiques du lecteur" }
+    fn name(&self) -> &str {
+        "player stats"
+    }
+    fn description(&self) -> &str {
+        "Statistiques du lecteur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","stats":{}}).to_string()
     }
@@ -1648,8 +2331,12 @@ impl UqCommand for PlayerStatsCommand {
 
 pub struct PlayerCreatorsCommand;
 impl UqCommand for PlayerCreatorsCommand {
-    fn name(&self) -> &str { "player creators" }
-    fn description(&self) -> &str { "Liste des créateurs" }
+    fn name(&self) -> &str {
+        "player creators"
+    }
+    fn description(&self) -> &str {
+        "Liste des créateurs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","creators":[]}).to_string()
     }
@@ -1657,8 +2344,12 @@ impl UqCommand for PlayerCreatorsCommand {
 
 pub struct PlayerDistributeCommand;
 impl UqCommand for PlayerDistributeCommand {
-    fn name(&self) -> &str { "player distribute" }
-    fn description(&self) -> &str { "Distribuer aux créateurs" }
+    fn name(&self) -> &str {
+        "player distribute"
+    }
+    fn description(&self) -> &str {
+        "Distribuer aux créateurs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","distributed":true}).to_string()
     }
@@ -1666,8 +2357,12 @@ impl UqCommand for PlayerDistributeCommand {
 
 pub struct PlayerSecondsCommand;
 impl UqCommand for PlayerSecondsCommand {
-    fn name(&self) -> &str { "player seconds" }
-    fn description(&self) -> &str { "Secondes streamées" }
+    fn name(&self) -> &str {
+        "player seconds"
+    }
+    fn description(&self) -> &str {
+        "Secondes streamées"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","seconds":0}).to_string()
     }
@@ -1675,8 +2370,12 @@ impl UqCommand for PlayerSecondsCommand {
 
 pub struct PlayerRevenueCommand;
 impl UqCommand for PlayerRevenueCommand {
-    fn name(&self) -> &str { "player revenue" }
-    fn description(&self) -> &str { "Revenus d'un créateur" }
+    fn name(&self) -> &str {
+        "player revenue"
+    }
+    fn description(&self) -> &str {
+        "Revenus d'un créateur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","revenue":0}).to_string()
     }
@@ -1684,8 +2383,12 @@ impl UqCommand for PlayerRevenueCommand {
 
 pub struct PlayerPriceCommand;
 impl UqCommand for PlayerPriceCommand {
-    fn name(&self) -> &str { "player price" }
-    fn description(&self) -> &str { "Prix par seconde" }
+    fn name(&self) -> &str {
+        "player price"
+    }
+    fn description(&self) -> &str {
+        "Prix par seconde"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","price_per_second":0}).to_string()
     }
@@ -1693,8 +2396,12 @@ impl UqCommand for PlayerPriceCommand {
 
 pub struct PlayerBoostCommand;
 impl UqCommand for PlayerBoostCommand {
-    fn name(&self) -> &str { "player boost" }
-    fn description(&self) -> &str { "Booster un créateur" }
+    fn name(&self) -> &str {
+        "player boost"
+    }
+    fn description(&self) -> &str {
+        "Booster un créateur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","boosted":true}).to_string()
     }
@@ -1702,8 +2409,12 @@ impl UqCommand for PlayerBoostCommand {
 
 pub struct PlayerCreatorCommand;
 impl UqCommand for PlayerCreatorCommand {
-    fn name(&self) -> &str { "player creator" }
-    fn description(&self) -> &str { "Détails d'un créateur" }
+    fn name(&self) -> &str {
+        "player creator"
+    }
+    fn description(&self) -> &str {
+        "Détails d'un créateur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","creator":null}).to_string()
     }
@@ -1711,8 +2422,12 @@ impl UqCommand for PlayerCreatorCommand {
 
 pub struct PlayerReportCommand;
 impl UqCommand for PlayerReportCommand {
-    fn name(&self) -> &str { "player report" }
-    fn description(&self) -> &str { "Rapport du lecteur" }
+    fn name(&self) -> &str {
+        "player report"
+    }
+    fn description(&self) -> &str {
+        "Rapport du lecteur"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -1724,8 +2439,12 @@ impl UqCommand for PlayerReportCommand {
 
 pub struct SecurityThreatsCommand;
 impl UqCommand for SecurityThreatsCommand {
-    fn name(&self) -> &str { "security threats" }
-    fn description(&self) -> &str { "Menaces détectées" }
+    fn name(&self) -> &str {
+        "security threats"
+    }
+    fn description(&self) -> &str {
+        "Menaces détectées"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","threats":0}).to_string()
     }
@@ -1733,8 +2452,12 @@ impl UqCommand for SecurityThreatsCommand {
 
 pub struct SecurityFraudCommand;
 impl UqCommand for SecurityFraudCommand {
-    fn name(&self) -> &str { "security fraud" }
-    fn description(&self) -> &str { "Tentatives de fraude" }
+    fn name(&self) -> &str {
+        "security fraud"
+    }
+    fn description(&self) -> &str {
+        "Tentatives de fraude"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","frauds":[]}).to_string()
     }
@@ -1742,8 +2465,12 @@ impl UqCommand for SecurityFraudCommand {
 
 pub struct SecurityBlockCommand;
 impl UqCommand for SecurityBlockCommand {
-    fn name(&self) -> &str { "security block" }
-    fn description(&self) -> &str { "Bloquer une adresse IP" }
+    fn name(&self) -> &str {
+        "security block"
+    }
+    fn description(&self) -> &str {
+        "Bloquer une adresse IP"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","blocked":true}).to_string()
     }
@@ -1751,8 +2478,12 @@ impl UqCommand for SecurityBlockCommand {
 
 pub struct SecurityUnblockCommand;
 impl UqCommand for SecurityUnblockCommand {
-    fn name(&self) -> &str { "security unblock" }
-    fn description(&self) -> &str { "Débloquer une adresse" }
+    fn name(&self) -> &str {
+        "security unblock"
+    }
+    fn description(&self) -> &str {
+        "Débloquer une adresse"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","unblocked":true}).to_string()
     }
@@ -1760,8 +2491,12 @@ impl UqCommand for SecurityUnblockCommand {
 
 pub struct Security2faCommand;
 impl UqCommand for Security2faCommand {
-    fn name(&self) -> &str { "security 2fa" }
-    fn description(&self) -> &str { "Vérifier le 2FA" }
+    fn name(&self) -> &str {
+        "security 2fa"
+    }
+    fn description(&self) -> &str {
+        "Vérifier le 2FA"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","2fa_verified":true}).to_string()
     }
@@ -1769,8 +2504,12 @@ impl UqCommand for Security2faCommand {
 
 pub struct SecurityReportCommand;
 impl UqCommand for SecurityReportCommand {
-    fn name(&self) -> &str { "security report" }
-    fn description(&self) -> &str { "Rapport de sécurité" }
+    fn name(&self) -> &str {
+        "security report"
+    }
+    fn description(&self) -> &str {
+        "Rapport de sécurité"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","report":"ok"}).to_string()
     }
@@ -1782,8 +2521,12 @@ impl UqCommand for SecurityReportCommand {
 
 pub struct LogsShowCommand;
 impl UqCommand for LogsShowCommand {
-    fn name(&self) -> &str { "logs show" }
-    fn description(&self) -> &str { "Voir les derniers logs" }
+    fn name(&self) -> &str {
+        "logs show"
+    }
+    fn description(&self) -> &str {
+        "Voir les derniers logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","logs":[]}).to_string()
     }
@@ -1791,8 +2534,12 @@ impl UqCommand for LogsShowCommand {
 
 pub struct LogsFilterCommand;
 impl UqCommand for LogsFilterCommand {
-    fn name(&self) -> &str { "logs filter" }
-    fn description(&self) -> &str { "Filtrer les logs" }
+    fn name(&self) -> &str {
+        "logs filter"
+    }
+    fn description(&self) -> &str {
+        "Filtrer les logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","filtered":[]}).to_string()
     }
@@ -1800,8 +2547,12 @@ impl UqCommand for LogsFilterCommand {
 
 pub struct LogsSearchCommand;
 impl UqCommand for LogsSearchCommand {
-    fn name(&self) -> &str { "logs search" }
-    fn description(&self) -> &str { "Rechercher dans les logs" }
+    fn name(&self) -> &str {
+        "logs search"
+    }
+    fn description(&self) -> &str {
+        "Rechercher dans les logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","results":[]}).to_string()
     }
@@ -1809,8 +2560,12 @@ impl UqCommand for LogsSearchCommand {
 
 pub struct LogsExportCommand;
 impl UqCommand for LogsExportCommand {
-    fn name(&self) -> &str { "logs export" }
-    fn description(&self) -> &str { "Exporter les logs" }
+    fn name(&self) -> &str {
+        "logs export"
+    }
+    fn description(&self) -> &str {
+        "Exporter les logs"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","exported":true}).to_string()
     }
@@ -1818,8 +2573,12 @@ impl UqCommand for LogsExportCommand {
 
 pub struct LogsRealtimeCommand;
 impl UqCommand for LogsRealtimeCommand {
-    fn name(&self) -> &str { "logs realtime" }
-    fn description(&self) -> &str { "Temps réel" }
+    fn name(&self) -> &str {
+        "logs realtime"
+    }
+    fn description(&self) -> &str {
+        "Temps réel"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","realtime":true}).to_string()
     }
@@ -1827,8 +2586,12 @@ impl UqCommand for LogsRealtimeCommand {
 
 pub struct LogsPauseCommand;
 impl UqCommand for LogsPauseCommand {
-    fn name(&self) -> &str { "logs pause" }
-    fn description(&self) -> &str { "Pauser le flux" }
+    fn name(&self) -> &str {
+        "logs pause"
+    }
+    fn description(&self) -> &str {
+        "Pauser le flux"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","paused":true}).to_string()
     }
@@ -1840,8 +2603,12 @@ impl UqCommand for LogsPauseCommand {
 
 pub struct SystemMemoryCommand;
 impl UqCommand for SystemMemoryCommand {
-    fn name(&self) -> &str { "system memory" }
-    fn description(&self) -> &str { "Mémoire utilisée" }
+    fn name(&self) -> &str {
+        "system memory"
+    }
+    fn description(&self) -> &str {
+        "Mémoire utilisée"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","memory_mb":0}).to_string()
     }
@@ -1849,8 +2616,12 @@ impl UqCommand for SystemMemoryCommand {
 
 pub struct SystemCpuCommand;
 impl UqCommand for SystemCpuCommand {
-    fn name(&self) -> &str { "system cpu" }
-    fn description(&self) -> &str { "CPU utilisé" }
+    fn name(&self) -> &str {
+        "system cpu"
+    }
+    fn description(&self) -> &str {
+        "CPU utilisé"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","cpu_pct":0.0}).to_string()
     }
@@ -1858,8 +2629,12 @@ impl UqCommand for SystemCpuCommand {
 
 pub struct SystemRestartCommand;
 impl UqCommand for SystemRestartCommand {
-    fn name(&self) -> &str { "system restart" }
-    fn description(&self) -> &str { "Redémarrer" }
+    fn name(&self) -> &str {
+        "system restart"
+    }
+    fn description(&self) -> &str {
+        "Redémarrer"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","restarted":true}).to_string()
     }
@@ -1867,8 +2642,12 @@ impl UqCommand for SystemRestartCommand {
 
 pub struct SystemPauseCommand;
 impl UqCommand for SystemPauseCommand {
-    fn name(&self) -> &str { "system pause" }
-    fn description(&self) -> &str { "Mettre en pause" }
+    fn name(&self) -> &str {
+        "system pause"
+    }
+    fn description(&self) -> &str {
+        "Mettre en pause"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","paused":true}).to_string()
     }
@@ -1876,8 +2655,12 @@ impl UqCommand for SystemPauseCommand {
 
 pub struct SystemBackupCommand;
 impl UqCommand for SystemBackupCommand {
-    fn name(&self) -> &str { "system backup" }
-    fn description(&self) -> &str { "Sauvegarder" }
+    fn name(&self) -> &str {
+        "system backup"
+    }
+    fn description(&self) -> &str {
+        "Sauvegarder"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","backup_created":true}).to_string()
     }
@@ -1885,8 +2668,12 @@ impl UqCommand for SystemBackupCommand {
 
 pub struct SystemRestoreCommand;
 impl UqCommand for SystemRestoreCommand {
-    fn name(&self) -> &str { "system restore" }
-    fn description(&self) -> &str { "Restaurer" }
+    fn name(&self) -> &str {
+        "system restore"
+    }
+    fn description(&self) -> &str {
+        "Restaurer"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","restored":true}).to_string()
     }
@@ -1894,8 +2681,12 @@ impl UqCommand for SystemRestoreCommand {
 
 pub struct SystemVersionCommand;
 impl UqCommand for SystemVersionCommand {
-    fn name(&self) -> &str { "system version" }
-    fn description(&self) -> &str { "Version du logiciel" }
+    fn name(&self) -> &str {
+        "system version"
+    }
+    fn description(&self) -> &str {
+        "Version du logiciel"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","version":"1.0.0"}).to_string()
     }
@@ -1903,8 +2694,12 @@ impl UqCommand for SystemVersionCommand {
 
 pub struct SystemUpdateCommand;
 impl UqCommand for SystemUpdateCommand {
-    fn name(&self) -> &str { "system update" }
-    fn description(&self) -> &str { "Mettre à jour" }
+    fn name(&self) -> &str {
+        "system update"
+    }
+    fn description(&self) -> &str {
+        "Mettre à jour"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","updated":true}).to_string()
     }
@@ -1912,8 +2707,12 @@ impl UqCommand for SystemUpdateCommand {
 
 pub struct SystemShutdownCommand;
 impl UqCommand for SystemShutdownCommand {
-    fn name(&self) -> &str { "system shutdown" }
-    fn description(&self) -> &str { "Arrêter" }
+    fn name(&self) -> &str {
+        "system shutdown"
+    }
+    fn description(&self) -> &str {
+        "Arrêter"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","shutdown":true}).to_string()
     }
@@ -1921,8 +2720,12 @@ impl UqCommand for SystemShutdownCommand {
 
 pub struct SystemConfigReloadCommand;
 impl UqCommand for SystemConfigReloadCommand {
-    fn name(&self) -> &str { "system config reload" }
-    fn description(&self) -> &str { "Recharger la configuration" }
+    fn name(&self) -> &str {
+        "system config reload"
+    }
+    fn description(&self) -> &str {
+        "Recharger la configuration"
+    }
     fn execute(&self, _args: &str) -> String {
         json!({"status":"success","reloaded":true}).to_string()
     }
@@ -2031,7 +2834,8 @@ pub fn register_all_commands(registry: &mut CommandRegistry) {
     registry.register(Box::new(SystemVersionCommand));
     registry.register(Box::new(SystemUpdateCommand));
     registry.register(Box::new(SystemShutdownCommand));
-    registry.register(Box::new(SystemConfigReloadCommand));    registry.register(Box::new(P2pStatusCommand));
+    registry.register(Box::new(SystemConfigReloadCommand));
+    registry.register(Box::new(P2pStatusCommand));
     registry.register(Box::new(P2pPeersCommand));
     registry.register(Box::new(P2pScanCommand));
     registry.register(Box::new(P2pConnectCommand));
@@ -2140,12 +2944,4 @@ impl CommandRegistry {
     pub fn list_all(&self) -> Vec<String> {
         self.commands.iter().map(|c| c.name().to_string()).collect()
     }
-
 }
-
-
-
-
-
-
-

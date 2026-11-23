@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // ORACLE EXTENSIONS — Rate Lock + Détection Géo
 // ====================
 
@@ -81,10 +81,13 @@ pub async fn oracle_lock(body: web::Json<serde_json::Value>) -> HttpResponse {
 
     {
         let mut locks = LOCKS_TAUX.lock().unwrap();
-        locks.insert(devise.clone(), TauxLock {
-            taux: taux_devise,
-            expire_at,
-        });
+        locks.insert(
+            devise.clone(),
+            TauxLock {
+                taux: taux_devise,
+                expire_at,
+            },
+        );
     }
 
     HttpResponse::Ok().json(json!({
@@ -106,15 +109,13 @@ pub async fn oracle_locked(path: web::Path<String>) -> HttpResponse {
     let locks = LOCKS_TAUX.lock().unwrap();
 
     match locks.get(&devise) {
-        Some(lock) if lock.expire_at > now => {
-            HttpResponse::Ok().json(json!({
-                "status": "success",
-                "devise": devise,
-                "taux_usd": lock.taux,
-                "expire_dans": lock.expire_at - now,
-                "locked": true
-            }))
-        }
+        Some(lock) if lock.expire_at > now => HttpResponse::Ok().json(json!({
+            "status": "success",
+            "devise": devise,
+            "taux_usd": lock.taux,
+            "expire_dans": lock.expire_at - now,
+            "locked": true
+        })),
         Some(_) => {
             // Lock expiré
             HttpResponse::Ok().json(json!({
@@ -124,14 +125,12 @@ pub async fn oracle_locked(path: web::Path<String>) -> HttpResponse {
                 "message": "Lock expiré"
             }))
         }
-        None => {
-            HttpResponse::Ok().json(json!({
-                "status": "not_found",
-                "devise": devise,
-                "locked": false,
-                "message": "Aucun lock actif pour cette devise"
-            }))
-        }
+        None => HttpResponse::Ok().json(json!({
+            "status": "not_found",
+            "devise": devise,
+            "locked": false,
+            "message": "Aucun lock actif pour cette devise"
+        })),
     }
 }
 

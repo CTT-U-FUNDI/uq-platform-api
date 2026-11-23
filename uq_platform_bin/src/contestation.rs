@@ -106,17 +106,25 @@ pub fn ensure_tables(conn: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     // Colonnes ajoutées après coup (ALTER idempotent).
-    for ddl in [
-        "ALTER TABLE contestations ADD COLUMN nb_commentaires INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE contestations ADD COLUMN disparue_at INTEGER NOT NULL DEFAULT 0",
-    ] {
-        let _ = conn.execute(ddl, []);
-    }
+    crate::database::Database::ajouter_colonne_si_absente(
+        conn,
+        "contestations",
+        "nb_commentaires",
+        "INTEGER NOT NULL DEFAULT 0",
+    );
+    crate::database::Database::ajouter_colonne_si_absente(
+        conn,
+        "contestations",
+        "disparue_at",
+        "INTEGER NOT NULL DEFAULT 0",
+    );
     Ok(())
 }
 
 fn db() -> Result<Conn, String> {
-    let conn = Database::shared("uq_platform_db.json").conn().map_err(|e| e.to_string())?;
+    let conn = Database::shared("uq_platform_db.json")
+        .conn()
+        .map_err(|e| e.to_string())?;
     ensure_tables(&conn)?;
     Ok(conn)
 }
@@ -310,12 +318,13 @@ fn vote_eligible_67(conn: &Connection, uq: &str) -> bool {
             let ts = if ts > 10_000_000_000 { ts / 1000 } else { ts };
             maintenant() - ts >= AGE_MIN_VOTE_SECS
         }
-        Some(rusqlite::types::Value::Text(s)) => {
-            chrono::DateTime::parse_from_rfc3339(&s)
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S").map(|n| n.and_utc().fixed_offset()))
-                .map(|dt| maintenant() - dt.timestamp() >= AGE_MIN_VOTE_SECS)
-                .unwrap_or(false)
-        }
+        Some(rusqlite::types::Value::Text(s)) => chrono::DateTime::parse_from_rfc3339(&s)
+            .or_else(|_| {
+                chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                    .map(|n| n.and_utc().fixed_offset())
+            })
+            .map(|dt| maintenant() - dt.timestamp() >= AGE_MIN_VOTE_SECS)
+            .unwrap_or(false),
         _ => false,
     };
     if !age_ok {
@@ -381,7 +390,11 @@ fn recalculer_ratio(conn: &Connection, c: &Contestation) -> Result<f64, String> 
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap_or((0, 0));
-        if total > 0 { (pour as f64 / total as f64) * 100.0 } else { 0.0 }
+        if total > 0 {
+            (pour as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        }
     } else {
         // Signaux = votes + commentaires. 'positif' penche pour le fautif.
         let (pour, contre): (i64, i64) = conn
@@ -400,7 +413,11 @@ fn recalculer_ratio(conn: &Connection, c: &Contestation) -> Result<f64, String> 
             )
             .unwrap_or((0, 0));
         let total = pour + contre;
-        if total > 0 { (pour as f64 / total as f64) * 100.0 } else { 0.0 }
+        if total > 0 {
+            (pour as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        }
     };
 
     conn.execute(
@@ -477,11 +494,7 @@ pub fn commenter(c: &Contestation, auteur: &str, texte: &str) -> Result<(), Stri
                 total_negatifs_points = total_negatifs_points + ?2,
                 nb_commentaires = nb_commentaires + 1
          WHERE id = ?3",
-        params![
-            cout,
-            if type_com == "negatif" { cout } else { 0 },
-            c.id
-        ],
+        params![cout, if type_com == "negatif" { cout } else { 0 }, c.id],
     )
     .map_err(|e| e.to_string())?;
     let _ = conn.execute(
@@ -494,14 +507,7 @@ pub fn commenter(c: &Contestation, auteur: &str, texte: &str) -> Result<(), Stri
         "INSERT INTO contestation_commentaires
             (contestation_id, auteur_uq, texte, type, cout_points, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![
-            c.id,
-            auteur,
-            texte_propre,
-            type_com,
-            cout,
-            maintenant()
-        ],
+        params![c.id, auteur, texte_propre, type_com, cout, maintenant()],
     )
     .map_err(|e| e.to_string())?;
 
@@ -602,11 +608,12 @@ pub fn reduire_sanctions() -> Result<Vec<String>, String> {
     let mut actions = Vec::new();
 
     for id in ids {
-        let Ok(c) = lire_contestation(&conn, id) else { continue };
+        let Ok(c) = lire_contestation(&conn, id) else {
+            continue;
+        };
         // Le niveau réel du compte fait foi (il a pu changer depuis l'ouverture).
-        let etat = crate::gel::etat(&c.uq_number).unwrap_or_else(|_| {
-            serde_json::json!({"gel_niveau": c.niveau, "gele": !c.disparue})
-        });
+        let etat = crate::gel::etat(&c.uq_number)
+            .unwrap_or_else(|_| serde_json::json!({"gel_niveau": c.niveau, "gele": !c.disparue}));
         let niveau_reel = etat
             .get("gel_niveau")
             .and_then(|v| v.as_i64())
@@ -679,7 +686,9 @@ pub fn reduire_sanctions() -> Result<Vec<String>, String> {
                             );
                             actions.push(format!("contestation {} : debloque", id));
                         }
-                        Err(e) => actions.push(format!("contestation {} : erreur degel ({})", id, e)),
+                        Err(e) => {
+                            actions.push(format!("contestation {} : erreur degel ({})", id, e))
+                        }
                     }
                 } else {
                     match crate::gel::appliquer_gel(

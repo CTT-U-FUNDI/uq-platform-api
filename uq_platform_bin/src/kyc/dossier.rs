@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 📁 DOSSIER KYC
 // ====================
 //
@@ -6,7 +6,7 @@
 //
 // ====================
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum KycStatus {
@@ -52,7 +52,7 @@ pub struct KycDossier {
     pub decision_at: Option<i64>,
 
     /// Decision
-    pub decision_par: Option<String>,  // "proprietaire" ou "ia"
+    pub decision_par: Option<String>, // "proprietaire" ou "ia"
     pub cases_cochees: Vec<String>,
     pub raison_refus: Option<String>,
 
@@ -90,4 +90,3 @@ impl KycDossier {
         Some(age as u32)
     }
 }
-

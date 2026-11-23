@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // VALIDATION — Règles centralisées pour tous les champs
 // ====================
 
@@ -29,11 +29,17 @@ pub struct ValidationResult {
 
 impl ValidationResult {
     pub fn ok() -> Self {
-        ValidationResult { valid: true, error: None }
+        ValidationResult {
+            valid: true,
+            error: None,
+        }
     }
 
     pub fn err(msg: &str) -> Self {
-        ValidationResult { valid: false, error: Some(msg.to_string()) }
+        ValidationResult {
+            valid: false,
+            error: Some(msg.to_string()),
+        }
     }
 
     pub fn is_ok(&self) -> bool {
@@ -51,9 +57,8 @@ impl ValidationResult {
 
 /// Vérifie qu'une chaîne ne contient que des lettres (unicode), espaces, tirets, apostrophes
 fn is_valid_name_chars(s: &str) -> bool {
-    s.chars().all(|c| {
-        c.is_alphabetic() || c.is_whitespace() || c == '-' || c == '\'' || c == '.'
-    })
+    s.chars()
+        .all(|c| c.is_alphabetic() || c.is_whitespace() || c == '-' || c == '\'' || c == '.')
 }
 
 /// Vérifie qu'une chaîne ne contient que des chiffres
@@ -274,7 +279,7 @@ pub fn validate_telephone(tel: &str) -> ValidationResult {
     let cleaned = tel.replace(|c: char| c.is_whitespace() || c == '.' || c == '-', "");
 
     if cleaned.is_empty() {
-        return ValidationResult::ok();  // Optionnel
+        return ValidationResult::ok(); // Optionnel
     }
 
     if !cleaned.starts_with('+') {
@@ -405,19 +410,19 @@ mod tests {
     fn test_password_valide() {
         assert!(validate_password("Jean1234").is_ok());
         assert!(validate_password("Password1").is_ok());
-        assert!(!validate_password("jean1234").is_ok());   // Pas de majuscule
-        assert!(!validate_password("JEAN1234").is_ok());   // Pas de minuscule
-        assert!(!validate_password("Jeanabcd").is_ok());   // Pas de chiffre
-        assert!(!validate_password("Jean123").is_ok());    // Trop court
+        assert!(!validate_password("jean1234").is_ok()); // Pas de majuscule
+        assert!(!validate_password("JEAN1234").is_ok()); // Pas de minuscule
+        assert!(!validate_password("Jeanabcd").is_ok()); // Pas de chiffre
+        assert!(!validate_password("Jean123").is_ok()); // Trop court
     }
 
     #[test]
     fn test_date_valide() {
         assert!(validate_date_naissance("1996-06-01").is_ok());
         assert!(validate_date_naissance("2000-01-15").is_ok());
-        assert!(!validate_date_naissance("2020-01-01").is_ok());  // Trop jeune
-        assert!(!validate_date_naissance("1800-01-01").is_ok());  // Trop vieux
-        assert!(!validate_date_naissance("1996/06/01").is_ok());  // Mauvais format
+        assert!(!validate_date_naissance("2020-01-01").is_ok()); // Trop jeune
+        assert!(!validate_date_naissance("1800-01-01").is_ok()); // Trop vieux
+        assert!(!validate_date_naissance("1996/06/01").is_ok()); // Mauvais format
     }
 
     #[test]
@@ -438,7 +443,7 @@ mod tests {
     #[test]
     fn test_uq_valide() {
         assert!(validate_uq_number("UQ-732688531").is_ok());
-        assert!(validate_uq_number("UQ-996697110").is_ok());
+        assert!(validate_uq_number("UQ-00000001").is_ok());
         assert!(!validate_uq_number("UQ-123").is_ok());
         assert!(!validate_uq_number("732688531").is_ok());
     }

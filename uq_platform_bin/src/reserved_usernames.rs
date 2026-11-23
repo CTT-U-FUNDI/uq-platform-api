@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // NOMS RESERVES UQ
 // Politique : Interdiction d'utiliser ces noms comme email/pseudo
 // ====================
@@ -16,7 +16,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "staff",
     "team",
     "operator",
-
     // ===== SUPPORT =====
     "support",
     "help",
@@ -24,7 +23,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "info",
     "publicite",
     "trading",
-
     // ===== SECURITE =====
     "security",
     "abuse",
@@ -35,7 +33,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "no-reply",
     "mailer",
     "daemon",
-
     // ===== UQ SPECIFIQUE =====
     "uq",
     "ufundi",
@@ -44,7 +41,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "owner",
     "guardian",
     "gardien",
-
     // ===== IA =====
     "ai",
     "bot",
@@ -53,7 +49,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "uqai",
     "ia",
     "robot",
-
     // ===== SYSTEME =====
     "system",
     "server",
@@ -72,7 +67,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "app",
     "mobile",
     "desktop",
-
     // ===== FINANCE =====
     "bank",
     "banking",
@@ -86,7 +80,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "finance",
     "treasury",
     "tresor",
-
     // ===== LEGAL =====
     "legal",
     "privacy",
@@ -96,7 +89,6 @@ pub const RESERVED_USERNAMES: &[&str] = &[
     "reglement",
     "loi",
     "law",
-
     // ===== DIVERS =====
     "test",
     "demo",

@@ -9,20 +9,25 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::json;
 
-use crate::mail_store::{shared as mail_store, detecter_otp};
+use crate::mail_store::{detecter_otp, shared as mail_store};
 use crate::uq_index::UqIndex;
 
 fn index() -> std::sync::Arc<UqIndex> {
-    UqIndex::shared(&crate::uq_index::uq_index_path())
+    UqIndex::shared("uq_index.db")
 }
 
-fn ok(v: serde_json::Value) -> HttpResponse { HttpResponse::Ok().json(v) }
+fn ok(v: serde_json::Value) -> HttpResponse {
+    HttpResponse::Ok().json(v)
+}
 fn err(code: u16, msg: &str) -> HttpResponse {
     HttpResponse::build(actix_web::http::StatusCode::from_u16(code).unwrap())
         .json(json!({"status":"error","message":msg}))
 }
 fn now_ts() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Domaine réel de la messagerie (ex: mail.uq-platform.com).
@@ -32,13 +37,27 @@ fn mail_domain() -> String {
 
 /// Auth Ed25519 : UQ_MAIL_V1|{uq}|{vk}|{ts}
 fn signature_mail_valide(uq: &str, vk_hex: &str, ts: u64, signature_hex: &str) -> bool {
-    if ts.abs_diff(now_ts()) > 300 { return false; }
-    let vk_bytes = match hex::decode(vk_hex) { Ok(b) if b.len() == 32 => b, _ => return false };
-    let sig_bytes = match hex::decode(signature_hex) { Ok(b) if b.len() == 64 => b, _ => return false };
+    if ts.abs_diff(now_ts()) > 300 {
+        return false;
+    }
+    let vk_bytes = match hex::decode(vk_hex) {
+        Ok(b) if b.len() == 32 => b,
+        _ => return false,
+    };
+    let sig_bytes = match hex::decode(signature_hex) {
+        Ok(b) if b.len() == 64 => b,
+        _ => return false,
+    };
     let vk_arr: [u8; 32] = vk_bytes.try_into().unwrap();
-    let vk = match VerifyingKey::from_bytes(&vk_arr) { Ok(k) => k, Err(_) => return false };
+    let vk = match VerifyingKey::from_bytes(&vk_arr) {
+        Ok(k) => k,
+        Err(_) => return false,
+    };
     let msg = format!("UQ_MAIL_V1|{}|{}|{}", uq, vk_hex, ts);
-    let sig = match Signature::from_slice(&sig_bytes) { Ok(s) => s, Err(_) => return false };
+    let sig = match Signature::from_slice(&sig_bytes) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
     vk.verify(msg.as_bytes(), &sig).is_ok()
 }
 
@@ -76,13 +95,20 @@ pub async fn mail_lister(path: web::Path<(String, String)>) -> HttpResponse {
     };
     let msgs = mail_store().lister(&uq, &dossier, 100);
     // Version liste : sans le corps complet pour rester léger
-    let liste: Vec<serde_json::Value> = msgs.iter().map(|m| json!({
-        "id": m.id, "from_addr": m.from_addr, "from_name": m.from_name,
-        "to_addr": m.to_addr, "subject": m.subject, "date": m.date,
-        "is_read": m.is_read, "otp_code": m.otp_code,
-        "apercu": m.body_text.chars().take(140).collect::<String>(),
-    })).collect();
-    ok(json!({"status":"ok","dossier":dossier,"messages":liste,"non_lus":mail_store().non_lus(&uq)}))
+    let liste: Vec<serde_json::Value> = msgs
+        .iter()
+        .map(|m| {
+            json!({
+                "id": m.id, "from_addr": m.from_addr, "from_name": m.from_name,
+                "to_addr": m.to_addr, "subject": m.subject, "date": m.date,
+                "is_read": m.is_read, "otp_code": m.otp_code,
+                "apercu": m.body_text.chars().take(140).collect::<String>(),
+            })
+        })
+        .collect();
+    ok(
+        json!({"status":"ok","dossier":dossier,"messages":liste,"non_lus":mail_store().non_lus(&uq)}),
+    )
 }
 
 // ── GET /api/mail/message/{uq}/{id} — lit un message (marque lu) ──
@@ -107,8 +133,12 @@ pub async fn mail_non_lus(path: web::Path<String>) -> HttpResponse {
 pub async fn mail_mark_read(body: web::Json<serde_json::Value>) -> HttpResponse {
     let uq = body.get("uq").and_then(|v| v.as_str()).unwrap_or("");
     let id = body.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-    if uq.is_empty() || id == 0 { return err(400, "uq et id requis"); }
-    if !auth_ok(&body, uq) { return err(403, "Signature invalide"); }
+    if uq.is_empty() || id == 0 {
+        return err(400, "uq et id requis");
+    }
+    if !auth_ok(&body, uq) {
+        return err(403, "Signature invalide");
+    }
     if mail_store().marquer_lu(uq, id) {
         ok(json!({"status":"ok"}))
     } else {
@@ -118,7 +148,12 @@ pub async fn mail_mark_read(body: web::Json<serde_json::Value>) -> HttpResponse 
 
 /// Envoie un mail via le relais du VPS (HTTPS → sendmail).
 /// UQ_MAIL_RELAY_URL + UQ_MAIL_RELAY_KEY dans .env.
-pub(crate) async fn envoyer_via_relais(from: &str, to: &str, subject: &str, body_text: &str) -> Result<(), String> {
+async fn envoyer_via_relais(
+    from: &str,
+    to: &str,
+    subject: &str,
+    body_text: &str,
+) -> Result<(), String> {
     let url = std::env::var("UQ_MAIL_RELAY_URL")
         .map_err(|_| "UQ_MAIL_RELAY_URL non configuré".to_string())?;
     let key = std::env::var("UQ_MAIL_RELAY_KEY").unwrap_or_default();
@@ -127,28 +162,57 @@ pub(crate) async fn envoyer_via_relais(from: &str, to: &str, subject: &str, body
     });
     let client = reqwest::Client::new();
     let mut req = client.post(&url).json(&payload);
-    if !key.is_empty() { req = req.bearer_auth(&key); }
-    let resp = req.send().await.map_err(|e| format!("relais injoignable: {}", e))?;
-    if resp.status().is_success() { Ok(()) } else {
+    if !key.is_empty() {
+        req = req.bearer_auth(&key);
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("relais injoignable: {}", e))?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
         Err(format!("relais HTTP {}", resp.status()))
     }
 }
 
 // ── POST /api/mail/send — {uq, to, subject, body, vk, ts, signature} ──
 pub async fn mail_send(body: web::Json<serde_json::Value>) -> HttpResponse {
-    let uq = body.get("uq").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let to = body.get("to").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let subject = body.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let body_text = body.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    if uq.is_empty() || to.is_empty() { return err(400, "uq et to requis"); }
-    if !auth_ok(&body, &uq) { return err(403, "Signature invalide"); }
+    let uq = body
+        .get("uq")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let to = body
+        .get("to")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let subject = body
+        .get("subject")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let body_text = body
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if uq.is_empty() || to.is_empty() {
+        return err(400, "uq et to requis");
+    }
+    if !auth_ok(&body, &uq) {
+        return err(403, "Signature invalide");
+    }
 
     // Validation basique anti-injection d'en-têtes
     if to.contains('\n') || to.contains('\r') || subject.contains('\n') || subject.contains('\r') {
         return err(400, "Destinataire/sujet invalide");
     }
 
-    let Some(from) = adresse_reelle(&uq) else { return err(404, "Compte introuvable"); };
+    let Some(from) = adresse_reelle(&uq) else {
+        return err(404, "Compte introuvable");
+    };
 
     // Envoi via relais VPS
     match envoyer_via_relais(&from, &to, &subject, &body_text).await {
@@ -166,8 +230,11 @@ pub async fn mail_send(body: web::Json<serde_json::Value>) -> HttpResponse {
 // 'to' = adresse réelle (prenom@domaine). On résout le localpart → compte UQ.
 pub async fn mail_in(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
     let key_attendue = std::env::var("UQ_MAIL_INBOUND_KEY").unwrap_or_default();
-    let key_recue = req.headers().get("X-UQ-Mail-Key")
-        .and_then(|v| v.to_str().ok()).unwrap_or("");
+    let key_recue = req
+        .headers()
+        .get("X-UQ-Mail-Key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if key_attendue.is_empty() || key_recue != key_attendue {
         return err(403, "Clé inbound invalide");
     }
@@ -195,9 +262,23 @@ pub async fn mail_in(req: HttpRequest, body: web::Json<serde_json::Value>) -> Ht
     };
 
     let otp = detecter_otp(subject, body_text);
-    let dossier = if body.get("spam").and_then(|v| v.as_bool()).unwrap_or(false) { "spam" } else { "inbox" };
+    let dossier = if body.get("spam").and_then(|v| v.as_bool()).unwrap_or(false) {
+        "spam"
+    } else {
+        "inbox"
+    };
 
-    match mail_store().deposer(&uq, from_addr, from_name, to, subject, body_text, body_html, otp.as_deref(), dossier) {
+    match mail_store().deposer(
+        &uq,
+        from_addr,
+        from_name,
+        to,
+        subject,
+        body_text,
+        body_html,
+        otp.as_deref(),
+        dossier,
+    ) {
         Ok(id) => ok(json!({"status":"ok","delivre":true,"id":id,"uq":uq,"otp":otp.is_some()})),
         Err(e) => err(500, &format!("Stockage échoué: {}", e)),
     }

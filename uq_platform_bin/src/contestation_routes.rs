@@ -19,7 +19,10 @@ fn err(message: &str) -> HttpResponse {
 /// POST /api/contestation/ouvrir — body { points } : le compte gelé dépose des
 /// points pour ouvrir sa contestation publique.
 pub async fn ouvrir(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = claims.sub.trim().to_uppercase();
     if let Err(e) = crate::gel::exiger(&uq, "contester") {
         return HttpResponse::Forbidden().json(json!({ "status": "error", "message": e }));
@@ -33,7 +36,10 @@ pub async fn ouvrir(req: HttpRequest, body: web::Json<serde_json::Value>) -> Htt
 
 /// GET /api/contestation/mes — ma contestation active (ou null).
 pub async fn mes(req: HttpRequest) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let uq = claims.sub.trim().to_uppercase();
     match contestation::ma_contestation(&uq) {
         Ok(Some(id)) => match contestation::detail(id) {
@@ -68,7 +74,10 @@ pub async fn commenter(
     path: web::Path<i64>,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let auteur = claims.sub.trim().to_uppercase();
     if let Err(e) = crate::gel::exiger(&auteur, "commenter_contestation") {
         return HttpResponse::Forbidden().json(json!({ "status": "error", "message": e }));
@@ -90,7 +99,10 @@ pub async fn voter(
     path: web::Path<i64>,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let claims = match exiger_auth(&req) { Ok(c) => c, Err(r) => return r };
+    let claims = match exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     let auteur = claims.sub.trim().to_uppercase();
     if let Err(e) = crate::gel::exiger(&auteur, "voter_contestation") {
         return HttpResponse::Forbidden().json(json!({ "status": "error", "message": e }));

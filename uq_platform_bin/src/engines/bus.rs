@@ -15,9 +15,9 @@ use std::sync::{Arc, Mutex};
 use serde_json::json;
 use sha2::Digest as _;
 
-use crate::udp_network::UdpNetwork;
 use super::gossip::{self, Diffusion};
 use super::store::StoreMoteurs;
+use crate::udp_network::UdpNetwork;
 
 pub const MOTEUR_ORACLE: &str = "oracle";
 pub const MOTEUR_FRAUDE: &str = "fraude";
@@ -25,7 +25,11 @@ pub const MOTEUR_REPUTATION: &str = "reputation";
 pub const MOTEUR_SYNCHRO: &str = "synchro";
 
 fn env_positif(nom: &str, defaut: u64) -> u64 {
-    std::env::var(nom).ok().and_then(|v| v.parse().ok()).filter(|v: &u64| *v > 0).unwrap_or(defaut)
+    std::env::var(nom)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|v: &u64| *v > 0)
+        .unwrap_or(defaut)
 }
 
 fn max_saut() -> u8 {
@@ -87,7 +91,13 @@ impl BusMoteurs {
 
     /// Publication d'une mise à jour locale : version suivante pour
     /// (moteur, cle, nous), stockage, puis diffusion aux pairs.
-    pub fn publier(&self, moteur: &str, cle: &str, valeur: serde_json::Value, destinataire: Option<&str>) -> Result<serde_json::Value, String> {
+    pub fn publier(
+        &self,
+        moteur: &str,
+        cle: &str,
+        valeur: serde_json::Value,
+        destinataire: Option<&str>,
+    ) -> Result<serde_json::Value, String> {
         let origine = self.origine.clone();
         let version = {
             let store = self.store.lock().map_err(|_| "lock store")?;
@@ -123,7 +133,11 @@ impl BusMoteurs {
 
     /// Réception d'une diffusion (UDP ou HTTP). Vérifie, déduplique,
     /// fusionne, et re-diffuse si elle est nouvelle.
-    pub fn recevoir(&self, mut d: Diffusion, depuis: Option<&str>) -> Result<serde_json::Value, String> {
+    pub fn recevoir(
+        &self,
+        mut d: Diffusion,
+        depuis: Option<&str>,
+    ) -> Result<serde_json::Value, String> {
         self.recues.fetch_add(1, Ordering::Relaxed);
         if !gossip::signature_valide(&d) {
             self.rejetees.fetch_add(1, Ordering::Relaxed);
@@ -136,7 +150,9 @@ impl BusMoteurs {
             store.appliquer(&d)?
         };
         if !retenue {
-            return Ok(json!({"status":"success","accepte":false,"motif": if deja_vu {"deja_vu"} else {"version_plus_ancienne"}}));
+            return Ok(
+                json!({"status":"success","accepte":false,"motif": if deja_vu {"deja_vu"} else {"version_plus_ancienne"}}),
+            );
         }
 
         // Le moteur fraude surveille l'oracle : un prix pair très écarté
@@ -150,7 +166,9 @@ impl BusMoteurs {
             self.diffuser_udp(&d);
         }
         let _ = depuis;
-        Ok(json!({"status":"success","accepte":true,"moteur":d.moteur,"cle":d.cle,"version":d.version,"empreinte":hash}))
+        Ok(
+            json!({"status":"success","accepte":true,"moteur":d.moteur,"cle":d.cle,"version":d.version,"empreinte":hash}),
+        )
     }
 
     /// Agrégat oracle : pour chaque clé, médiane + dispersion sur toutes
@@ -169,7 +187,8 @@ impl BusMoteurs {
         let entrees: Vec<serde_json::Value> = cles
             .into_iter()
             .map(|cle| {
-                let (mediane, origines) = store.mediane_prix(MOTEUR_ORACLE, &cle).unwrap_or((0.0, 0));
+                let (mediane, origines) =
+                    store.mediane_prix(MOTEUR_ORACLE, &cle).unwrap_or((0.0, 0));
                 let locale = lignes
                     .iter()
                     .find(|(c, o, _, _)| *c == cle && *o == self.origine)
@@ -237,7 +256,12 @@ impl BusMoteurs {
             .filter(|(c, _, _, _)| c.starts_with(&prefixe))
             .map(|(c, o, v, ts)| json!({"cle":c,"origine":o,"evenement":v,"ts":ts}))
             .collect();
-        events.sort_by(|a, b| b["ts"].as_i64().unwrap_or(0).cmp(&a["ts"].as_i64().unwrap_or(0)));
+        events.sort_by(|a, b| {
+            b["ts"]
+                .as_i64()
+                .unwrap_or(0)
+                .cmp(&a["ts"].as_i64().unwrap_or(0))
+        });
         events.truncate(200);
         json!({"status":"success","uq":uq,"evenements":events,"total":events.len()})
     }
@@ -333,7 +357,9 @@ fn ecart_max() -> f64 {
 /// Signale en moteur « fraude » un prix pair qui s'écarte trop de la
 /// médiane collective (au moins `min_origines` sources pour juger).
 fn surveiller_ecart(bus: &BusMoteurs, d: &Diffusion) {
-    let Some(prix) = d.valeur.get("prix").and_then(|p| p.as_f64()) else { return };
+    let Some(prix) = d.valeur.get("prix").and_then(|p| p.as_f64()) else {
+        return;
+    };
     let Some((mediane, origines)) = bus
         .store
         .lock()
@@ -406,8 +432,15 @@ pub async fn tick_oracle(bus: Arc<BusMoteurs>) {
         .collect();
     for symbole in symboles {
         let recu = crate::external_api::prix_crypto(&symbole).await;
-        if let Some(prix) = recu.get("data").and_then(|d| d.get("price")).and_then(|p| p.as_f64()) {
-            let source = recu.get("source").and_then(|s| s.as_str()).unwrap_or("inconnue");
+        if let Some(prix) = recu
+            .get("data")
+            .and_then(|d| d.get("price"))
+            .and_then(|p| p.as_f64())
+        {
+            let source = recu
+                .get("source")
+                .and_then(|s| s.as_str())
+                .unwrap_or("inconnue");
             let _ = bus.publier(
                 MOTEUR_ORACLE,
                 &format!("crypto:{}", symbole),

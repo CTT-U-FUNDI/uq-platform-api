@@ -75,7 +75,11 @@ fn autorise(compte: &str) -> bool {
 }
 
 fn texte_candidates(corps: &serde_json::Value) -> Option<String> {
-    let parts = corps.get("candidates")?.get(0)?.get("content")?.get("parts")?;
+    let parts = corps
+        .get("candidates")?
+        .get(0)?
+        .get("content")?
+        .get("parts")?;
     let phrases: Vec<&str> = parts
         .as_array()?
         .iter()
@@ -109,8 +113,12 @@ pub async fn api_ai_ask(
     };
 
     /* La requete d'abord, le compteur ensuite : une question vide ou trop
-       longue doit etre refusee sans entamer le quota de la minute. */
-    let question = body.get("question").and_then(|v| v.as_str()).unwrap_or("").trim();
+    longue doit etre refusee sans entamer le quota de la minute. */
+    let question = body
+        .get("question")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
     if question.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "disponible": false,
@@ -135,7 +143,11 @@ pub async fn api_ai_ask(
     let mut echanges: Vec<serde_json::Value> = Vec::new();
     if let Some(histoire) = body.get("histoire").and_then(|v| v.as_array()) {
         for tour in histoire.iter().rev().take(ECHANGES_MAX).rev() {
-            let texte = tour.get("texte").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let texte = tour
+                .get("texte")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
             let role = match tour.get("role").and_then(|v| v.as_str()) {
                 Some("assistant") => "model",
                 _ => "user",
@@ -194,7 +206,11 @@ pub async fn api_ai_ask(
     if !statut.is_success() {
         // 401/403 = cle refusee, 429 = quota fournisseur : dans tous les cas le
         // chat doit retomber sur l'assistant local sans afficher de secret.
-        eprintln!("UQ AI: reponse fournisseur {} pour le modele {}", statut.as_u16(), modele);
+        eprintln!(
+            "UQ AI: reponse fournisseur {} pour le modele {}",
+            statut.as_u16(),
+            modele
+        );
         return HttpResponse::BadGateway().json(json!({
             "disponible": false,
             "raison": "fournisseur",

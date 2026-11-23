@@ -1,113 +1,111 @@
-mod owner_guard;
-mod permissions;
-mod owner_routes;
+mod api_handlers;
+mod application;
+mod auth;
+mod borb_distribution;
+mod chat_contacts;
+mod chat_reports;
+mod chat_reseau;
+mod command_registry;
 mod db;
 mod domain;
-mod application;
-mod receipt;
-mod auth;
-mod wal;
-mod geo;
-mod command_registry;
-mod guardian_routes;
-mod borb_distribution;
-mod api_handlers;
 mod frais_plateforme;
-mod chat_contacts;
-mod chat_reseau;
-mod chat_reports;
-mod security_login;
-mod security_helpers;
-mod secure_handlers;
+mod geo;
+mod guardian_routes;
+mod owner_guard;
+mod owner_routes;
 mod p2p_signal;
-mod api_routes;
+mod permissions;
+mod receipt;
+mod secure_handlers;
+mod security_helpers;
+mod security_login;
+mod wal;
+// mod ai_vision; // en pause : dependance ort (ONNX) a installer — route /api/ai/vision desactivee
 mod ai_routes;
-mod trading_routes;
-mod reputation_routes;
-mod network_routes;
-mod chat_risk;
-mod history_routes;
-mod public_routes;
-mod oracle_extensions;
-mod migration_comptes;
-mod auth_guard;
-mod totp;
-mod twofa_store;
-mod twofa_handlers;
-mod wallets_store;
-mod wallets_handlers;
-mod binaire_protector;
-mod binaire_handlers;
+mod api_routes;
 mod audit_log;
-mod mail_store;
-mod capsule_routes;
-mod mail_routes;
-mod contact_routes;
-mod escrow_routes;
-mod escrow_reconcile;
-mod media_routes;
-mod sms_store;
-mod sms_routes;
+mod auth_guard;
+mod auto_cleanup;
+mod backup;
+mod binaire_handlers;
+mod binaire_protector;
 mod binance_p2p;
-mod ocean;
-mod kyc_auto;
-mod kyc_live;
-mod ocean_routes;
-mod cases_loop;
-mod cases_routes;
-mod external_api;
-mod external_routes;
-mod series_routes;
-mod p2p_escrow;
-mod marketplace;
-mod marketplace_routes;
-mod wallet_deposit;
-mod gel;
-mod gel_routes;
-mod contestation;
-mod contestation_routes;
-mod database;
-mod uq_index;
-mod firestore_index;
-mod uq_public_alias;
-mod reserved_usernames;
-mod username_utils;
-mod pin_manager;
-mod webauthn_manager;
-mod user_models;
-mod user_handlers;
-mod robinet;
-mod vitrines;
-mod connexion;
-mod real_state;
-mod player_routes;
-mod publication_routes;
-mod mini_routes;
-mod real_services;
-mod real_gov;
-mod real_vault;
-mod real_p2p;
-mod udp_network;
-mod treasury_handlers;
-mod counter_handlers;
-mod cases_handlers;
-mod invoice_handlers;
-mod montant;
 mod block_orb;
 mod blockchain_lib;
-mod local_history;
-mod history_recovery;
-mod p2p_history;
-mod auto_cleanup;
-mod transaction_engine;
-mod regulateur;
-mod subunit_unlock;
 mod borb_tracer;
-mod demande_calculator;
-mod persistence;
+mod capsule_routes;
+mod cases_handlers;
+mod cases_loop;
+mod cases_routes;
+mod chat_risk;
+mod connexion;
+mod contestation;
+mod contestation_routes;
 mod core_handlers;
+mod counter_handlers;
+mod database;
+mod demande_calculator;
 mod engines;
+mod external_api;
+mod external_routes;
+mod gel;
+mod gel_routes;
+mod history_recovery;
+mod history_routes;
+mod invoice_handlers;
+mod kyc_auto;
+mod kyc_live;
+mod local_history;
+mod mail_routes;
+mod mail_store;
+mod marketplace;
+mod marketplace_routes;
+mod migration_comptes;
+mod mini_routes;
+mod montant;
+mod network_routes;
+mod ocean;
+mod ocean_routes;
+mod oracle_extensions;
+mod p2p_escrow;
+mod p2p_history;
+mod persistence;
+mod pin_manager;
+mod player_routes;
 mod profile_routes;
+mod public_routes;
+mod publication_routes;
+mod real_gov;
+mod real_p2p;
+mod real_services;
+mod real_state;
+mod real_vault;
+mod regulateur;
+mod reputation_routes;
+mod reserved_usernames;
+mod robinet;
+mod routes_list;
+mod series_routes;
+mod sms_routes;
+mod sms_store;
+mod subunit_unlock;
+mod totp;
+mod trading_routes;
+mod transaction_engine;
+mod treasury_handlers;
+mod twofa_handlers;
+mod twofa_store;
+mod udp_network;
+mod uq_index;
+mod uq_public_alias;
+mod user_handlers;
+mod user_models;
+mod username_utils;
+mod vitrines;
+mod wallet_deposit;
+mod wallets_handlers;
+mod wallets_store;
+mod webauthn_manager;
 
 // KYC — Verification d'identite
 mod kyc;
@@ -115,26 +113,27 @@ mod security;
 mod verify_routes;
 
 // CONFIANCE — lecture des metadonnees et detection des images generees par IA.
-mod image_meta;
 #[path = "ai_detector/src/lib.rs"]
 mod ai_detector;
+mod image_meta;
 
 // PREUVE DE PAIEMENT P2P — analyse des captures et apprentissage des poids.
 mod p2p_preuve;
+mod p2p_security;
 
 // CONNEXION — liaison compte<->appareil (paliers 24 h / 48 h / 30 jours) et
 // verification cryptographique reelle des assertions WebAuthn.
 mod device_auth;
 mod webauthn_verify;
 
+use actix_cors::Cors;
 use actix_files;
 use actix_web::{web, App, HttpServer};
-use actix_cors::Cors;
 use database::Database;
-use real_state::GlobalState;
-use player_routes::PlayerState;
 use mini_routes::MiniServerState;
+use player_routes::PlayerState;
 use real_p2p::P2pState;
+use real_state::GlobalState;
 use std::sync::Arc;
 
 // Load .env for local development
@@ -142,66 +141,59 @@ use dotenv::dotenv;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Dossiers runtime requis (sessions owner/user DB, uploads KYC...)
-    let _ = std::fs::create_dir_all("data/users");
-    let _ = std::fs::create_dir_all("data");
-    let _ = std::fs::create_dir_all("kyc_uploads");
     // ====================
-// CHARGEMENT EXPLICITE DU .env (essaie PLUSIEURS chemins)
-// ====================
-let env_loaded = {
-    let mut loaded = false;
-    if let Some(path) = std::env::current_exe()
-        .ok()
-        .and_then(|exe| {
+    // CHARGEMENT EXPLICITE DU .env (essaie PLUSIEURS chemins)
+    // ====================
+    let env_loaded = {
+        let mut loaded = false;
+        if let Some(path) = std::env::current_exe().ok().and_then(|exe| {
             exe.parent().and_then(|dir| {
                 dir.ancestors()
                     .map(|ancestor| ancestor.join(".env"))
                     .find(|path| path.is_file())
             })
-        })
-    {
-        if dotenv::from_path(&path).is_ok() {
-            eprintln!("✅ .env chargé depuis: {}", path.display());
-            loaded = true;
-        }
-    }
-    let paths = vec![
-        ".env",
-        "../.env",
-        "../../.env",
-        "uq_platform_bin/.env",
-        "./uq_platform_bin/.env",
-    ];
-    for path in &paths {
-        if !loaded && std::path::Path::new(path).exists() {
-            if dotenv::from_path(path).is_ok() {
-                eprintln!("✅ .env chargé depuis: {}", path);
+        }) {
+            if dotenv::from_path(&path).is_ok() {
+                eprintln!("✅ .env chargé depuis: {}", path.display());
                 loaded = true;
-                break;
             }
         }
-    }
-    if !loaded {
-        eprintln!("⚠️  Aucun .env trouvé, essai dotenv() par défaut");
-        dotenv().ok();
-    }
-    loaded
-};
-
-// Vérifier IMMÉDIATEMENT que la variable est là
-if std::env::var("OWNER_UNLOCK_CODE").is_err() {
-    eprintln!("❌ OWNER_UNLOCK_CODE non trouvé après chargement");
-    eprintln!("   Variables d'environnement actuelles:");
-    for (key, _) in std::env::vars() {
-        if key.starts_with("OWNER") || key.starts_with("JWT") {
-            eprintln!("   - {}", key);
+        let paths = vec![
+            ".env",
+            "../.env",
+            "../../.env",
+            "uq_platform_bin/.env",
+            "./uq_platform_bin/.env",
+        ];
+        for path in &paths {
+            if !loaded && std::path::Path::new(path).exists() {
+                if dotenv::from_path(path).is_ok() {
+                    eprintln!("✅ .env chargé depuis: {}", path);
+                    loaded = true;
+                    break;
+                }
+            }
         }
+        if !loaded {
+            eprintln!("⚠️  Aucun .env trouvé, essai dotenv() par défaut");
+            dotenv().ok();
+        }
+        loaded
+    };
+
+    // Vérifier IMMÉDIATEMENT que la variable est là
+    if std::env::var("OWNER_UNLOCK_CODE").is_err() {
+        eprintln!("❌ OWNER_UNLOCK_CODE non trouvé après chargement");
+        eprintln!("   Variables d'environnement actuelles:");
+        for (key, _) in std::env::vars() {
+            if key.starts_with("OWNER") || key.starts_with("JWT") {
+                eprintln!("   - {}", key);
+            }
+        }
+        std::process::exit(1);
+    } else {
+        eprintln!("✅ OWNER_UNLOCK_CODE trouvé");
     }
-    std::process::exit(1);
-} else {
-    eprintln!("✅ OWNER_UNLOCK_CODE trouvé");
-}
 
     let required_envs = [
         "OWNER_UNLOCK_CODE",
@@ -218,33 +210,6 @@ if std::env::var("OWNER_UNLOCK_CODE").is_err() {
 
     println!("🚀 UQ PLATFORM — Démarrage...");
 
-    // ===== Persistance : data/ -> disque Render =====
-    // Sur Render le filesystem est éphémère : UQ_DATA_DIR pointe vers le
-    // disque monté (/data/data) et on symlink "data" dessus pour que les
-    // 100+ chemins data/users/*.db persistent entre déploiements.
-    #[cfg(unix)]
-    {
-        if let Ok(cible) = std::env::var("UQ_DATA_DIR") {
-            let _ = std::fs::create_dir_all(&cible);
-            let lien = std::path::Path::new("data");
-            let deja = std::fs::symlink_metadata(lien)
-                .map(|m| m.file_type().is_symlink())
-                .unwrap_or(false);
-            if !deja {
-                if lien.exists() {
-                    // Dossier réel présent (ex: image Docker) : on le renomme
-                    // et on crée le lien, en fusionnant le contenu si besoin.
-                    let _ = std::fs::rename(lien, "data_legacy");
-                }
-                if let Err(e) = std::os::unix::fs::symlink(&cible, lien) {
-                    eprintln!("⚠️  Symlink data -> {} : {}", cible, e);
-                } else {
-                    eprintln!("✅ data/ persisté sur {}", cible);
-                }
-            }
-        }
-    }
-
     let db = Database::shared("uq_platform_db.json");
     // Reporte les likes historiques des publications dans la table persistante
     db.migrer_tables_reactions();
@@ -255,7 +220,7 @@ if std::env::var("OWNER_UNLOCK_CODE").is_err() {
     // MIGRATION UQ_INDEX (ajout colonnes normalized_email/pseudo)
     // ====================
     {
-        let idx = uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+        let idx = uq_index::UqIndex::shared("uq_index.db");
         match idx.migrate_uq_index() {
             Ok(_) => eprintln!("✅ Migration uq_index OK"),
             Err(e) => eprintln!("⚠️  Migration uq_index : {}", e),
@@ -280,110 +245,119 @@ if std::env::var("OWNER_UNLOCK_CODE").is_err() {
     engines::bus::BusMoteurs::brancher_reception_udp(Arc::clone(&moteur_bus));
     {
         let bus_boucle = Arc::clone(&moteur_bus);
-        
-    
-    
-    // Job d'expiration : toutes les heures, expirer les demandes de 12h
-    {
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                match crate::network_routes::expirer_demandes() {
-                    Ok(expirees) => {
-                        if !expirees.is_empty() {
-                            log::info!("Demandes expirees : {:?}", expirees);
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Erreur expiration : {}", e);
-                    }
-                }
-            }
-        });
-    }
 
-// Job de purge : toutes les heures, supprimer les donnees > 7 jours (par donnee)
-    {
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                match crate::reputation_routes::purger_donnees_anciennes() {
-                    Ok((tx, chat, offers)) => {
-                        if tx + chat + offers > 0 {
-                            log::info!("Purge : {} tx, {} chat, {} offers", tx, chat, offers);
+        // Job d'expiration : toutes les heures, expirer les demandes de 12h
+        {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+                loop {
+                    interval.tick().await;
+                    match crate::network_routes::expirer_demandes() {
+                        Ok(expirees) => {
+                            if !expirees.is_empty() {
+                                log::info!("Demandes expirees : {:?}", expirees);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Erreur expiration : {}", e);
                         }
                     }
-                    Err(e) => {
-                        log::error!("Erreur purge : {}", e);
-                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-// Job de jugement : toutes les heures, juger les dossiers de 3 jours
-    {
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                let db = crate::database::Database::shared("uq_platform_db.json");
-                match crate::reputation_routes::juger_dossiers_expires(&db) {
-                    Ok(juges) => {
-                        if !juges.is_empty() {
-                            log::info!("Dossiers juges : {:?}", juges);
+        // Job de purge : toutes les heures, supprimer les donnees > 7 jours (par donnee)
+        {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+                loop {
+                    interval.tick().await;
+                    match crate::reputation_routes::purger_donnees_anciennes() {
+                        Ok((tx, chat, offers)) => {
+                            if tx + chat + offers > 0 {
+                                log::info!("Purge : {} tx, {} chat, {} offers", tx, chat, offers);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Erreur purge : {}", e);
                         }
                     }
-                    Err(e) => {
-                        log::error!("Erreur jugement : {}", e);
+                    match crate::marketplace::jobs_periodiques() {
+                        Ok(_) => {}
+                        Err(e) => log::error!("Erreur jobs marketplace : {}", e),
                     }
                 }
-                // Contestations de gel : réduction progressive des sanctions
-                // (ratio >= 80% -> -1 niveau/semaine ; 6-7 : >= 50% en 20h -> niv. 5).
-                match crate::contestation::reduire_sanctions() {
-                    Ok(actions) => {
-                        if !actions.is_empty() {
-                            log::info!("Contestations : {:?}", actions);
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Erreur contestations : {}", e);
-                    }
-                }
-            }
-        });
-    }
+            });
+        }
 
-// Job marketplace : toutes les heures, sur-réservations + resynchro créneaux
-// + détection des escrows stale (PARTIE 4 — jobs_periodiques).
-    {
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                match crate::marketplace::jobs_periodiques() {
-                    Ok(v) => {
-                        let actions = v.get("actions").and_then(|a| a.as_array()).map(|a| a.len()).unwrap_or(0);
-                        if actions > 0 {
-                            log::info!("Jobs marketplace : {} action(s) — {}", actions, v);
+        // Job de jugement : toutes les heures, juger les dossiers de 3 jours
+        {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+                loop {
+                    interval.tick().await;
+                    let db = crate::database::Database::shared("uq_platform_db.json");
+                    match crate::reputation_routes::juger_dossiers_expires(&db) {
+                        Ok(juges) => {
+                            if !juges.is_empty() {
+                                log::info!("Dossiers juges : {:?}", juges);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Erreur jugement : {}", e);
                         }
                     }
-                    Err(e) => {
-                        log::error!("Erreur jobs marketplace : {}", e);
+                    // Contestations de gel : réduction progressive des sanctions
+                    // (ratio >= 80% -> -1 niveau/semaine ; 6-7 : >= 50% en 20h -> niv. 5).
+                    match crate::contestation::reduire_sanctions() {
+                        Ok(actions) => {
+                            if !actions.is_empty() {
+                                log::info!("Contestations : {:?}", actions);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Erreur contestations : {}", e);
+                        }
                     }
                 }
-            }
-        });
-    }
+            });
+        }
 
-tokio::spawn(async move {
+        // Job marketplace : toutes les heures, sur-réservations + resynchro créneaux
+        // + détection des escrows stale (PARTIE 4 — jobs_periodiques).
+        {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+                loop {
+                    interval.tick().await;
+                    match crate::marketplace::jobs_periodiques() {
+                        Ok(v) => {
+                            let actions = v
+                                .get("actions")
+                                .and_then(|a| a.as_array())
+                                .map(|a| a.len())
+                                .unwrap_or(0);
+                            if actions > 0 {
+                                log::info!("Jobs marketplace : {} action(s) — {}", actions, v);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Erreur jobs marketplace : {}", e);
+                        }
+                    }
+                }
+            });
+        }
+
+        tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(20)).await;
             engines::bus::boucle_moteurs(bus_boucle).await;
         });
     }
-    println!("🧠 Bus de moteurs initialisé (quota {} Mo)", std::env::var("UQ_ENGINE_QUOTA_MB").unwrap_or_else(|_| "100".to_string()));
+    println!(
+        "🧠 Bus de moteurs initialisé (quota {} Mo)",
+        std::env::var("UQ_ENGINE_QUOTA_MB").unwrap_or_else(|_| "100".to_string())
+    );
 
     // ====================
     // 💱 MOTEUR DE TAUX — collecte multi-sources en arrière-plan
@@ -408,42 +382,51 @@ tokio::spawn(async move {
     // doivent être débloquées selon le prix BORB actuel.
     // ====================
     tokio::spawn(async move {
-        use tokio::time::{interval, Duration};
         use std::str::FromStr;
-        
+        use tokio::time::{interval, Duration};
+
         let mut ticker = interval(Duration::from_secs(300)); // 5 minutes
-        
+
         // Attendre 30 secondes au démarrage pour que tout soit prêt
         tokio::time::sleep(Duration::from_secs(30)).await;
-        
+
         loop {
             ticker.tick().await;
-            
+
             // 1. Charger le prix actuel
             let prix = crate::persistence::load_prix();
             let prix_bd = match bigdecimal::BigDecimal::from_str(&prix.prix_actuel) {
                 Ok(p) => p,
                 Err(_) => continue,
             };
-            
+
             // 2. Charger le nombre d'unités débloquées
             let current = load_unlocked_count_bg();
-            
+
             // 3. Vérifier si déblocage nécessaire
             let to_unlock = crate::subunit_unlock::check_and_unlock(&prix_bd, current);
-            
+
             // 4. Si déblocage, sauvegarder
             if to_unlock > 0 {
                 let new_count = current + to_unlock;
                 save_unlocked_count_bg(new_count);
-                
+
                 eprintln!("");
                 eprintln!("╔══════════════════════════════════════════════════════════╗");
                 eprintln!("║   🪙 DÉBLOCAGE AUTOMATIQUE                               ║");
                 eprintln!("╠══════════════════════════════════════════════════════════╣");
-                eprintln!("║   Nouvelles unités  : {}                                  ", to_unlock);
-                eprintln!("║   Total débloquées  : {}                                  ", new_count);
-                eprintln!("║   Prix BORB actuel   : {}                                  ", prix.prix_actuel);
+                eprintln!(
+                    "║   Nouvelles unités  : {}                                  ",
+                    to_unlock
+                );
+                eprintln!(
+                    "║   Total débloquées  : {}                                  ",
+                    new_count
+                );
+                eprintln!(
+                    "║   Prix BORB actuel   : {}                                  ",
+                    prix.prix_actuel
+                );
                 eprintln!("╚══════════════════════════════════════════════════════════╝");
                 eprintln!("");
             }
@@ -457,7 +440,8 @@ tokio::spawn(async move {
         let path = "data/subunits.json";
         if let Ok(content) = std::fs::read_to_string(path) {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                return json.get("unlocked_count")
+                return json
+                    .get("unlocked_count")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(6) as usize;
             }
@@ -477,19 +461,6 @@ tokio::spawn(async move {
     println!("📦 Base JSON initialisée");
     println!("🎵 PlayerState initialisé");
     println!("🔐 MiniServerState initialisé");
-    // Reconciliation escrow : degel des fonds orphelins (crash entre geler et insert)
-    {
-        escrow_reconcile::reconcilier();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                escrow_reconcile::reconcilier();
-                escrow_routes::purge_cloturees();
-                escrow_reconcile::expirer_p2p();
-            }
-        });
-    }
     let udp_port = std::env::var("UDP_PORT").unwrap_or_else(|_| "8080".to_string());
     println!("🌐 P2pState initialisé (UDP sur 0.0.0.0:{})", udp_port);
 
@@ -512,7 +483,10 @@ tokio::spawn(async move {
     // ligne, sans jamais la purger.
     // ====================
     tokio::spawn(crate::vitrines::boucle_robinet());
-    println!("🪟 Robinet de présence des vitrines démarré (tick {} s)", crate::vitrines::tick_secs());
+    println!(
+        "🪟 Robinet de présence des vitrines démarré (tick {} s)",
+        crate::vitrines::tick_secs()
+    );
 
     // 👑 KYC OWNER AUTO-VALIDE (Mission 7)
     if let Err(e) = crate::kyc::cadenas::valider_kyc_owner_auto() {
@@ -524,26 +498,27 @@ tokio::spawn(async move {
     let bind_addr = format!("{}:{}", host, port);
 
     let allowed_origins = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| {
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,https://uqplatform.com,https://www.uqplatform.com,https://borb.uqplatform.com".to_string()
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,https://uqplatform.com,https://www.uqplatform.com,https://borb.uqplatform.com,https://api.uqplatform.com,capacitor://localhost,https://localhost,http://localhost".to_string()
     });
-    let mut allowed_roots: Vec<String> = allowed_origins
+    let allowed_roots: Vec<String> = allowed_origins
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    // Origines Capacitor (APK Android/iOS) — toujours autorisees, meme si
-    // ALLOWED_ORIGINS est defini : sans elles l'app ne peut pas appeler l'API.
-    for o in ["https://localhost", "http://localhost", "capacitor://localhost"] {
-        if !allowed_roots.iter().any(|r| r == o) { allowed_roots.push(o.to_string()); }
-    }
+
+    // Sauvegarde SQLite auto : VACUUM INTO toutes les 6h, 7 dernieres gardees.
+    let sqlite_path = if "uq_platform_db.json".ends_with(".json") {
+        "uq_platform_db.db".to_string()
+    } else {
+        "uq_platform_db.db".to_string()
+    };
+    crate::backup::demarrer(sqlite_path);
 
     println!("🌐 Serveur sur http://{}", bind_addr);
     println!("🔒 Allowed origins: {:?}", allowed_roots);
 
     HttpServer::new(move || {
-        let mut cors = Cors::default()
-            .allow_any_method()
-            .allow_any_header();
+        let mut cors = Cors::default().allow_any_method().allow_any_header();
 
         for origin in &allowed_roots {
             cors = cors.allowed_origin(origin);
@@ -554,12 +529,10 @@ tokio::spawn(async move {
             // 1. D'ABORD les routes API (avant les fichiers statiques)
             // ====================
             .configure(api_routes::configure_routes)
-            
             // ====================
             // 2. ENSUITE les fichiers statiques
             // ====================
             .service(actix_files::Files::new("/", "static").index_file("index.html"))
-            
             // ====================
             // 3. Données partagées
             // ====================
@@ -569,7 +542,6 @@ tokio::spawn(async move {
             .app_data(web::Data::new(mini_state.clone()))
             .app_data(web::Data::new(p2p_state.clone()))
             .app_data(web::Data::new(moteur_bus.clone()))
-            
             // ====================
             // 4. CORS
             // ====================
@@ -579,11 +551,3 @@ tokio::spawn(async move {
     .run()
     .await
 }
-
-
-
-
-
-
-
-

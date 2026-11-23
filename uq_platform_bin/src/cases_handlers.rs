@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // CASES HANDLERS — 4 ROUTES
 // Les 7 Cases (6 principales + Compteur)
 // ====================
@@ -8,13 +8,15 @@ use serde_json::json;
 
 /// GET /api/cases/seven
 pub async fn cases_seven() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let result = conn.query_row(
@@ -70,25 +72,29 @@ pub async fn cases_seven() -> HttpResponse {
 
 /// GET /api/cases/bridges
 pub async fn cases_bridges() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT from_case, to_case, amount, reason, timestamp
-         FROM bridge_actions ORDER BY timestamp DESC LIMIT 50"
+         FROM bridge_actions ORDER BY timestamp DESC LIMIT 50",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "bridges": [],
-            "active_bridges": default_bridges()
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "bridges": [],
+                "active_bridges": default_bridges()
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -103,7 +109,9 @@ pub async fn cases_bridges() -> HttpResponse {
 
     let mut bridges = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { bridges.push(row); }
+        for row in r.flatten() {
+            bridges.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({
@@ -127,25 +135,29 @@ fn default_bridges() -> Vec<serde_json::Value> {
 
 /// GET /api/cases/anomalies
 pub async fn cases_anomalies() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT id, block_number, tx_id, anomaly_type, severity, details, resolved, created_at
-         FROM anomalies ORDER BY created_at DESC LIMIT 50"
+         FROM anomalies ORDER BY created_at DESC LIMIT 50",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "anomalies": [],
-            "unresolved_count": 0
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "anomalies": [],
+                "unresolved_count": 0
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -165,7 +177,9 @@ pub async fn cases_anomalies() -> HttpResponse {
     let mut unresolved = 0;
     if let Ok(r) = rows {
         for row in r.flatten() {
-            if !row["resolved"].as_bool().unwrap_or(false) { unresolved += 1; }
+            if !row["resolved"].as_bool().unwrap_or(false) {
+                unresolved += 1;
+            }
             anomalies.push(row);
         }
     }
@@ -180,25 +194,29 @@ pub async fn cases_anomalies() -> HttpResponse {
 
 /// GET /api/cases/optimizations
 pub async fn cases_optimizations() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT id, block_number, action_type, details, applied, created_at
-         FROM optimizations ORDER BY created_at DESC LIMIT 50"
+         FROM optimizations ORDER BY created_at DESC LIMIT 50",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "optimizations": [],
-            "applied_count": 0
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "optimizations": [],
+                "applied_count": 0
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -216,7 +234,9 @@ pub async fn cases_optimizations() -> HttpResponse {
     let mut applied = 0;
     if let Ok(r) = rows {
         for row in r.flatten() {
-            if row["applied"].as_bool().unwrap_or(false) { applied += 1; }
+            if row["applied"].as_bool().unwrap_or(false) {
+                applied += 1;
+            }
             opts.push(row);
         }
     }

@@ -34,7 +34,7 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 2,
         name: "initial_schema",
-        sql: "",  // Sera exécuté via schema::apply_schema (car trop gros)
+        sql: "", // Sera exécuté via schema::apply_schema (car trop gros)
     },
     Migration {
         version: 3,
@@ -47,12 +47,12 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 4,
         name: "align_transactions_columns",
-        sql: "",  // Exécuté via db::ensure_transactions_columns
+        sql: "", // Exécuté via db::ensure_transactions_columns
     },
     Migration {
         version: 5,
         name: "local_history_tables",
-        sql: "",  // Exécuté via local_history::init_tables
+        sql: "", // Exécuté via local_history::init_tables
     },
 ];
 
@@ -70,14 +70,16 @@ pub fn get_current_version(conn: &Connection) -> i64 {
             applied_at INTEGER NOT NULL
         )",
         [],
-    ).ok();
+    )
+    .ok();
 
     // Lire la version maximale
     conn.query_row(
         "SELECT COALESCE(MAX(version), 0) FROM _schema_version",
         [],
         |row| row.get(0),
-    ).unwrap_or(0)
+    )
+    .unwrap_or(0)
 }
 
 /// Enregistre qu'une migration a été appliquée
@@ -101,19 +103,30 @@ pub fn apply_migration(conn: &Connection, migration: &Migration) -> Result<()> {
     } else if migration.version == 3 {
         // Migration 3 : ajouter les colonnes à security_login_cooldown_uq
         // SQLite ne supporte pas ADD COLUMN IF NOT EXISTS, on essaie et on ignore les erreurs
-        let _ = conn.execute("ALTER TABLE security_login_cooldown_uq ADD COLUMN attempts_ok INTEGER DEFAULT 0", []);
-        let _ = conn.execute("ALTER TABLE security_login_cooldown_uq ADD COLUMN is_locked INTEGER DEFAULT 0", []);
-        let _ = conn.execute("ALTER TABLE security_login_cooldown_uq ADD COLUMN locked_until INTEGER DEFAULT 0", []);
+        let _ = conn.execute(
+            "ALTER TABLE security_login_cooldown_uq ADD COLUMN attempts_ok INTEGER DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE security_login_cooldown_uq ADD COLUMN is_locked INTEGER DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE security_login_cooldown_uq ADD COLUMN locked_until INTEGER DEFAULT 0",
+            [],
+        );
         eprintln!("   ✅ Colonnes ajoutées (ou déjà présentes)");
     } else if migration.version == 4 {
         // Migration 4 : aligner `transactions` sur ce qu'écrit bubble_transfer
-        crate::db::ensure_transactions_columns(conn)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
+        crate::db::ensure_transactions_columns(conn).map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e)))
+        })?;
         eprintln!("   ✅ Schéma transactions aligné");
     } else if migration.version == 5 {
         // Migration 5 : tables des historiques locaux + récupération par voisins
-        crate::local_history::init_tables(conn)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
+        crate::local_history::init_tables(conn).map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e)))
+        })?;
         eprintln!("   ✅ Tables d'historique local créées");
     } else if !migration.sql.is_empty() {
         conn.execute_batch(migration.sql)?;
@@ -150,7 +163,10 @@ pub fn run_all(conn: &Connection) -> Result<i64> {
         eprintln!("✅ Base à jour (version {})", current);
     } else {
         let new_version = get_current_version(conn);
-        eprintln!("✅ {} migration(s) appliquée(s) — version {} → {}", applied, current, new_version);
+        eprintln!(
+            "✅ {} migration(s) appliquée(s) — version {} → {}",
+            applied, current, new_version
+        );
     }
 
     Ok(applied)
@@ -168,7 +184,9 @@ pub fn list_history(conn: &Connection) -> Vec<(i64, String, i64)> {
         [],
     );
 
-    if let Ok(mut stmt) = conn.prepare("SELECT version, name, applied_at FROM _schema_version ORDER BY version") {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT version, name, applied_at FROM _schema_version ORDER BY version")
+    {
         if let Ok(rows) = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,

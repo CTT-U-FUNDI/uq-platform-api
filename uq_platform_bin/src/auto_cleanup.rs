@@ -21,8 +21,8 @@
 // écriture dans le BlockOrb → l'invariant des 40 Md BORB est hors de cause.
 // ====================
 
-use rusqlite::{Connection, params};
 use crate::blockchain_lib::HISTORY_MAX_AGE_SECS;
+use rusqlite::{params, Connection};
 
 /// Clé du marqueur de dernière passe (table `settings` du compte)
 pub const CLE_DERNIER_PASSAGE: &str = "history_last_cleanup_at";
@@ -59,7 +59,10 @@ pub struct RapportPurge {
 
 /// Chemin de la DB locale d'un compte
 pub fn db_path(uq_number: &str) -> String {
-    format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase())
+    format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    )
 }
 
 fn lire_marqueur(conn: &Connection) -> i64 {
@@ -136,7 +139,11 @@ pub fn purger_compte(
 
     let seuil = maintenant - HISTORY_MAX_AGE_SECS;
     let dernier = lire_marqueur(conn);
-    let prochaine = if dernier > 0 { dernier + INTERVALLE_PASSAGE_SECS } else { 0 };
+    let prochaine = if dernier > 0 {
+        dernier + INTERVALLE_PASSAGE_SECS
+    } else {
+        0
+    };
 
     // RÈGLE 3 : une passe par 24 h maximum
     if !forcer && dernier > 0 && maintenant < prochaine {
@@ -270,15 +277,18 @@ mod tests {
         let conn = db_test();
         let maintenant = 2_000_000_000i64;
         inserer(&conn, 400, maintenant, "tres_vieux"); // expirée
-        inserer(&conn, 366, maintenant, "expiree");    // expirée
-        inserer(&conn, 364, maintenant, "limite");     // RESTE (364 j)
-        inserer(&conn, 10, maintenant, "recente");     // reste
+        inserer(&conn, 366, maintenant, "expiree"); // expirée
+        inserer(&conn, 364, maintenant, "limite"); // RESTE (364 j)
+        inserer(&conn, 10, maintenant, "recente"); // reste
 
         // MAX_SUPPRESSIONS_PAR_PASSE = 1 : une seule ligne par passe
         let rapport = purger_compte(&conn, "UQ-TEST", maintenant, true).unwrap();
 
         assert_eq!(rapport.lignes_supprimees, 1, "une seule ligne par passe");
-        assert_eq!(rapport.reste_a_purger, 1, "la 2e expiree reste pour la passe suivante");
+        assert_eq!(
+            rapport.reste_a_purger, 1,
+            "la 2e expiree reste pour la passe suivante"
+        );
         assert_eq!(compter(&conn), 3);
         let restants: Vec<String> = conn
             .prepare("SELECT borb_id FROM transactions")

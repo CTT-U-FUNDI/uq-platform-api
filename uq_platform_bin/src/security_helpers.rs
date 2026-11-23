@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // SECURITY — Helpers de sécurité pour tous les handlers
 // ====================
 //
@@ -21,7 +21,10 @@ pub fn verify_sender(req: &HttpRequest, body_sender: Option<&str>) -> Result<Str
     // Si un sender est fourni dans le body, il doit correspondre
     if let Some(bs) = body_sender {
         if !bs.is_empty() && bs != sender {
-            eprintln!("🚨 TENTATIVE FRAUDE : {} essaie d'envoyer au nom de {}", sender, bs);
+            eprintln!(
+                "🚨 TENTATIVE FRAUDE : {} essaie d'envoyer au nom de {}",
+                sender, bs
+            );
             return Err(HttpResponse::Forbidden().json(json!({
                 "status": "error",
                 "code": "SENDER_MISMATCH",
@@ -37,7 +40,7 @@ pub fn verify_sender(req: &HttpRequest, body_sender: Option<&str>) -> Result<Str
 /// (soit c'est son compte, soit il est admin)
 pub fn verify_account_access(req: &HttpRequest, account_id: &str) -> Result<(), HttpResponse> {
     let claims = crate::auth::AuthManager::require_role(req, &["user", "admin", "guardian"])?;
-    
+
     // Owner et admin peuvent tout voir
     if claims.role == "admin" || claims.role == "guardian" {
         return Ok(());
@@ -45,7 +48,10 @@ pub fn verify_account_access(req: &HttpRequest, account_id: &str) -> Result<(), 
 
     // Un user ne peut voir que SON compte
     if claims.sub != account_id {
-        eprintln!("🚨 ACCÈS REFUSÉ : {} essaie de voir {}", claims.sub, account_id);
+        eprintln!(
+            "🚨 ACCÈS REFUSÉ : {} essaie de voir {}",
+            claims.sub, account_id
+        );
         return Err(HttpResponse::Forbidden().json(json!({
             "status": "error",
             "code": "ACCESS_DENIED",

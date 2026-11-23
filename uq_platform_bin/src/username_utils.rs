@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // UTILITAIRES USERNAME UQ
 // Normalisation + validation (politique Telegram)
 // ====================
@@ -53,7 +53,10 @@ pub fn is_valid_telegram_username(username: &str) -> bool {
     }
 
     // 2. Caracteres autorises : a-z, 0-9, _, .
-    if !username.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.') {
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
+    {
         return false;
     }
 
@@ -157,22 +160,31 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_len = a_chars.len();
     let b_len = b_chars.len();
 
-    if a_len == 0 { return b_len; }
-    if b_len == 0 { return a_len; }
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
 
     let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
 
-    for i in 0..=a_len { matrix[i][0] = i; }
-    for j in 0..=b_len { matrix[0][j] = j; }
+    for i in 0..=a_len {
+        matrix[i][0] = i;
+    }
+    for j in 0..=b_len {
+        matrix[0][j] = j;
+    }
 
     for i in 1..=a_len {
         for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
             matrix[i][j] = std::cmp::min(
-                std::cmp::min(
-                    matrix[i - 1][j] + 1,
-                    matrix[i][j - 1] + 1,
-                ),
+                std::cmp::min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1),
                 matrix[i - 1][j - 1] + cost,
             );
         }
@@ -203,10 +215,10 @@ mod tests {
         assert!(is_valid_telegram_username("eliezer"));
         assert!(is_valid_telegram_username("eliezer_mukendi"));
         assert!(is_valid_telegram_username("eliezer123"));
-        assert!(!is_valid_telegram_username("eli"));           // trop court
-        assert!(!is_valid_telegram_username("123eliezer"));    // commence par chiffre
-        assert!(!is_valid_telegram_username("eliezer!"));      // caractere interdit
-        assert!(!is_valid_telegram_username("_eliezer"));      // commence par _
+        assert!(!is_valid_telegram_username("eli")); // trop court
+        assert!(!is_valid_telegram_username("123eliezer")); // commence par chiffre
+        assert!(!is_valid_telegram_username("eliezer!")); // caractere interdit
+        assert!(!is_valid_telegram_username("_eliezer")); // commence par _
     }
 
     #[test]
@@ -225,7 +237,10 @@ mod tests {
 
     #[test]
     fn test_generate_base() {
-        assert_eq!(generate_username_base("Eliezer", "Mukendi"), "eliezermukendi");
+        assert_eq!(
+            generate_username_base("Eliezer", "Mukendi"),
+            "eliezermukendi"
+        );
         assert_eq!(generate_username_base("eliezer", "kabila"), "eliezerkabila");
     }
 

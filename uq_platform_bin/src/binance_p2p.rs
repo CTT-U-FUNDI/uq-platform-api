@@ -16,8 +16,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-const BINANCE_P2P_URL: &str =
-    "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search";
+const BINANCE_P2P_URL: &str = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search";
 const CACHE_SECS: i64 = 30;
 const CACHE_FILE: &str = "data/binance_p2p_cache.json";
 
@@ -28,16 +27,16 @@ const CACHE_FILE: &str = "data/binance_p2p_cache.json";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OffreP2P {
     pub id: String,
-    pub side: String,        // "BUY" ou "SELL" (du point de vue du vendeur Binance)
-    pub asset: String,       // "BTC", "ETH", etc.
-    pub fiat: String,        // "USD", "CDF", "EUR", etc.
-    pub price: f64,          // Prix dans la devise fiat
-    pub amount: f64,         // Quantité de crypto disponible
-    pub min_amount: f64,     // Montant fiat minimum
-    pub max_amount: f64,     // Montant fiat maximum
+    pub side: String,    // "BUY" ou "SELL" (du point de vue du vendeur Binance)
+    pub asset: String,   // "BTC", "ETH", etc.
+    pub fiat: String,    // "USD", "CDF", "EUR", etc.
+    pub price: f64,      // Prix dans la devise fiat
+    pub amount: f64,     // Quantité de crypto disponible
+    pub min_amount: f64, // Montant fiat minimum
+    pub max_amount: f64, // Montant fiat maximum
     pub merchant_name: String,
     pub merchant_orders: u32,
-    pub merchant_rate: f64,  // Taux de complétion (%)
+    pub merchant_rate: f64, // Taux de complétion (%)
     pub payment_methods: Vec<String>,
     pub online_time: String,
     pub country: String,
@@ -107,8 +106,7 @@ fn enregistrer_cache(key: &str, offers: Vec<OffreP2P>) {
         let mut v: Vec<_> = c.values().cloned().collect();
         v.sort_by_key(|e| -e.at);
         v.truncate(50);
-        let m: HashMap<String, CacheEntry> =
-            v.into_iter().map(|e| (e.key.clone(), e)).collect();
+        let m: HashMap<String, CacheEntry> = v.into_iter().map(|e| (e.key.clone(), e)).collect();
         ecrire_cache(&m);
     } else {
         ecrire_cache(&c);
@@ -148,7 +146,9 @@ fn parser_reponse(data: &Value, asset: &str, fiat: &str, side: &str) -> Vec<Offr
 
     for ad in ads_array {
         let Some(adv) = ad.get("adv") else { continue };
-        let Some(adv_obj) = adv.as_object() else { continue };
+        let Some(adv_obj) = adv.as_object() else {
+            continue;
+        };
 
         let id = adv_obj
             .get("advNo")
@@ -167,7 +167,12 @@ fn parser_reponse(data: &Value, asset: &str, fiat: &str, side: &str) -> Vec<Offr
             .get("surplusAmount")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .or_else(|| adv_obj.get("tradableQuantity").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()))
+            .or_else(|| {
+                adv_obj
+                    .get("tradableQuantity")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+            })
             .unwrap_or(0.0);
 
         let min_amount: f64 = adv_obj
@@ -230,9 +235,15 @@ fn parser_reponse(data: &Value, asset: &str, fiat: &str, side: &str) -> Vec<Offr
                 min_amount,
                 max_amount,
                 merchant_name: if classify == "profession" {
-                    format!("Marchand Pro {}", &advertiser_id[..advertiser_id.len().min(8)])
+                    format!(
+                        "Marchand Pro {}",
+                        &advertiser_id[..advertiser_id.len().min(8)]
+                    )
                 } else {
-                    format!("Particulier {}", &advertiser_id[..advertiser_id.len().min(8)])
+                    format!(
+                        "Particulier {}",
+                        &advertiser_id[..advertiser_id.len().min(8)]
+                    )
                 },
                 merchant_orders: 0, // non disponible dans cet endpoint
                 merchant_rate: 0.0, // non disponible dans cet endpoint
@@ -296,9 +307,17 @@ pub async fn offres_binance_p2p(
 
             // Trier par prix (BUY: plus bas d'abord, SELL: plus haut d'abord)
             if trade_type == "BUY" {
-                offres.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
+                offres.sort_by(|a, b| {
+                    a.price
+                        .partial_cmp(&b.price)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             } else {
-                offres.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap_or(std::cmp::Ordering::Equal));
+                offres.sort_by(|a, b| {
+                    b.price
+                        .partial_cmp(&a.price)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             }
 
             if !offres.is_empty() {
@@ -334,20 +353,29 @@ async fn requete_binance_p2p(body: &Value) -> Result<Value, String> {
     let output = tokio::process::Command::new(curl_bin)
         .args([
             "-s",
-            "-X", "POST",
+            "-X",
+            "POST",
             BINANCE_P2P_URL,
-            "-H", "Content-Type: application/json",
-            "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "-H", "Accept: application/json",
-            "-d", &body_str,
-            "--max-time", "15",
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "-H",
+            "Accept: application/json",
+            "-d",
+            &body_str,
+            "--max-time",
+            "15",
         ])
         .output()
         .await
         .map_err(|e| format!("curl failed: {}", e))?;
 
     if !output.status.success() {
-        return Err(format!("curl exit code: {}", output.status.code().unwrap_or(-1)));
+        return Err(format!(
+            "curl exit code: {}",
+            output.status.code().unwrap_or(-1)
+        ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -397,7 +425,9 @@ pub async fn resume_binance_p2p() -> serde_json::Value {
         let sell_key = format!("{}:{}:SELL:1", asset, fiat);
 
         let buy_offres = cache_perime(&buy_key).map(|e| e.offers).unwrap_or_default();
-        let sell_offres = cache_perime(&sell_key).map(|e| e.offers).unwrap_or_default();
+        let sell_offres = cache_perime(&sell_key)
+            .map(|e| e.offers)
+            .unwrap_or_default();
 
         let best_buy = buy_offres.first().map(|o| o.price);
         let best_sell = sell_offres.first().map(|o| o.price);
@@ -459,7 +489,11 @@ pub async fn offres_binance_p2p_handler(
 ) -> HttpResponse {
     let asset = query.get("asset").cloned().unwrap_or_default();
     let fiat = query.get("fiat").cloned().unwrap_or_default();
-    let side = query.get("side").or_else(|| query.get("trade_type")).cloned().unwrap_or_else(|| "BUY".to_string());
+    let side = query
+        .get("side")
+        .or_else(|| query.get("trade_type"))
+        .cloned()
+        .unwrap_or_else(|| "BUY".to_string());
     let page = query.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
 
     if asset.is_empty() || fiat.is_empty() {

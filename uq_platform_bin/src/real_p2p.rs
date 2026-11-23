@@ -1,13 +1,13 @@
-﻿use std::sync::Mutex;
-use uq_cellular::d2d::D2dManager;
-use uq_cellular::mesh_transit::{MeshNetwork, MeshMode};
-use uq_cellular::discovery::{DiscoveryManager, DiscoveryMode};
-use uq_cellular::emergency::{EmergencyManager, EmergencyType};
-use uq_cellular::relay_internet::RelayInternet;
-use uq_cellular::udp_transport::UdpTransport;
 use crate::udp_network::UdpNetwork;
 use std::sync::Arc;
+use std::sync::Mutex;
+use uq_cellular::d2d::D2dManager;
+use uq_cellular::discovery::{DiscoveryManager, DiscoveryMode};
+use uq_cellular::emergency::{EmergencyManager, EmergencyType};
+use uq_cellular::mesh_transit::{MeshMode, MeshNetwork};
+use uq_cellular::relay_internet::RelayInternet;
 use uq_cellular::transport::{TransportLayer, TransportType};
+use uq_cellular::udp_transport::UdpTransport;
 
 pub struct P2pState {
     pub d2d: Mutex<D2dManager>,
@@ -37,8 +37,13 @@ impl P2pState {
                 )),
                 TransportType::Virtual,
             )),
-        // 🆕 AJOUT — Démarrer le vrai réseau UDP
-        udp_network: Arc::new(UdpNetwork::start(std::env::var("UDP_PORT").unwrap_or_else(|_| "8080".to_string()).parse().unwrap_or(8080))),
+            // 🆕 AJOUT — Démarrer le vrai réseau UDP
+            udp_network: Arc::new(UdpNetwork::start(
+                std::env::var("UDP_PORT")
+                    .unwrap_or_else(|_| "8080".to_string())
+                    .parse()
+                    .unwrap_or(8080),
+            )),
         }
     }
 
@@ -77,7 +82,14 @@ impl P2pState {
     // MESH — Maillage multi-sauts
     // ====================
 
-    pub fn mesh_register_node(&self, address_hex: &str, mode: &str, bandwidth_kbps: u32, battery_pct: u8, price_per_day: u64) -> Result<(), String> {
+    pub fn mesh_register_node(
+        &self,
+        address_hex: &str,
+        mode: &str,
+        bandwidth_kbps: u32,
+        battery_pct: u8,
+        price_per_day: u64,
+    ) -> Result<(), String> {
         let mut mesh = self.mesh.lock().unwrap();
         let addr_bytes = hex::decode(address_hex).map_err(|_| "Adresse invalide")?;
         let mut addr = [0u8; 32];
@@ -94,7 +106,12 @@ impl P2pState {
         Ok(())
     }
 
-    pub fn mesh_become_seller(&self, address_hex: &str, price_per_day: u64, bandwidth_kbps: u32) -> Result<(), String> {
+    pub fn mesh_become_seller(
+        &self,
+        address_hex: &str,
+        price_per_day: u64,
+        bandwidth_kbps: u32,
+    ) -> Result<(), String> {
         let mut mesh = self.mesh.lock().unwrap();
         let addr_bytes = hex::decode(address_hex).map_err(|_| "Adresse invalide")?;
         let mut addr = [0u8; 32];
@@ -154,7 +171,12 @@ impl P2pState {
     // EMERGENCY — Mode urgence
     // ====================
 
-    pub fn emergency_activate(&self, emergency_type: &str, battery_pct: u8, message: &str) -> serde_json::Value {
+    pub fn emergency_activate(
+        &self,
+        emergency_type: &str,
+        battery_pct: u8,
+        message: &str,
+    ) -> serde_json::Value {
         let mut em = self.emergency.lock().unwrap();
 
         let etype = match emergency_type {
@@ -208,10 +230,13 @@ impl P2pState {
 
     /// Envoie une donnée via le transport UDP
     pub fn send(&self, data: &[u8]) -> Result<(), String> {
-        let mut transport = self.udp_transport.lock()
+        let mut transport = self
+            .udp_transport
+            .lock()
             .map_err(|_| "Transport lock failed")?;
 
-        transport.send(data)
+        transport
+            .send(data)
             .map_err(|e| format!("Send failed: {:?}", e))
     }
 
@@ -223,7 +248,8 @@ impl P2pState {
 
     /// Vérifie que le transport est prêt
     pub fn is_transport_ready(&self) -> bool {
-        self.udp_transport.lock()
+        self.udp_transport
+            .lock()
             .map(|t| t.is_ready())
             .unwrap_or(false)
     }
@@ -273,21 +299,17 @@ impl P2pState {
         let udp_peers = self.udp_network.get_peers();
         let mut discovery = self.discovery.lock().unwrap();
         let count = udp_peers.len();
-        
+
         for addr in udp_peers {
             let mut address = [0u8; 32];
             let bytes = addr.as_bytes();
             for (i, b) in bytes.iter().enumerate() {
-                if i < 32 { address[i] = *b; }
+                if i < 32 {
+                    address[i] = *b;
+                }
             }
             discovery.add_peer(address, &addr, -50, "UDP");
         }
         count
     }
 }
-
-
-
-
-
-

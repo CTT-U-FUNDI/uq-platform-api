@@ -59,7 +59,12 @@ fn ouvrir(uq: &str) -> Result<Connection, String> {
     conn.execute_batch(TABLE_SQL).map_err(|e| e.to_string())?;
     // Colonne deja presente sur les bases recentes : l'erreur est attendue et
     // ignoree, la migration doit etre rejouable a chaque ouverture.
-    let _ = conn.execute_batch(MIGRATION_SQL);
+    crate::database::Database::ajouter_colonne_si_absente(
+        &conn,
+        "chat_contacts",
+        "ephemere",
+        "INTEGER NOT NULL DEFAULT 0",
+    );
     Ok(conn)
 }
 
@@ -103,7 +108,12 @@ pub fn ajouter_contact(uq: &str, peer: &str, item_id: Option<&str>, item_titre: 
          ON CONFLICT(peer_id) DO UPDATE SET
             zando_item_id = COALESCE(excluded.zando_item_id, chat_contacts.zando_item_id),
             zando_item_title = COALESCE(excluded.zando_item_title, chat_contacts.zando_item_title)",
-        params![peer.trim().to_uppercase(), chrono::Utc::now().timestamp(), item_id, item_titre],
+        params![
+            peer.trim().to_uppercase(),
+            chrono::Utc::now().timestamp(),
+            item_id,
+            item_titre
+        ],
     );
     if let Err(error) = result {
         eprintln!("[CONTACTS] ajout {} -> {} impossible : {}", uq, peer, error);

@@ -22,11 +22,20 @@ fn err(code: u16, msg: &str) -> HttpResponse {
 }
 
 #[derive(Deserialize)]
-pub struct UqBody { pub uq: String }
+pub struct UqBody {
+    pub uq: String,
+}
 #[derive(Deserialize)]
-pub struct VkBody { pub uq: String, pub vk: String }
+pub struct VkBody {
+    pub uq: String,
+    pub vk: String,
+}
 #[derive(Deserialize)]
-pub struct CodeBody { pub uq: String, pub vk: String, pub code: String }
+pub struct CodeBody {
+    pub uq: String,
+    pub vk: String,
+    pub code: String,
+}
 #[derive(Deserialize)]
 pub struct VerifyBody {
     pub uq: String,
@@ -197,8 +206,8 @@ pub async fn twofa_secret_wallet(req: HttpRequest) -> HttpResponse {
 // Récupère la clé publique du compte BORB auprès du nœud (canal admin).
 // GET {BORB_NODE_URL}/compte/{uq}/cle avec X-Admin-Token.
 async fn cle_compte_borb(uq: &str) -> Option<VerifyingKey> {
-    let base = std::env::var("BORB_NODE_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
+    let base =
+        std::env::var("BORB_NODE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
     let token = std::env::var("BORB_ADMIN_TOKEN").unwrap_or_default();
     if token.is_empty() {
         return None;
@@ -230,7 +239,10 @@ async fn cle_compte_borb(uq: &str) -> Option<VerifyingKey> {
 //      vérifiée contre public_key de uq_index → autorise le pairage.
 // Body : {uq, vk, ts, signature, acct_ts, acct_sig}
 //   (acct_vk implicite = clé du compte connecté — on la prend en base)
-pub async fn twofa_device_pair(req: HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn twofa_device_pair(
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     if !pass_humain_ok(&req) {
         return err_pass();
     }
@@ -241,7 +253,10 @@ pub async fn twofa_device_pair(req: HttpRequest, body: web::Json<serde_json::Val
     let acct_ts = body.get("acct_ts").and_then(|v| v.as_u64()).unwrap_or(0);
     let acct_sig = body.get("acct_sig").and_then(|v| v.as_str()).unwrap_or("");
     if uq.is_empty() || vk.is_empty() || sig.is_empty() || acct_sig.is_empty() {
-        return err(400, "Paramètres manquants (uq, vk, ts, signature, acct_ts, acct_sig)");
+        return err(
+            400,
+            "Paramètres manquants (uq, vk, ts, signature, acct_ts, acct_sig)",
+        );
     }
     // 1) Le device prouve sa clé
     if !signature_valide(uq, vk, ts, sig) {
@@ -253,12 +268,16 @@ pub async fn twofa_device_pair(req: HttpRequest, body: web::Json<serde_json::Val
     let Some(vk_compte) = cle_compte_borb(uq).await else {
         return err(404, "Cle compte introuvable — le wallet BORB doit d'abord ouvrir le compte (/compte/ouvrir)");
     };
-    if acct_ts.abs_diff(now_ts()) > 300 { return err(401, "Signature compte expirée"); }
+    if acct_ts.abs_diff(now_ts()) > 300 {
+        return err(401, "Signature compte expirée");
+    }
     let msg_pair = format!("UQ_PAIR_V1|{}|{}|{}", uq, vk, ts);
     let Ok(sig_compte) = hex::decode(acct_sig).map(|b| Signature::from_slice(&b)) else {
         return err(400, "Signature compte illisible");
     };
-    let Ok(sig_compte) = sig_compte else { return err(400, "Signature compte invalide"); };
+    let Ok(sig_compte) = sig_compte else {
+        return err(400, "Signature compte invalide");
+    };
     if vk_compte.verify(msg_pair.as_bytes(), &sig_compte).is_err() {
         return err(401, "Signature compte invalide — autorisation refusée");
     }
@@ -292,8 +311,13 @@ pub async fn audit_events(req: HttpRequest, path: web::Path<String>) -> HttpResp
     }
     let events = crate::audit_log::security().evenements_de(&uq);
     // On n'expose que kind/ts/detail — jamais prev/hash (inutile côté client)
-    let liste: Vec<serde_json::Value> = events.iter().map(|e| json!({
-        "seq": e.seq, "ts": e.ts, "kind": e.kind, "detail": e.detail,
-    })).collect();
+    let liste: Vec<serde_json::Value> = events
+        .iter()
+        .map(|e| {
+            json!({
+                "seq": e.seq, "ts": e.ts, "kind": e.kind, "detail": e.detail,
+            })
+        })
+        .collect();
     ok(json!({"status":"ok","uq":uq,"evenements":liste,"total":liste.len()}))
 }

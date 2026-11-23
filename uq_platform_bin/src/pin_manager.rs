@@ -1,18 +1,18 @@
-﻿// ====================
+// ====================
 // GESTIONNAIRE DE PIN UQ
 // 4-6 chiffres | 3 essais | Cooldown 24h | Blocage 15min
 // ====================
 
 use chrono::Utc;
-use rusqlite::{Connection, params};
-use sha2::{Sha256, Digest};
+use rusqlite::{params, Connection};
+use sha2::{Digest, Sha256};
 
 // ===== Constantes =====
 pub const PIN_MIN_LENGTH: usize = 4;
 pub const PIN_MAX_LENGTH: usize = 6;
 pub const MAX_ATTEMPTS: i64 = 3;
 pub const LOCKOUT_MINUTES: i64 = 15;
-pub const COOLDOWN_HOURS: i64 = 0;  // Désactivé pour dev
+pub const COOLDOWN_HOURS: i64 = 0; // Désactivé pour dev
 
 // ===== Statut du PIN =====
 #[derive(Debug, Clone, serde::Serialize)]
@@ -61,13 +61,15 @@ pub fn init_pin_table(conn: &Connection) -> Result<(), String> {
             created_at INTEGER DEFAULT 0
         )",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // S'assurer qu'une ligne existe
     conn.execute(
         "INSERT OR IGNORE INTO pin_status (id, created_at) VALUES (1, ?1)",
         params![Utc::now().timestamp()],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -80,7 +82,15 @@ pub fn get_pin_status(conn: &Connection) -> Result<PinStatus, String> {
         "SELECT pin_enabled, modified_at, attempts, locked_until, created_at
          FROM pin_status WHERE id = 1",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
     );
 
     let (enabled, modified_at, _attempts, locked_until, _created_at) = match result {
@@ -137,7 +147,8 @@ pub fn set_pin(conn: &Connection, pin: &str) -> Result<(), String> {
              locked_until = 0
          WHERE id = 1",
         params![hash, pin.len() as i64, now],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -152,7 +163,8 @@ pub fn remove_pin(conn: &Connection) -> Result<(), String> {
              locked_until = 0
          WHERE id = 1",
         [],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -184,18 +196,16 @@ pub fn verify_pin(conn: &Connection, pin: &str) -> Result<bool, String> {
 
     if computed_hash == stored_hash {
         // Succes : reset attempts
-        conn.execute(
-            "UPDATE pin_status SET attempts = 0 WHERE id = 1",
-            [],
-        ).map_err(|e| e.to_string())?;
+        conn.execute("UPDATE pin_status SET attempts = 0 WHERE id = 1", [])
+            .map_err(|e| e.to_string())?;
         Ok(true)
     } else {
         // Echec : incrementer attempts
-        let attempts: i64 = conn.query_row(
-            "SELECT attempts FROM pin_status WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let attempts: i64 = conn
+            .query_row("SELECT attempts FROM pin_status WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap_or(0);
 
         let new_attempts = attempts + 1;
 
@@ -205,14 +215,16 @@ pub fn verify_pin(conn: &Connection, pin: &str) -> Result<bool, String> {
             conn.execute(
                 "UPDATE pin_status SET attempts = 0, locked_until = ?1 WHERE id = 1",
                 params![locked_until],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
             return Err(format!("PIN bloque pendant {} minutes.", LOCKOUT_MINUTES));
         } else {
             conn.execute(
                 "UPDATE pin_status SET attempts = ?1 WHERE id = 1",
                 params![new_attempts],
-            ).map_err(|e| e.to_string())?;
-            return Ok(false);  // ✅ FIX : PIN incorrect
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(false); // ✅ FIX : PIN incorrect
             return Ok(false);
         }
     }
@@ -236,7 +248,7 @@ mod tests {
 // VÉRIFIER LE MOT DE PASSE DU COMPTE (uq_index.db)
 // ====================
 pub fn verify_account_password(uq_number: &str, password: &str) -> bool {
-    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
     match idx.get_account(uq_number) {
         Some(info) => {
             let email = info.get("uq_email").and_then(|v| v.as_str()).unwrap_or("");

@@ -26,6 +26,27 @@ pub const CODE_TTL_SECS: i64 = 6 * 3600;
 pub const CODE_MAX_TENTATIVES: i64 = 3;
 /// Délai d'acceptation du livreur (secondes) — vérifié par le job du phase 3.
 pub const LIVREUR_DELAI_SECS: i64 = 30 * 60;
+/// Rayon de remise en main propre / livraison : 3 mètres.
+pub const RAYON_RENCONTRE_M: f64 = 3.0;
+
+/// Les 7 types de produits (Q13) : chacun pilote GPS, séquestre, acompte,
+/// assurance et les étapes de validation.
+pub const TYPES_PRODUIT: [&str; 7] = [
+    "physique",
+    "numerique",
+    "transport",
+    "sport",
+    "en_ligne",
+    "domicile",
+    "service",
+];
+
+/// Types pour lesquels la rencontre physique est prouvée par GPS (< 3 m).
+const TYPES_PHYSIQUES: [&str; 4] = ["physique", "transport", "sport", "domicile"];
+
+fn type_exige_gps(type_produit: &str) -> bool {
+    TYPES_PHYSIQUES.contains(&type_produit)
+}
 /// Nombre d'avertissements avant suspension de vente (Q12).
 pub const AVERTISSEMENTS_MAX: i64 = 5;
 /// Durée de suspension après AVERTISSEMENTS_MAX avertissements (secondes = 7 j).
@@ -217,23 +238,40 @@ pub fn ensure_tables(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     // Colonnes ajoutées après la première version : ALTER idempotent (ignoré si présentes).
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN recupere_at INTEGER", []);
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN code_saisies TEXT", []);
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN creneau_id INTEGER", []);
-    // Q18 — paiement hors UQ : mode, frais 1% et preuve des deux PIN.
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN mode_paiement TEXT NOT NULL DEFAULT 'securise'", []);
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN frais_hors_uq INTEGER NOT NULL DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN hors_uq_acheteur_pin INTEGER NOT NULL DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE marketplace_transactions ADD COLUMN hors_uq_vendeur_pin INTEGER NOT NULL DEFAULT 0", []);
+    for (col, ddl) in [
+        ("recupere_at", "INTEGER"),
+        ("code_saisies", "TEXT"),
+        ("creneau_id", "INTEGER"),
+        ("mode_paiement", "TEXT NOT NULL DEFAULT 'securise'"),
+        ("frais_hors_uq", "INTEGER NOT NULL DEFAULT 0"),
+        ("hors_uq_acheteur_pin", "INTEGER NOT NULL DEFAULT 0"),
+        ("hors_uq_vendeur_pin", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        crate::database::Database::ajouter_colonne_si_absente(
+            conn,
+            "marketplace_transactions",
+            col,
+            ddl,
+        );
+    }
     // Migration douce : les tables vendeur_livreurs créées avant l'ajout de
     // charte_acceptee reçoivent la colonne manquante.
-    let _ = conn.execute("ALTER TABLE vendeur_livreurs ADD COLUMN charte_acceptee INTEGER NOT NULL DEFAULT 0", []);
+    crate::database::Database::ajouter_colonne_si_absente(
+        conn,
+        "vendeur_livreurs",
+        "charte_acceptee",
+        "INTEGER NOT NULL DEFAULT 0",
+    );
     // Q17 — blocages par type d'opération + compteur d'avertissements vendeur (Q12).
-    let _ = conn.execute("ALTER TABLE accounts ADD COLUMN marketplace_blocked INTEGER NOT NULL DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE accounts ADD COLUMN livraison_blocked INTEGER NOT NULL DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE accounts ADD COLUMN nb_avertissements INTEGER NOT NULL DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE accounts ADD COLUMN sell_blocked_until INTEGER NOT NULL DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE accounts ADD COLUMN publish_blocked_until INTEGER NOT NULL DEFAULT 0", []);
+    for (col, ddl) in [
+        ("marketplace_blocked", "INTEGER NOT NULL DEFAULT 0"),
+        ("livraison_blocked", "INTEGER NOT NULL DEFAULT 0"),
+        ("nb_avertissements", "INTEGER NOT NULL DEFAULT 0"),
+        ("sell_blocked_until", "INTEGER NOT NULL DEFAULT 0"),
+        ("publish_blocked_until", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        crate::database::Database::ajouter_colonne_si_absente(conn, "accounts", col, ddl);
+    }
     Ok(())
 }
 
@@ -477,6 +515,9 @@ pub fn creer_reservation(
     acompte: bool,
     creneau_id: Option<i64>,
 ) -> Result<i64, String> {
+    if !TYPES_PRODUIT.contains(&type_produit) {
+        return Err(format!("Type de produit inconnu : {}", type_produit));
+    }
     if points_total <= 0 || points_livraison < 0 || points_livraison >= points_total {
         return Err("Montants invalides".to_string());
     }
@@ -489,7 +530,10 @@ pub fn creer_reservation(
     // Q15 — acompte : réservé aux transactions > ACOMPTE_SEUIL, et obligatoire
     // pour les types à risque (transport, sport, domicile) au-delà du seuil.
     if acompte && points_total <= ACOMPTE_SEUIL {
-        return Err(format!("L'acompte est réservé aux transactions de plus de {} points", ACOMPTE_SEUIL));
+        return Err(format!(
+            "L'acompte est réservé aux transactions de plus de {} points",
+            ACOMPTE_SEUIL
+        ));
     }
     if type_obj.acompte_requis() && !acompte && points_total > ACOMPTE_SEUIL {
         return Err("Acompte obligatoire pour ce type de produit".to_string());
@@ -546,8 +590,16 @@ pub fn creer_reservation(
              points_livraison, devise, acompte, creneau_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, 'reservation', ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
         params![
-            produit_id, type_produit, vendeur, acheteur, points_total,
-            points_livraison, devise, acompte as i64, creneau_id, ts
+            produit_id,
+            type_produit,
+            vendeur,
+            acheteur,
+            points_total,
+            points_livraison,
+            devise,
+            acompte as i64,
+            creneau_id,
+            ts
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -601,7 +653,10 @@ pub fn payer(id: i64, acheteur: &str) -> Result<serde_json::Value, String> {
         return Err("Seul l'acheteur peut payer".to_string());
     }
     if tx.statut != "reservation" {
-        return Err(format!("Paiement impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Paiement impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     if let Err(e) = crate::p2p_escrow::geler(&tx.acheteur, tx.points_total, maintenant()) {
         return Err(e.message());
@@ -615,7 +670,10 @@ pub fn payer(id: i64, acheteur: &str) -> Result<serde_json::Value, String> {
     notifier(
         &tx.vendeur,
         "Nouvelle commande marketplace",
-        &format!("{} veut acheter : transaction #{} à confirmer.", tx.acheteur, id),
+        &format!(
+            "{} veut acheter : transaction #{} à confirmer.",
+            tx.acheteur, id
+        ),
         &id.to_string(),
     );
     detail(id)
@@ -630,7 +688,10 @@ pub fn accepter(id: i64, vendeur: &str) -> Result<serde_json::Value, String> {
         return Err("Seul le vendeur peut accepter".to_string());
     }
     if tx.statut != "payee" {
-        return Err(format!("Acceptation impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Acceptation impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     let ts = maintenant();
     conn.execute(
@@ -667,7 +728,11 @@ pub fn refuser(id: i64, vendeur: &str) -> Result<serde_json::Value, String> {
 }
 
 /// POST /api/marketplace/{id}/livreur — le vendeur assigne un livreur de confiance.
-pub fn assigner_livreur(id: i64, vendeur: &str, livreur: &str) -> Result<serde_json::Value, String> {
+pub fn assigner_livreur(
+    id: i64,
+    vendeur: &str,
+    livreur: &str,
+) -> Result<serde_json::Value, String> {
     if livreur == vendeur || livreur.is_empty() {
         return Err("Livreur invalide".to_string());
     }
@@ -676,8 +741,14 @@ pub fn assigner_livreur(id: i64, vendeur: &str, livreur: &str) -> Result<serde_j
     if tx.vendeur != vendeur {
         return Err("Seul le vendeur assigne le livreur".to_string());
     }
-    if !matches!(tx.statut.as_str(), "confirme" | "hors_uq_confirme" | "attente_livreur") {
-        return Err(format!("Assignation impossible depuis le statut {}", tx.statut));
+    if !matches!(
+        tx.statut.as_str(),
+        "confirme" | "hors_uq_confirme" | "attente_livreur"
+    ) {
+        return Err(format!(
+            "Assignation impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     // Q9 — le livreur doit figurer dans la liste de confiance du vendeur.
     let confiance: i64 = conn
@@ -705,7 +776,10 @@ pub fn assigner_livreur(id: i64, vendeur: &str, livreur: &str) -> Result<serde_j
     notifier(
         livreur,
         "Livraison proposée",
-        &format!("Le vendeur te propose la livraison de la transaction #{} (30 min pour répondre).", id),
+        &format!(
+            "Le vendeur te propose la livraison de la transaction #{} (30 min pour répondre).",
+            id
+        ),
         &id.to_string(),
     );
     detail(id)
@@ -720,10 +794,15 @@ pub fn livreur_accepte(id: i64, livreur: &str) -> Result<serde_json::Value, Stri
         return Err("Tu n'es pas le livreur de cette transaction".to_string());
     }
     if tx.statut != "attente_livreur" {
-        return Err(format!("Acceptation impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Acceptation impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     let ts = maintenant();
-    if ts - tx.created_at > LIVREUR_DELAI_SECS && ts.saturating_sub(lire_livreur_at(&conn, id)?) > LIVREUR_DELAI_SECS {
+    if ts - tx.created_at > LIVREUR_DELAI_SECS
+        && ts.saturating_sub(lire_livreur_at(&conn, id)?) > LIVREUR_DELAI_SECS
+    {
         return Err("Délai d'acceptation dépassé (30 min)".to_string());
     }
     conn.execute(
@@ -763,7 +842,10 @@ pub fn livreur_refuse(id: i64, livreur: &str) -> Result<serde_json::Value, Strin
     notifier(
         &tx.vendeur,
         "Livreur indisponible",
-        &format!("Le livreur a refusé la transaction #{} : choisis-en un autre.", id),
+        &format!(
+            "Le livreur a refusé la transaction #{} : choisis-en un autre.",
+            id
+        ),
         &id.to_string(),
     );
     detail_pour(id, Some(livreur))
@@ -771,7 +853,13 @@ pub fn livreur_refuse(id: i64, livreur: &str) -> Result<serde_json::Value, Strin
 
 /// POST /api/marketplace/{id}/action — étapes de validation.
 /// actions : livre | recoit | recupere | code | litige | annuler
-pub fn action(id: i64, acteur: &str, action: &str, code: Option<&str>, motif: Option<&str>) -> Result<serde_json::Value, String> {
+pub fn action(
+    id: i64,
+    acteur: &str,
+    action: &str,
+    code: Option<&str>,
+    motif: Option<&str>,
+) -> Result<serde_json::Value, String> {
     let mut v = match action {
         "livre" => marquer_etape(id, acteur, "livre"),
         "recoit" => marquer_etape(id, acteur, "recoit"),
@@ -801,15 +889,22 @@ fn marquer_etape(id: i64, acteur: &str, etape: &str) -> Result<serde_json::Value
     // 'confirme' ; seul le mouvement d'argent diffère (pas de séquestre).
     let etape_confirmee = matches!(tx.statut.as_str(), "confirme" | "hors_uq_confirme");
     let autorise = match (etape, etape_confirmee) {
-        ("livre", true) => {
-            tx.vendeur == acteur || tx.livreur_uq.as_deref() == Some(acteur)
-        }
+        ("livre", true) => tx.vendeur == acteur || tx.livreur_uq.as_deref() == Some(acteur),
         ("recupere", true) => tx.livreur_uq.as_deref() == Some(acteur),
         ("recoit", true) => tx.acheteur == acteur,
         _ => false,
     };
     if !autorise {
-        return Err(format!("Action '{}' non autorisée pour ce rôle/statut", etape));
+        return Err(format!(
+            "Action '{}' non autorisée pour ce rôle/statut",
+            etape
+        ));
+    }
+
+    // GPS obligatoire pour les types physiques : la remise exige la proximité
+    // réelle (< 3 m) entre l'acteur qui remet et l'acheteur.
+    if type_exige_gps(&tx.type_produit) && matches!(etape, "livre" | "recoit") {
+        verifier_proximite(&conn, id, &tx, acteur)?;
     }
 
     let ts = maintenant();
@@ -897,8 +992,18 @@ fn marquer_etape(id: i64, acteur: &str, etape: &str) -> Result<serde_json::Value
             "Code de confirmation pour la transaction #{} : {} (valable 6 h, 3 tentatives).",
             id, code
         );
-        notifier(&tx.vendeur, "Code de confirmation", &message, &id.to_string());
-        notifier(&tx.acheteur, "Code de confirmation", &message, &id.to_string());
+        notifier(
+            &tx.vendeur,
+            "Code de confirmation",
+            &message,
+            &id.to_string(),
+        );
+        notifier(
+            &tx.acheteur,
+            "Code de confirmation",
+            &message,
+            &id.to_string(),
+        );
         if let Some(ref l) = tx.livreur_uq {
             notifier(l, "Code de confirmation", &message, &id.to_string());
         }
@@ -914,7 +1019,10 @@ fn verifier_code(id: i64, acteur: &str, code: &str) -> Result<serde_json::Value,
     let conn = db()?;
     let tx = lire_transaction(&conn, id)?;
     if tx.statut != "en_validation" {
-        return Err(format!("Vérification impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Vérification impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     // Sans livreur, le vendeur est la seconde partie au code : sans cette
     // branche, une remise en main propre ne pourrait jamais passer
@@ -923,7 +1031,9 @@ fn verifier_code(id: i64, acteur: &str, code: &str) -> Result<serde_json::Value,
         || tx.livreur_uq.as_deref() == Some(acteur)
         || (tx.livreur_uq.is_none() && tx.vendeur == acteur);
     if !roles_ok {
-        return Err("Seul l'acheteur, le vendeur (sans livreur) ou le livreur saisit le code".to_string());
+        return Err(
+            "Seul l'acheteur, le vendeur (sans livreur) ou le livreur saisit le code".to_string(),
+        );
     }
     let hash_attendu = tx.code_hash.clone().ok_or("Code non généré")?;
     let expire = tx.code_expire_at.unwrap_or(0);
@@ -941,7 +1051,10 @@ fn verifier_code(id: i64, acteur: &str, code: &str) -> Result<serde_json::Value,
         if tentatives >= CODE_MAX_TENTATIVES {
             return Err("Trop de tentatives : code invalidé".to_string());
         }
-        return Err(format!("Code incorrect ({} tentatives restantes)", CODE_MAX_TENTATIVES - tentatives));
+        return Err(format!(
+            "Code incorrect ({} tentatives restantes)",
+            CODE_MAX_TENTATIVES - tentatives
+        ));
     }
 
     // Code correct : on enregistre qui a saisi dans `code_saisies` (JSON array).
@@ -952,7 +1065,11 @@ fn verifier_code(id: i64, acteur: &str, code: &str) -> Result<serde_json::Value,
         saisies.push(acteur.to_string());
         conn.execute(
             "UPDATE marketplace_transactions SET code_saisies = ?1, updated_at = ?2 WHERE id = ?3",
-            params![serde_json::to_string(&saisies).unwrap_or_default(), maintenant(), id],
+            params![
+                serde_json::to_string(&saisies).unwrap_or_default(),
+                maintenant(),
+                id
+            ],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -981,17 +1098,109 @@ fn verifier_code(id: i64, acteur: &str, code: &str) -> Result<serde_json::Value,
          SET statut = 'libere', code_hash = NULL, libere_at = ?1, updated_at = ?1 WHERE id = ?2",
         params![maintenant(), id],
     );
-    notifier(&tx.vendeur, "Paiement libéré", &format!("Transaction #{} libérée.", id), &id.to_string());
-    notifier(&tx.acheteur, "Transaction terminée", &format!("Transaction #{} libérée.", id), &id.to_string());
+    notifier(
+        &tx.vendeur,
+        "Paiement libéré",
+        &format!("Transaction #{} libérée.", id),
+        &id.to_string(),
+    );
+    notifier(
+        &tx.acheteur,
+        "Transaction terminée",
+        &format!("Transaction #{} libérée.", id),
+        &id.to_string(),
+    );
     if let Some(ref l) = tx.livreur_uq {
-        notifier(l, "Frais de livraison versés", &format!("Transaction #{} libérée.", id), &id.to_string());
+        notifier(
+            l,
+            "Frais de livraison versés",
+            &format!("Transaction #{} libérée.", id),
+            &id.to_string(),
+        );
     }
     detail(id)
 }
 
+/// POST /api/marketplace/{id}/gps — enregistre une position (toutes les 30 s
+/// côté client). Réservé aux 3 acteurs de la transaction.
+pub fn enregistrer_position(id: i64, uq: &str, lat: f64, lng: f64) -> Result<(), String> {
+    if !lat.is_finite() || !lng.is_finite() || lat.abs() > 90.0 || lng.abs() > 180.0 {
+        return Err("Coordonnées invalides".to_string());
+    }
+    let conn = db()?;
+    let tx = lire_transaction(&conn, id)?;
+    let acteur = tx.acheteur == uq || tx.vendeur == uq || tx.livreur_uq.as_deref() == Some(uq);
+    if !acteur {
+        return Err("Action non autorisée".to_string());
+    }
+    conn.execute(
+        "INSERT INTO marketplace_gps (transaction_id, uq, lat, lng, recorded_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, uq, lat, lng, maintenant()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn derniere_position(conn: &Connection, id: i64, uq: &str) -> Result<Option<(f64, f64)>, String> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT lat, lng FROM marketplace_gps
+         WHERE transaction_id = ?1 AND uq = ?2
+         ORDER BY recorded_at DESC, id DESC LIMIT 1",
+        params![id, uq],
+        |r| Ok((r.get::<_, f64>(0)?, r.get::<_, f64>(1)?)),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// Distance en mètres entre deux points GPS (haversine, rayon terrestre moyen).
+fn distance_m(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
+    const R: f64 = 6_371_000.0;
+    let (p1, p2) = (lat1.to_radians(), lat2.to_radians());
+    let dp = (lat2 - lat1).to_radians();
+    let dl = (lng2 - lng1).to_radians();
+    let a = (dp / 2.0).sin().powi(2) + p1.cos() * p2.cos() * (dl / 2.0).sin().powi(2);
+    2.0 * R * a.sqrt().asin()
+}
+
+/// Exige que l'acteur et l'acheteur soient à moins de RAYON_RENCONTRE_M.
+/// L'acteur « livre » = vendeur ou livreur ; « reçoit » = l'acheteur face au
+/// vendeur/livreur qui a livré.
+fn verifier_proximite(
+    conn: &Connection,
+    id: i64,
+    tx: &Transaction,
+    acteur: &str,
+) -> Result<(), String> {
+    let autre = if acteur == tx.acheteur {
+        // L'acheteur doit être proche de celui qui remet : livreur si présent,
+        // sinon vendeur.
+        tx.livreur_uq.as_deref().unwrap_or(&tx.vendeur)
+    } else {
+        &tx.acheteur
+    };
+    let pos_a = derniere_position(conn, id, acteur)?
+        .ok_or("GPS requis : active ta position pour valider cette étape")?;
+    let pos_b = derniere_position(conn, id, autre)?
+        .ok_or("GPS requis : la contrepartie doit activer sa position")?;
+    let d = distance_m(pos_a.0, pos_a.1, pos_b.0, pos_b.1);
+    if d > RAYON_RENCONTRE_M {
+        return Err(format!(
+            "Trop loin pour valider : {:.0} m (maximum {} m)",
+            d, RAYON_RENCONTRE_M
+        ));
+    }
+    Ok(())
+}
+
 fn lire_champ(conn: &Connection, id: i64, champ: &str) -> Result<Option<String>, String> {
     conn.query_row(
-        &format!("SELECT {} FROM marketplace_transactions WHERE id = ?1", champ),
+        &format!(
+            "SELECT {} FROM marketplace_transactions WHERE id = ?1",
+            champ
+        ),
         params![id],
         |r| r.get(0),
     )
@@ -1006,14 +1215,27 @@ fn ouvrir_litige(id: i64, acteur: &str, motif: &str) -> Result<serde_json::Value
     if tx.acheteur != acteur && tx.livreur_uq.as_deref() != Some(acteur) {
         return Err("Seul l'acheteur ou le livreur peut ouvrir un litige".to_string());
     }
-    if !matches!(tx.statut.as_str(), "confirme" | "hors_uq_confirme" | "en_validation") {
+    if !matches!(
+        tx.statut.as_str(),
+        "confirme" | "hors_uq_confirme" | "en_validation"
+    ) {
         return Err(format!("Litige impossible depuis le statut {}", tx.statut));
     }
     let ts = maintenant();
+    // Le litige marketplace ouvre un dossier public : le jugement existant
+    // (3 jours, votes, commentaires) tranche ensuite via `resoudre_litige`.
+    let dossier_id = format!("mkt_{}", uuid::Uuid::new_v4());
+    conn.execute(
+        "INSERT INTO dossiers (id, accusateur, accuse, texte_accusation, historique,
+                                nb_evenements, echecs, en_cours, type_litige)
+         VALUES (?1, ?2, ?3, ?4, '{}', 0, 0, 0, 'marketplace')",
+        params![dossier_id, acteur, tx.vendeur, motif],
+    )
+    .map_err(|e| format!("Ouverture du dossier impossible ({})", e))?;
     conn.execute(
         "UPDATE marketplace_transactions
-         SET statut = 'litige', motif_litige = ?1, litige_at = ?2, updated_at = ?2 WHERE id = ?3",
-        params![motif, ts, id],
+         SET statut = 'litige', motif_litige = ?1, litige_id = ?2, litige_at = ?3, updated_at = ?3 WHERE id = ?4",
+        params![motif, dossier_id, ts, id],
     )
     .map_err(|e| e.to_string())?;
     notifier(
@@ -1035,9 +1257,17 @@ fn annuler(id: i64, acteur: &str) -> Result<serde_json::Value, String> {
     }
     if !matches!(
         tx.statut.as_str(),
-        "reservation" | "payee" | "confirme" | "attente_livreur" | "hors_uq_attente_vendeur" | "hors_uq_confirme"
+        "reservation"
+            | "payee"
+            | "confirme"
+            | "attente_livreur"
+            | "hors_uq_attente_vendeur"
+            | "hors_uq_confirme"
     ) {
-        return Err(format!("Annulation impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Annulation impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     degeler_acheteur(&tx)?;
     if let Some(cid) = tx.creneau_id {
@@ -1080,79 +1310,112 @@ fn liberer_esquestre(conn: &Connection, tx: &Transaction) -> Result<(), String> 
     // Q18 — paiement hors UQ : aucun séquestre n'a jamais été gelé, donc aucun
     // mouvement d'argent ici. Seuls la réputation et le créneau sont traités.
     if tx.mode_paiement != "hors_uq" {
-    // Portes d'entrée : les destinataires de BORB doivent avoir un cadenas réel.
-    if !portes_cadenas(&tx.vendeur) {
-        return Err(format!("Le vendeur {} n'a pas de cadenas valide", tx.vendeur));
-    }
-    if let Some(ref l) = tx.livreur_uq {
-        if points_livreur > 0 && !portes_cadenas(l) {
-            return Err(format!("Le livreur {} n'a pas de cadenas valide", l));
+        // Portes d'entrée : les destinataires de BORB doivent avoir un cadenas réel.
+        if !portes_cadenas(&tx.vendeur) {
+            return Err(format!(
+                "Le vendeur {} n'a pas de cadenas valide",
+                tx.vendeur
+            ));
         }
-    }
+        if let Some(ref l) = tx.livreur_uq {
+            if points_livreur > 0 && !portes_cadenas(l) {
+                return Err(format!("Le livreur {} n'a pas de cadenas valide", l));
+            }
+        }
 
-    // 1. Débit acheteur : points ET frozen_points diminue de points_total.
-    let mut db_acheteur = ouvrir_compte(&tx.acheteur)?;
-    db_acheteur
-        .execute_batch("BEGIN IMMEDIATE")
-        .map_err(|e| e.to_string())?;
-    let debite = db_acheteur
-        .execute(
-            "UPDATE balance
+        // 1. Débit acheteur : points ET frozen_points diminue de points_total.
+        let mut db_acheteur = ouvrir_compte(&tx.acheteur)?;
+        db_acheteur
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| e.to_string())?;
+        let debite = db_acheteur
+            .execute(
+                "UPDATE balance
              SET points = points - ?1,
                  frozen_points = COALESCE(frozen_points, 0) - ?1,
                  updated_at = ?2
              WHERE id = 1 AND points >= ?1 AND COALESCE(frozen_points, 0) >= ?1",
-            params![tx.points_total, ts],
-        )
-        .map_err(|e| e.to_string())?;
-    if debite != 1 {
-        let _ = db_acheteur.execute_batch("ROLLBACK");
-        return Err("Séquestre introuvable chez l'acheteur".to_string());
-    }
-    ecrire_ledger(
-        &db_acheteur, "marketplace_achat", tx.points_total, &tx.id.to_string(),
-        &tx.vendeur, &tx.acheteur, &tx.vendeur, ts,
-    )?;
-    crate::p2p_escrow::resynchroniser_sous_unites(&db_acheteur, ts).map_err(|e| e.message())?;
-    db_acheteur.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-
-    // 2. Crédit vendeur (prix hors frais de livraison).
-    if points_vendeur > 0 {
-        let mut db_vendeur = ouvrir_compte(&tx.vendeur)?;
-        db_vendeur.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
-        db_vendeur
-            .execute(
-                "UPDATE balance SET points = points + ?1, updated_at = ?2 WHERE id = 1",
-                params![points_vendeur, ts],
+                params![tx.points_total, ts],
             )
             .map_err(|e| e.to_string())?;
+        if debite != 1 {
+            let _ = db_acheteur.execute_batch("ROLLBACK");
+            return Err("Séquestre introuvable chez l'acheteur".to_string());
+        }
         ecrire_ledger(
-            &db_vendeur, "marketplace_vente", points_vendeur, &tx.id.to_string(),
-            &tx.acheteur, &tx.vendeur, &tx.acheteur, ts,
+            &db_acheteur,
+            "marketplace_achat",
+            tx.points_total,
+            &tx.id.to_string(),
+            &tx.vendeur,
+            &tx.acheteur,
+            &tx.vendeur,
+            ts,
         )?;
-        crate::p2p_escrow::resynchroniser_sous_unites(&db_vendeur, ts).map_err(|e| e.message())?;
-        db_vendeur.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    }
+        crate::p2p_escrow::resynchroniser_sous_unites(&db_acheteur, ts).map_err(|e| e.message())?;
+        db_acheteur
+            .execute_batch("COMMIT")
+            .map_err(|e| e.to_string())?;
 
-    // 3. Crédit livreur (frais de livraison uniquement — jamais le prix produit).
-    if let Some(ref livreur) = tx.livreur_uq {
-        if points_livreur > 0 {
-            let mut db_livreur = ouvrir_compte(livreur)?;
-            db_livreur.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
-            db_livreur
+        // 2. Crédit vendeur (prix hors frais de livraison).
+        if points_vendeur > 0 {
+            let mut db_vendeur = ouvrir_compte(&tx.vendeur)?;
+            db_vendeur
+                .execute_batch("BEGIN IMMEDIATE")
+                .map_err(|e| e.to_string())?;
+            db_vendeur
                 .execute(
                     "UPDATE balance SET points = points + ?1, updated_at = ?2 WHERE id = 1",
-                    params![points_livreur, ts],
+                    params![points_vendeur, ts],
                 )
                 .map_err(|e| e.to_string())?;
             ecrire_ledger(
-                &db_livreur, "marketplace_livraison", points_livreur, &tx.id.to_string(),
-                &tx.vendeur, livreur, &tx.vendeur, ts,
+                &db_vendeur,
+                "marketplace_vente",
+                points_vendeur,
+                &tx.id.to_string(),
+                &tx.acheteur,
+                &tx.vendeur,
+                &tx.acheteur,
+                ts,
             )?;
-            crate::p2p_escrow::resynchroniser_sous_unites(&db_livreur, ts).map_err(|e| e.message())?;
-            db_livreur.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            crate::p2p_escrow::resynchroniser_sous_unites(&db_vendeur, ts)
+                .map_err(|e| e.message())?;
+            db_vendeur
+                .execute_batch("COMMIT")
+                .map_err(|e| e.to_string())?;
         }
-    }
+
+        // 3. Crédit livreur (frais de livraison uniquement — jamais le prix produit).
+        if let Some(ref livreur) = tx.livreur_uq {
+            if points_livreur > 0 {
+                let mut db_livreur = ouvrir_compte(livreur)?;
+                db_livreur
+                    .execute_batch("BEGIN IMMEDIATE")
+                    .map_err(|e| e.to_string())?;
+                db_livreur
+                    .execute(
+                        "UPDATE balance SET points = points + ?1, updated_at = ?2 WHERE id = 1",
+                        params![points_livreur, ts],
+                    )
+                    .map_err(|e| e.to_string())?;
+                ecrire_ledger(
+                    &db_livreur,
+                    "marketplace_livraison",
+                    points_livreur,
+                    &tx.id.to_string(),
+                    &tx.vendeur,
+                    livreur,
+                    &tx.vendeur,
+                    ts,
+                )?;
+                crate::p2p_escrow::resynchroniser_sous_unites(&db_livreur, ts)
+                    .map_err(|e| e.message())?;
+                db_livreur
+                    .execute_batch("COMMIT")
+                    .map_err(|e| e.to_string())?;
+            }
+        }
     } // fin du bloc séquestre (mode securise uniquement)
 
     // Q10 — réputation : achat réussi pour l'acheteur, vente pour le vendeur,
@@ -1168,6 +1431,13 @@ fn liberer_esquestre(conn: &Connection, tx: &Transaction) -> Result<(), String> 
         liberer_creneau(conn, cid);
     }
 
+    // L'objet vendu quitte le flux : la fiche Zando passe `sold` avec sa date.
+    // C'est aussi la trace minimale conservée pour l'analytique vendeur.
+    let _ = conn.execute(
+        "UPDATE shop_items SET sold = 1, sold_at = ?1 WHERE id = ?2 AND sold = 0",
+        params![ts, tx.produit_id],
+    );
+
     let _ = conn; // la connexion centrale n'est pas utilisée pour l'argent
     Ok(())
 }
@@ -1182,7 +1452,11 @@ pub const LIVREUR_MIN_LIVRAISONS: i64 = 3;
 /// Ajoute (ou réactive) un livreur dans la liste de confiance du vendeur.
 /// Conditions (PARTIE 2) : réputation sans rouge ni noir, charte acceptée,
 /// et au moins LIVREUR_MIN_LIVRAISONS livraisons marketplace réussies.
-pub fn enregistrer_livreur(vendeur: &str, livreur: &str, charte_acceptee: bool) -> Result<(), String> {
+pub fn enregistrer_livreur(
+    vendeur: &str,
+    livreur: &str,
+    charte_acceptee: bool,
+) -> Result<(), String> {
     if vendeur == livreur || livreur.trim().is_empty() {
         return Err("Livreur invalide".to_string());
     }
@@ -1238,7 +1512,8 @@ pub fn lister_livreurs(vendeur: &str) -> Result<Vec<String>, String> {
     let rows = stmt
         .query_map(params![vendeur], |r| r.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// Retire un livreur de la liste de confiance (statut 'retire', pas de DELETE
@@ -1307,7 +1582,8 @@ pub fn lister_creneaux(produit_id: &str) -> Result<Vec<serde_json::Value>, Strin
             }))
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// Libère une place sur un créneau (annulation, refus ou libération escrow).
@@ -1330,9 +1606,7 @@ pub fn enregistrer_gps(id: i64, uq: &str, lat: f64, lng: f64) -> Result<(), Stri
     }
     let conn = db()?;
     let tx = lire_transaction(&conn, id)?;
-    let participant = tx.acheteur == uq
-        || tx.vendeur == uq
-        || tx.livreur_uq.as_deref() == Some(uq);
+    let participant = tx.acheteur == uq || tx.vendeur == uq || tx.livreur_uq.as_deref() == Some(uq);
     if !participant {
         return Err("Tu n'es pas partie à cette transaction".to_string());
     }
@@ -1352,6 +1626,74 @@ fn nb_points_gps(conn: &Connection, id: i64) -> Result<i64, String> {
         |r| r.get(0),
     )
     .map_err(|e| e.to_string())
+}
+
+/// GET /api/marketplace/{id}/positions — lecture live des acteurs.
+/// Le serveur recalcule les distances : le client ne fait qu'afficher.
+/// Réservé aux parties à la transaction ; le livreur ne voit ni le prix
+/// ni la position de l'acheteur avant la récupération.
+pub fn positions(id: i64, uq: &str) -> Result<serde_json::Value, String> {
+    let conn = db()?;
+    let tx = lire_transaction(&conn, id)?;
+    let acteur = tx.acheteur == uq || tx.vendeur == uq || tx.livreur_uq.as_deref() == Some(uq);
+    if !acteur {
+        return Err("Action non autorisée".to_string());
+    }
+
+    let acteurs: Vec<&str> = {
+        let mut v = vec![tx.acheteur.as_str(), tx.vendeur.as_str()];
+        if let Some(ref l) = tx.livreur_uq {
+            v.push(l.as_str());
+        }
+        v
+    };
+
+    let mut liste = Vec::new();
+    let mut positions_map = std::collections::HashMap::new();
+    for a in &acteurs {
+        let pos = derniere_position(&conn, id, a)?;
+        if let Some((lat, lng)) = pos {
+            positions_map.insert(*a, (lat, lng));
+        }
+        // Horodatage de la dernière position pour le "Mis à jour…"
+        let maj: Option<i64> = conn
+            .query_row(
+                "SELECT recorded_at FROM marketplace_gps
+                 WHERE transaction_id = ?1 AND uq = ?2
+                 ORDER BY recorded_at DESC, id DESC LIMIT 1",
+                params![id, a],
+                |r| r.get(0),
+            )
+            .ok();
+        liste.push(json!({
+            "uq": a,
+            "role": if *a == tx.acheteur { "acheteur" } else if *a == tx.vendeur { "vendeur" } else { "livreur" },
+            "lat": pos.map(|p| p.0),
+            "lng": pos.map(|p| p.1),
+            "maj": maj,
+        }));
+    }
+
+    // Distances utiles : acheteur ↔ vendeur, acheteur ↔ livreur, vendeur ↔ livreur.
+    let dist = |a: &str, b: &str| -> Option<f64> {
+        let pa = positions_map.get(a)?;
+        let pb = positions_map.get(b)?;
+        Some(distance_m(pa.0, pa.1, pb.0, pb.1))
+    };
+    let distance_acheteur_vendeur = dist(&tx.acheteur, &tx.vendeur);
+    let distance_acheteur_livreur = tx.livreur_uq.as_deref().and_then(|l| dist(&tx.acheteur, l));
+
+    Ok(json!({
+        "transaction_id": id,
+        "statut": tx.statut,
+        "rayon_m": RAYON_RENCONTRE_M,
+        "positions": liste,
+        "distance_acheteur_vendeur_m": distance_acheteur_vendeur,
+        "distance_acheteur_livreur_m": distance_acheteur_livreur,
+        "proche": distance_acheteur_vendeur
+            .map(|d| d <= RAYON_RENCONTRE_M)
+            .unwrap_or(false),
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1476,7 +1818,10 @@ pub fn declarer_hors_uq(id: i64, acheteur: &str) -> Result<serde_json::Value, St
         return Err("Seul l'acheteur peut déclarer un paiement hors UQ".to_string());
     }
     if tx.statut != "reservation" || tx.mode_paiement == "hors_uq" {
-        return Err(format!("Déclaration impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Déclaration impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     let ts = maintenant();
     let frais = frais_hors_uq(tx.points_total);
@@ -1499,7 +1844,10 @@ pub fn declarer_hors_uq(id: i64, acheteur: &str) -> Result<serde_json::Value, St
     notifier(
         &tx.vendeur,
         "Paiement hors UQ déclaré",
-        &format!("{} veut payer hors UQ la transaction #{} : confirme pour 1% de frais.", acheteur, id),
+        &format!(
+            "{} veut payer hors UQ la transaction #{} : confirme pour 1% de frais.",
+            acheteur, id
+        ),
         &id.to_string(),
     );
     detail(id)
@@ -1514,7 +1862,10 @@ pub fn confirmer_hors_uq(id: i64, vendeur: &str) -> Result<serde_json::Value, St
         return Err("Seul le vendeur peut confirmer le paiement hors UQ".to_string());
     }
     if tx.statut != "hors_uq_attente_vendeur" {
-        return Err(format!("Confirmation impossible depuis le statut {}", tx.statut));
+        return Err(format!(
+            "Confirmation impossible depuis le statut {}",
+            tx.statut
+        ));
     }
     let ts = maintenant();
     conn.execute(
@@ -1535,8 +1886,18 @@ pub fn confirmer_hors_uq(id: i64, vendeur: &str) -> Result<serde_json::Value, St
         "Mode hors UQ confirmé pour la transaction #{} : frais de déclaration 1% par partie. Aucune garantie UQ.",
         id
     );
-    notifier(&tx.acheteur, "Paiement hors UQ confirmé", &msg, &id.to_string());
-    notifier(&tx.vendeur, "Paiement hors UQ confirmé", &msg, &id.to_string());
+    notifier(
+        &tx.acheteur,
+        "Paiement hors UQ confirmé",
+        &msg,
+        &id.to_string(),
+    );
+    notifier(
+        &tx.vendeur,
+        "Paiement hors UQ confirmé",
+        &msg,
+        &id.to_string(),
+    );
     detail(id)
 }
 
@@ -1602,7 +1963,10 @@ pub fn litige_hors_uq(id: i64, acteur: &str, motif: &str) -> Result<serde_json::
     notifier(
         &tx.vendeur,
         "Litige hors UQ ouvert",
-        &format!("Litige signalé sur la transaction hors UQ #{} : {}", id, motif),
+        &format!(
+            "Litige signalé sur la transaction hors UQ #{} : {}",
+            id, motif
+        ),
         &id.to_string(),
     );
     detail(id)
@@ -1691,7 +2055,13 @@ pub fn jobs_periodiques() -> Result<serde_json::Value, String> {
             params![cid],
         )
         .map_err(|e| e.to_string())?;
-        let _ = avertir(&vendeur, &format!("Sur-réservation détectée sur le créneau #{} (produit {})", cid, produit));
+        let _ = avertir(
+            &vendeur,
+            &format!(
+                "Sur-réservation détectée sur le créneau #{} (produit {})",
+                cid, produit
+            ),
+        );
         actions.push(format!("surreservation_creneau:{}", cid));
     }
 
@@ -1740,6 +2110,43 @@ pub fn jobs_periodiques() -> Result<serde_json::Value, String> {
     }
 
     Ok(json!({ "ok": true, "actions": actions, "ts": ts }))
+}
+
+/// Appelé par `juger_dossiers_expires` quand un dossier 'marketplace' est jugé.
+/// `sanction = true` → remboursement intégral de l'acheteur (séquestre dégelé,
+/// il n'a jamais été libéré) ; `false` → libération normale au vendeur/livreur.
+pub fn resoudre_litige(dossier_id: &str, sanction: bool) -> Result<(), String> {
+    let conn = db()?;
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM marketplace_transactions WHERE litige_id = ?1",
+            params![dossier_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| "Transaction du litige introuvable".to_string())?;
+    let tx = lire_transaction(&conn, id)?;
+    if tx.statut != "litige" {
+        return Ok(()); // déjà résolue
+    }
+    if sanction {
+        // Remboursement : le séquestre n'a jamais été libéré → dégel simple.
+        crate::p2p_escrow::degeler(&tx.acheteur, tx.points_total, maintenant())
+            .map_err(|e| e.message())?;
+        conn.execute(
+            "UPDATE marketplace_transactions SET statut = 'rembourse', libere_at = ?1, updated_at = ?1 WHERE id = ?2",
+            params![maintenant(), tx.id],
+        )
+        .map_err(|e| e.to_string())?;
+    } else {
+        // Rejet : le vendeur était innocent → libération normale.
+        liberer_esquestre(&conn, &tx)?;
+        conn.execute(
+            "UPDATE marketplace_transactions SET statut = 'libere', libere_at = ?1, updated_at = ?1 WHERE id = ?2",
+            params![maintenant(), tx.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

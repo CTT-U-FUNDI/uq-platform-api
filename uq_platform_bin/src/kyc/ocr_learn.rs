@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 🧠 OCR LEARN — Moteur d'apprentissage progressif
 // ====================
 //
@@ -12,9 +12,9 @@
 //
 // ====================
 
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 use crate::kyc::metrics::AiMetrics;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // ====================
 // PHASES
@@ -22,10 +22,10 @@ use crate::kyc::metrics::AiMetrics;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Phase {
-    Observation,    // 0-100
-    Apprentissage,  // 100-500
-    Precision,      // 500-1000
-    Autonomie,      // 1000+
+    Observation,   // 0-100
+    Apprentissage, // 100-500
+    Precision,     // 500-1000
+    Autonomie,     // 1000+
 }
 
 impl Default for Phase {
@@ -101,7 +101,7 @@ pub struct Proposition {
     pub date_naissance: String,
     pub numero_document: String,
     pub confiance: f32,
-    pub methode: String,  // "hash", "embedding", "exact"
+    pub methode: String, // "hash", "embedding", "exact"
 }
 
 // ====================
@@ -166,7 +166,7 @@ impl OcrLearn {
     /// Phase 2+ : Proposer
     pub fn proposer(&self, image: &[u8]) -> Option<Proposition> {
         if self.phase == Phase::Observation {
-            return None;  // L'humain fait tout
+            return None; // L'humain fait tout
         }
 
         // 1. Hash perceptuel d'abord
@@ -200,7 +200,9 @@ impl OcrLearn {
         // 3. Embedding
         let embedding = self.calculer_embedding(image);
         if !embedding.is_empty() {
-            let meilleur = self.patterns.iter()
+            let meilleur = self
+                .patterns
+                .iter()
                 .filter(|p| !p.embedding.is_empty())
                 .map(|p| (p, distance_cosinus(&p.embedding, &embedding)))
                 .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
@@ -279,7 +281,7 @@ impl OcrLearn {
 
     /// SHA-256 de l'image
     fn calculer_sha256(&self, image: &[u8]) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(image);
         format!("{:x}", hasher.finalize())
@@ -299,7 +301,7 @@ impl OcrLearn {
         // Feature 65-128 : gradients
         for i in 1..64 {
             if i < image.len() {
-                embedding[64 + i] = (image[i] as f32 - image[i-1] as f32) / 255.0;
+                embedding[64 + i] = (image[i] as f32 - image[i - 1] as f32) / 255.0;
             }
         }
 

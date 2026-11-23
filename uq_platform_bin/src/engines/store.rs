@@ -27,7 +27,8 @@ fn taille_fichier(chemin: &str) -> u64 {
 
 impl StoreMoteurs {
     pub fn ouvrir() -> Self {
-        let chemin = std::env::var("UQ_ENGINES_DB").unwrap_or_else(|_| "data/uq_engines.db".to_string());
+        let chemin =
+            std::env::var("UQ_ENGINES_DB").unwrap_or_else(|_| "data/uq_engines.db".to_string());
         Self::ouvrir_chemin(&chemin)
     }
 
@@ -35,7 +36,10 @@ impl StoreMoteurs {
         let conn = match Connection::open(chemin) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("⚠️  Store moteurs '{}' indisponible ({}) — repli en mémoire", chemin, e);
+                eprintln!(
+                    "⚠️  Store moteurs '{}' indisponible ({}) — repli en mémoire",
+                    chemin, e
+                );
                 Connection::open_in_memory().expect("store moteurs mémoire")
             }
         };
@@ -81,7 +85,10 @@ impl StoreMoteurs {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(100);
-        Self { conn, quota_octets: quota_mb * 1024 * 1024 }
+        Self {
+            conn,
+            quota_octets: quota_mb * 1024 * 1024,
+        }
     }
 
     pub fn octets_utilises(&self) -> u64 {
@@ -137,7 +144,9 @@ impl StoreMoteurs {
 
     pub fn deja_vu(&self, hash: &str) -> bool {
         self.conn
-            .query_row("SELECT 1 FROM moteur_vus WHERE hash = ?1", [hash], |_| Ok(()))
+            .query_row("SELECT 1 FROM moteur_vus WHERE hash = ?1", [hash], |_| {
+                Ok(())
+            })
             .is_ok()
     }
 
@@ -187,14 +196,30 @@ impl StoreMoteurs {
                  ON CONFLICT(moteur, cle, origine) DO UPDATE SET
                    version=excluded.version, valeur=excluded.valeur,
                    ts=excluded.ts, hash=excluded.hash",
-                rusqlite::params![d.moteur, d.cle, d.origine, d.version as i64, serde_json::to_string(&d.valeur).unwrap_or_default(), d.ts, hash],
+                rusqlite::params![
+                    d.moteur,
+                    d.cle,
+                    d.origine,
+                    d.version as i64,
+                    serde_json::to_string(&d.valeur).unwrap_or_default(),
+                    d.ts,
+                    hash
+                ],
             )
             .map_err(|e| e.to_string())?;
         self.marquer_vu(&hash, d.ts);
         let _ = self.conn.execute(
             "INSERT OR IGNORE INTO moteur_histo (moteur, cle, origine, version, valeur, ts, hash)
              VALUES (?1,?2,?3,?4,?5,?6,?7)",
-            rusqlite::params![d.moteur, d.cle, d.origine, d.version as i64, serde_json::to_string(&d.valeur).unwrap_or_default(), d.ts, hash],
+            rusqlite::params![
+                d.moteur,
+                d.cle,
+                d.origine,
+                d.version as i64,
+                serde_json::to_string(&d.valeur).unwrap_or_default(),
+                d.ts,
+                hash
+            ],
         );
         if self.quota_depasse() {
             self.purger();
@@ -204,9 +229,10 @@ impl StoreMoteurs {
 
     /// Toutes les lignes d'état d'un moteur (une par origine).
     pub fn lignes(&self, moteur: &str) -> Vec<(String, String, serde_json::Value, i64)> {
-        let mut stmt = match self.conn.prepare(
-            "SELECT cle, origine, valeur, ts FROM moteur_etat WHERE moteur = ?1",
-        ) {
+        let mut stmt = match self
+            .conn
+            .prepare("SELECT cle, origine, valeur, ts FROM moteur_etat WHERE moteur = ?1")
+        {
             Ok(s) => s,
             Err(_) => return vec![],
         };
@@ -214,7 +240,8 @@ impl StoreMoteurs {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
-                serde_json::from_str::<serde_json::Value>(&r.get::<_, String>(2)?).unwrap_or(serde_json::Value::Null),
+                serde_json::from_str::<serde_json::Value>(&r.get::<_, String>(2)?)
+                    .unwrap_or(serde_json::Value::Null),
                 r.get::<_, i64>(3)?,
             ))
         }) {
@@ -260,7 +287,10 @@ impl StoreMoteurs {
 
     /// Adresses des appareils appairés d'un compte (pour la synchro ciblée).
     pub fn appareils_de(&self, uq: &str) -> Vec<String> {
-        let mut stmt = match self.conn.prepare("SELECT addr FROM moteur_appareils WHERE uq = ?1") {
+        let mut stmt = match self
+            .conn
+            .prepare("SELECT addr FROM moteur_appareils WHERE uq = ?1")
+        {
             Ok(s) => s,
             Err(_) => return vec![],
         };
@@ -269,7 +299,13 @@ impl StoreMoteurs {
             .unwrap_or_default()
     }
 
-    pub fn appairer(&mut self, uq: &str, appareil: &str, addr: &str, maintenant: i64) -> Result<(), String> {
+    pub fn appairer(
+        &mut self,
+        uq: &str,
+        appareil: &str,
+        addr: &str,
+        maintenant: i64,
+    ) -> Result<(), String> {
         self.conn
             .execute(
                 "INSERT INTO moteur_appareils (uq, appareil, addr, appaire) VALUES (?1,?2,?3,?4)
@@ -335,7 +371,8 @@ mod tests {
     }
 
     fn store_test(nom: &str) -> StoreMoteurs {
-        let dir = std::env::temp_dir().join(format!("uq_engines_test_{}_{}", nom, std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("uq_engines_test_{}_{}", nom, std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         StoreMoteurs::ouvrir_chemin(dir.join("test.db").to_str().unwrap())
     }
@@ -343,25 +380,48 @@ mod tests {
     #[test]
     fn fusion_last_write_win_par_origine() {
         let mut s = store_test("lww");
-        assert!(s.appliquer(&diffusion("oracle", "fx:USD", "A", 1, 2200.0)).unwrap());
-        assert!(!s.appliquer(&diffusion("oracle", "fx:USD", "A", 1, 2300.0)).unwrap(), "version égale = rejet");
-        assert!(s.appliquer(&diffusion("oracle", "fx:USD", "A", 2, 100.0)).unwrap(), "version 2 passe");
-        assert!(s.appliquer(&diffusion("oracle", "fx:USD", "A", 3, 2450.0)).unwrap());
-        assert!(!s.appliquer(&diffusion("oracle", "fx:USD", "A", 2, 999.0)).unwrap(), "version ancienne = rejet");
+        assert!(s
+            .appliquer(&diffusion("oracle", "fx:USD", "A", 1, 2200.0))
+            .unwrap());
+        assert!(
+            !s.appliquer(&diffusion("oracle", "fx:USD", "A", 1, 2300.0))
+                .unwrap(),
+            "version égale = rejet"
+        );
+        assert!(
+            s.appliquer(&diffusion("oracle", "fx:USD", "A", 2, 100.0))
+                .unwrap(),
+            "version 2 passe"
+        );
+        assert!(s
+            .appliquer(&diffusion("oracle", "fx:USD", "A", 3, 2450.0))
+            .unwrap());
+        assert!(
+            !s.appliquer(&diffusion("oracle", "fx:USD", "A", 2, 999.0))
+                .unwrap(),
+            "version ancienne = rejet"
+        );
         let (mediane, origines) = s.mediane_prix("oracle", "fx:USD").unwrap();
         assert_eq!(origines, 1, "une seule origine après fusion");
-        assert!((mediane - 2450.0).abs() < 1e-9, "l'état retenu est la version 3");
+        assert!(
+            (mediane - 2450.0).abs() < 1e-9,
+            "l'état retenu est la version 3"
+        );
     }
 
     #[test]
     fn mediane_collective_multi_origines() {
         let mut s = store_test("mediane");
         for (o, p) in [("A", 100.0), ("B", 110.0), ("C", 90.0), ("D", 500.0)] {
-            s.appliquer(&diffusion("oracle", "crypto:X", o, 1, p)).unwrap();
+            s.appliquer(&diffusion("oracle", "crypto:X", o, 1, p))
+                .unwrap();
         }
         let (mediane, n) = s.mediane_prix("oracle", "crypto:X").unwrap();
         assert_eq!(n, 4);
-        assert!((mediane - 105.0).abs() < 1e-9, "médiane de 90/100/110/500 = 105, l'origine folle est diluée");
+        assert!(
+            (mediane - 105.0).abs() < 1e-9,
+            "médiane de 90/100/110/500 = 105, l'origine folle est diluée"
+        );
     }
 
     #[test]

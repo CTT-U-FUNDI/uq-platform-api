@@ -3,49 +3,32 @@
 // Contient SEULEMENT les preuves (pas de donnees privees)
 // ====================
 
-use rusqlite::{Connection, params};
-use std::sync::{Arc, Mutex, OnceLock};
+use rusqlite::{params, Connection};
 use serde_json::{json, Value};
-use sha2::{Sha256, Digest};
-use base64::Engine as _;
+use sha2::{Digest, Sha256};
+use std::sync::{Arc, Mutex, OnceLock};
 
 static INDEX_INSTANCE: OnceLock<Arc<UqIndex>> = OnceLock::new();
-
-
-/// Chemin de l'index UQ : UQ_INDEX_PATH (disque persistant) ou defaut local.
-pub fn uq_index_path() -> String {
-    std::env::var("UQ_INDEX_PATH").unwrap_or_else(|_| crate::uq_index::uq_index_path().to_string())
-}
 
 pub struct UqIndex {
     conn: Arc<Mutex<Connection>>,
     db_path: String,
-    /// Backend Firestore pour les methodes COMPTES (fallback SQLite sinon).
-    use_firestore: bool,
 }
 
 impl UqIndex {
     /// Singleton pour l'index
     pub fn shared(db_path: &str) -> Arc<UqIndex> {
-        INDEX_INSTANCE.get_or_init(|| {
-            Arc::new(UqIndex::new(db_path))
-        }).clone()
+        INDEX_INSTANCE
+            .get_or_init(|| Arc::new(UqIndex::new(db_path)))
+            .clone()
     }
 
     /// Cree ou ouvre l'index
     pub fn new(db_path: &str) -> Self {
         let conn = Connection::open(db_path).expect("Failed to open uq_index.db");
-        let use_firestore = std::env::var("USE_FIRESTORE_INDEX")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-            || std::env::var("FIREBASE_SA_CLIENT_EMAIL").is_ok();
-        if use_firestore {
-            eprintln!("[uq_index] Backend comptes : FIRESTORE (fallback SQLite pour le reste)");
-        }
         let idx = Self {
             conn: Arc::new(Mutex::new(conn)),
             db_path: db_path.to_string(),
-            use_firestore,
         };
         idx.init_tables().expect("Failed to init tables");
         idx
@@ -54,7 +37,8 @@ impl UqIndex {
     /// Cree les tables si elles n'existent pas
     fn init_tables(&self) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch(r#"
+        conn.execute_batch(
+            r#"
             CREATE TABLE IF NOT EXISTS uq_index (
                 uq_number       TEXT PRIMARY KEY,
                 uq_email        TEXT UNIQUE NOT NULL,
@@ -68,9 +52,11 @@ impl UqIndex {
                 db_path         TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_email ON uq_index(uq_email);
-            CREATE INDEX IF NOT EXISTS idx_pseudo ON uq_index(uq_pseudo);"#)?;
+            CREATE INDEX IF NOT EXISTS idx_pseudo ON uq_index(uq_pseudo);"#,
+        )?;
 
-        conn.execute_batch(r#"
+        conn.execute_batch(
+            r#"
             CREATE TABLE IF NOT EXISTS chat_groups (
                 group_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -100,7 +86,8 @@ impl UqIndex {
             );
             CREATE INDEX IF NOT EXISTS idx_chat_group_messages_group
                 ON chat_group_messages(group_id, id);
-        "#)?;
+        "#,
+        )?;
 
         // MIGRATION PROFIL COMPLET (12 Oct 2026)
         let migrations_profil = [
@@ -124,7 +111,10 @@ impl UqIndex {
         for sql in migrations_profil.iter() {
             let _ = conn.execute(sql, []);
         }
-        eprintln!("[OK] Migration profil : {} colonnes ajoutees (ou deja presentes)", migrations_profil.len());
+        eprintln!(
+            "[OK] Migration profil : {} colonnes ajoutees (ou deja presentes)",
+            migrations_profil.len()
+        );
 
         Ok(())
     }
@@ -146,8 +136,15 @@ impl UqIndex {
                 ville_actuelle = COALESCE(NULLIF(?4, ''), ville_actuelle),
                 statut_marital = COALESCE(NULLIF(?5, ''), statut_marital)
              WHERE uq_number = ?1",
-            params![uq_number, sexe, ville_provenance, ville_actuelle, statut_marital],
-        ).map_err(|e| e.to_string())?;
+            params![
+                uq_number,
+                sexe,
+                ville_provenance,
+                ville_actuelle,
+                statut_marital
+            ],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -179,7 +176,8 @@ impl UqIndex {
                 phone_verified as i64,
                 email_verified as i64
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -199,7 +197,8 @@ impl UqIndex {
                     "email_verified": row.get::<_, i64>(3)? == 1,
                 }))
             },
-        ).ok()
+        )
+        .ok()
     }
 
     /// Mise a jour depuis les reglages du profil (mail externe, telephone).
@@ -216,25 +215,29 @@ impl UqIndex {
             conn.execute(
                 "UPDATE uq_index SET recovery_email = ?1 WHERE uq_number = ?2",
                 params![v, uq_number],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         if let Some(v) = recovery_phone {
             conn.execute(
                 "UPDATE uq_index SET recovery_phone = ?1 WHERE uq_number = ?2",
                 params![v, uq_number],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         if let Some(v) = phone_verified {
             conn.execute(
                 "UPDATE uq_index SET phone_verified = ?1 WHERE uq_number = ?2",
                 params![v as i64, uq_number],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         if let Some(v) = email_verified {
             conn.execute(
                 "UPDATE uq_index SET email_verified = ?1 WHERE uq_number = ?2",
                 params![v as i64, uq_number],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -254,28 +257,60 @@ impl UqIndex {
     ) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         if let Some(v) = ville_provenance {
-            conn.execute("UPDATE uq_index SET ville_provenance = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET ville_provenance = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = ville_actuelle {
-            conn.execute("UPDATE uq_index SET ville_actuelle = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET ville_actuelle = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = statut_marital {
-            conn.execute("UPDATE uq_index SET statut_marital = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET statut_marital = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = photo_url {
-            conn.execute("UPDATE uq_index SET photo_url = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET photo_url = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = description {
-            conn.execute("UPDATE uq_index SET description = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET description = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = emploi {
-            conn.execute("UPDATE uq_index SET emploi = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET emploi = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = mobile_money_number {
-            conn.execute("UPDATE uq_index SET mobile_money_number = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET mobile_money_number = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         if let Some(v) = mobile_money_operator {
-            conn.execute("UPDATE uq_index SET mobile_money_operator = ?1 WHERE uq_number = ?2", params![v, uq_number]).ok();
+            conn.execute(
+                "UPDATE uq_index SET mobile_money_operator = ?1 WHERE uq_number = ?2",
+                params![v, uq_number],
+            )
+            .ok();
         }
         Ok(())
     }
@@ -299,94 +334,6 @@ impl UqIndex {
         hex::encode(hasher.finalize())
     }
 
-    // ====================
-    // BACKEND FIRESTORE — helpers comptes (docs `accounts/{uq_number}`)
-    // ====================
-
-    fn fs_str(fields: &Value, key: &str) -> String {
-        fields.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
-    }
-
-    fn fs_bool(fields: &Value, key: &str) -> bool {
-        fields.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
-    }
-
-    fn fs_i64(fields: &Value, key: &str) -> i64 {
-        fields.get(key).and_then(|v| v.as_i64()).unwrap_or(0)
-    }
-
-    /// Normalisation identique a SQLite (email / pseudo).
-    fn normalize_email(email: &str) -> String {
-        email.to_lowercase().replace(".", "").replace("-", "").replace("_", "")
-    }
-
-    fn normalize_pseudo(pseudo: &str) -> String {
-        pseudo.to_lowercase()
-            .replace(".", "").replace("-", "").replace("_", "")
-            .replace("uq@", "")
-    }
-
-    /// Champs Firestore complets d'un compte (schema uq_index + colonnes profil).
-    fn account_fields(
-        uq_number: &str,
-        uq_email: &str,
-        uq_pseudo: &str,
-        hash_identity: &str,
-        hash_password: &str,
-        salt: &str,
-        public_key_b64: &str,
-        is_owner: bool,
-        db_path: &str,
-    ) -> Value {
-        json!({
-            "uq_number": uq_number,
-            "uq_email": uq_email,
-            "uq_pseudo": uq_pseudo,
-            "hash_identity": hash_identity,
-            "hash_password": hash_password,
-            "salt": salt,
-            "public_key": public_key_b64,
-            "is_owner": is_owner,
-            "created_at": chrono::Utc::now().timestamp(),
-            "db_path": db_path,
-            "normalized_email": Self::normalize_email(uq_email),
-            "normalized_pseudo": Self::normalize_pseudo(uq_pseudo),
-            // Colonnes profil (schema complet pour la prochaine etape)
-            "sexe": "",
-            "ville_provenance": "",
-            "ville_actuelle": "",
-            "statut_marital": "",
-            "photo_url": "",
-            "description": "",
-            "emploi": "",
-            "mobile_money_number": "",
-            "mobile_money_operator": "",
-            "date_naissance": 0,
-            "kyc_verified": false,
-            "recovery_email": "",
-            "recovery_phone": "",
-            "phone_verified": false,
-            "email_verified": false,
-            "display_currency": "CDF",
-            "receive_currency": "CDF",
-        })
-    }
-
-    /// JSON identique a verify_credentials a partir des champs Firestore.
-    fn verify_result_from_fields(f: &Value) -> Value {
-        let number = Self::fs_str(f, "uq_number");
-        let is_owner = Self::fs_bool(f, "is_owner");
-        json!({
-            "uq_number": number,
-            "uq_email": Self::fs_str(f, "uq_email"),
-            "uq_pseudo": Self::fs_str(f, "uq_pseudo"),
-            "is_owner": is_owner,
-            "db_path": Self::fs_str(f, "db_path"),
-            "kyc": crate::kyc::cadenas::est_deverrouille(&number),
-            "next_step": if is_owner { "unlock" } else { "2fa" }
-        })
-    }
-
     /// Ajoute un compte dans l'index
     pub fn insert_account(
         &self,
@@ -400,27 +347,20 @@ impl UqIndex {
         is_owner: bool,
         db_path: &str,
     ) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+
         // Normaliser email et pseudo pour les collisions
-        let normalized_email = uq_email.to_lowercase()
+        let normalized_email = uq_email
+            .to_lowercase()
             .replace(".", "")
             .replace("-", "")
             .replace("_", "");
-        let normalized_pseudo = uq_pseudo.to_lowercase()
+        let normalized_pseudo = uq_pseudo
+            .to_lowercase()
             .replace(".", "")
             .replace("-", "")
             .replace("_", "")
             .replace("uq@", "");
-
-        if self.use_firestore {
-            let public_key_b64 = base64::engine::general_purpose::STANDARD.encode(public_key);
-            let fields = Self::account_fields(
-                uq_number, uq_email, uq_pseudo, hash_identity,
-                hash_password, salt, &public_key_b64, is_owner, db_path,
-            );
-            return crate::firestore_index::fs_set_doc("accounts", uq_number, &fields);
-        }
-
-        let conn = self.conn.lock().unwrap();
 
         conn.execute(
             "INSERT OR REPLACE INTO uq_index
@@ -453,35 +393,27 @@ impl UqIndex {
         uq_email: &str,
         password: &str,
     ) -> Option<Value> {
-        if self.use_firestore {
-            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
-            if Self::fs_str(&f, "uq_email") != uq_email {
-                return None;
-            }
-            let stored_hash = Self::fs_str(&f, "hash_password");
-            let salt = Self::fs_str(&f, "salt");
-            if Self::hash_password(password, &salt) != stored_hash {
-                return None;
-            }
-            return Some(Self::verify_result_from_fields(&f));
-        }
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT uq_number, uq_email, uq_pseudo, hash_password, salt, is_owner, db_path
-             FROM uq_index WHERE uq_number = ?1 AND uq_email = ?2"
-        ).ok()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT uq_number, uq_email, uq_pseudo, hash_password, salt, is_owner, db_path
+             FROM uq_index WHERE uq_number = ?1 AND uq_email = ?2",
+            )
+            .ok()?;
 
-        let row = stmt.query_row(params![uq_number, uq_email], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, i64>(5)?,
-                row.get::<_, String>(6)?,
-            ))
-        }).ok()?;
+        let row = stmt
+            .query_row(params![uq_number, uq_email], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })
+            .ok()?;
 
         let (number, email, pseudo, stored_hash, salt, is_owner, db_path) = row;
 
@@ -506,58 +438,41 @@ impl UqIndex {
     /// Vérifie les identifiants avec SEULEMENT l'email UQ + password.
     /// Retourne le même JSON que verify_credentials (uq_number résolu en interne).
     /// Utilisé pour le login « email seul » : l'utilisateur ne tape plus son UQ.
-    pub fn verify_credentials_by_email(
-        &self,
-        uq_email: &str,
-        password: &str,
-    ) -> Option<Value> {
-        if self.use_firestore {
-            let normalized = Self::normalize_email(uq_email);
-            let lowered = uq_email.to_lowercase();
-            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
-                let stored_norm = Self::fs_str(&f, "normalized_email");
-                let stored_email = Self::fs_str(&f, "uq_email").to_lowercase();
-                if stored_norm != normalized && stored_email != lowered {
-                    continue;
-                }
-                let stored_hash = Self::fs_str(&f, "hash_password");
-                let salt = Self::fs_str(&f, "salt");
-                if Self::hash_password(password, &salt) != stored_hash {
-                    return None;
-                }
-                return Some(Self::verify_result_from_fields(&f));
-            }
-            return None;
-        }
+    pub fn verify_credentials_by_email(&self, uq_email: &str, password: &str) -> Option<Value> {
         let conn = self.conn.lock().unwrap();
 
         // Normaliser l'email comme get_account_by_email
-        let normalized = uq_email.to_lowercase()
+        let normalized = uq_email
+            .to_lowercase()
             .replace(".", "")
             .replace("-", "")
             .replace("_", "");
 
-        let mut stmt = conn.prepare(
-            "SELECT uq_number, uq_email, uq_pseudo, hash_password, salt, is_owner, db_path
+        let mut stmt = conn
+            .prepare(
+                "SELECT uq_number, uq_email, uq_pseudo, hash_password, salt, is_owner, db_path
              FROM uq_index
              WHERE normalized_email = ?1 OR LOWER(uq_email) = ?2
-             LIMIT 1"
-        ).ok()?;
+             LIMIT 1",
+            )
+            .ok()?;
 
-        let row = stmt.query_row(
-            rusqlite::params![normalized, uq_email.to_lowercase()],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, i64>(5)?,
-                    row.get::<_, String>(6)?,
-                ))
-            },
-        ).ok()?;
+        let row = stmt
+            .query_row(
+                rusqlite::params![normalized, uq_email.to_lowercase()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, i64>(5)?,
+                        row.get::<_, String>(6)?,
+                    ))
+                },
+            )
+            .ok()?;
 
         let (number, email, pseudo, stored_hash, salt, is_owner, db_path) = row;
 
@@ -579,28 +494,17 @@ impl UqIndex {
 
     /// Retrouve le uq_number à partir d'un email UQ (pour le step1 du login).
     pub fn get_uq_by_email(&self, uq_email: &str) -> Option<String> {
-        self.get_account_by_email(uq_email)
-            .and_then(|v| v.get("uq_number").and_then(|n| n.as_str()).map(|s| s.to_string()))
+        self.get_account_by_email(uq_email).and_then(|v| {
+            v.get("uq_number")
+                .and_then(|n| n.as_str())
+                .map(|s| s.to_string())
+        })
     }
 
     /// Résout un localpart d'adresse mail réelle (ex: "jean" de jean@mail.domaine)
     /// vers le uq_number du compte dont uq_email = "jean@zando.uq".
     /// Utilisé par /api/mail/in pour router le courrier entrant.
     pub fn get_uq_by_email_localpart(&self, localpart: &str) -> Option<String> {
-        if self.use_firestore {
-            let local = localpart.to_lowercase();
-            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
-                let email = Self::fs_str(&f, "uq_email").to_lowercase();
-                let lp = email.split('@').next().unwrap_or("");
-                if lp == local {
-                    let uq = Self::fs_str(&f, "uq_number");
-                    if !uq.is_empty() {
-                        return Some(uq);
-                    }
-                }
-            }
-            return None;
-        }
         let conn = self.conn.lock().ok()?;
         let local = localpart.to_lowercase();
         // uq_email = "localpart@domaine_uq" — on matche le localpart exact
@@ -610,7 +514,8 @@ impl UqIndex {
              LIMIT 1",
             params![local],
             |row| row.get::<_, String>(0),
-        ).ok()
+        )
+        .ok()
     }
 
     /// Recupere un compte par uq_number
@@ -621,7 +526,8 @@ impl UqIndex {
             "SELECT code FROM code_promos WHERE uq_number = ?1",
             params![uq_number],
             |row| row.get::<_, String>(0),
-        ).ok()
+        )
+        .ok()
     }
 
     /// Retrouve le parrain (uq_number) à partir d'un code promo.
@@ -632,32 +538,30 @@ impl UqIndex {
             "SELECT uq_number FROM code_promos WHERE UPPER(code) = UPPER(?1)",
             params![code.trim()],
             |row| row.get::<_, String>(0),
-        ).ok()
+        )
+        .ok()
     }
 
     /// Insère un code promo dans la table code_promos
-    pub fn insert_code_promo(&self, code: &str, uq_number: &str, prenom: &str, position: u64) -> Result<(), String> {
+    pub fn insert_code_promo(
+        &self,
+        code: &str,
+        uq_number: &str,
+        prenom: &str,
+        position: u64,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let now = chrono::Utc::now().timestamp();
         conn.execute(
             "INSERT OR REPLACE INTO code_promos (code, uq_number, prenom, position, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![code, uq_number, prenom, position as i64, now],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn get_account(&self, uq_number: &str) -> Option<Value> {
-        if self.use_firestore {
-            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
-            return Some(json!({
-                "uq_number": Self::fs_str(&f, "uq_number"),
-                "uq_email": Self::fs_str(&f, "uq_email"),
-                "uq_pseudo": Self::fs_str(&f, "uq_pseudo"),
-                "is_owner": Self::fs_bool(&f, "is_owner"),
-                "db_path": Self::fs_str(&f, "db_path")
-            }));
-        }
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT uq_number, uq_email, uq_pseudo, is_owner, db_path FROM uq_index WHERE uq_number = ?1"
@@ -671,51 +575,24 @@ impl UqIndex {
                 "is_owner": row.get::<_, i64>(3)? == 1,
                 "db_path": row.get::<_, String>(4)?
             }))
-        }).ok()
+        })
+        .ok()
     }
-
 
     /// Clé publique Ed25519 du compte (pour vérif signature d'autorisation).
-    /// Email associe a un numero UQ — resolution interne pour le login
-    /// « UQ + mot de passe » (l'utilisateur ne saisit jamais son email).
-    pub fn get_email(&self, uq_number: &str) -> Option<String> {
-        if self.use_firestore {
-            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
-            let email = Self::fs_str(&f, "uq_email");
-            return if email.is_empty() { None } else { Some(email) };
-        }
-        let conn = self.conn.lock().ok()?;
-        conn.query_row(
-            "SELECT uq_email FROM uq_index WHERE uq_number = ?1",
-            params![uq_number],
-            |row| row.get::<_, String>(0),
-        ).ok()
-    }
-
     pub fn get_public_key(&self, uq_number: &str) -> Option<Vec<u8>> {
-        if self.use_firestore {
-            let f = crate::firestore_index::fs_get_doc("accounts", uq_number)?;
-            let b64 = Self::fs_str(&f, "public_key");
-            if b64.is_empty() {
-                return None;
-            }
-            return base64::engine::general_purpose::STANDARD.decode(b64).ok();
-        }
         let conn = self.conn.lock().ok()?;
         conn.query_row(
             "SELECT public_key FROM uq_index WHERE uq_number = ?1",
             params![uq_number],
             |row| row.get::<_, Vec<u8>>(0),
-        ).ok()
+        )
+        .ok()
     }
 
     /// Migration : Ajouter les colonnes normalized_email et normalized_pseudo
     /// a la table uq_index si elles n'existent pas
     pub fn migrate_uq_index(&self) -> Result<(), String> {
-        if self.use_firestore {
-            // Backend Firestore : pas de migration SQLite a faire.
-            return Ok(());
-        }
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         // Verifier si les colonnes existent deja
@@ -732,7 +609,8 @@ impl UqIndex {
             conn.execute(
                 "ALTER TABLE uq_index ADD COLUMN normalized_email TEXT DEFAULT ''",
                 [],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
             eprintln!("✅ Colonne normalized_email ajoutee");
         }
 
@@ -741,7 +619,8 @@ impl UqIndex {
             conn.execute(
                 "ALTER TABLE uq_index ADD COLUMN normalized_pseudo TEXT DEFAULT ''",
                 [],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
             eprintln!("✅ Colonne normalized_pseudo ajoutee");
         }
 
@@ -768,31 +647,17 @@ impl UqIndex {
     // Jamais de soustraction. Persiste. Ne recule jamais.
     // ====================
     pub fn next_position(&self) -> u64 {
-        if self.use_firestore {
-            // Compteur dans `meta/uq_counter`. NB : read-modify-write non
-            // atomique (pas de transaction REST) — suffisant pour
-            // l'allocation de positions UQ en attendant une V2 transactionnelle.
-            let current = Self::current_position_fs();
-            let new_position = current + 1;
-            let _ = crate::firestore_index::fs_set_doc(
-                "meta",
-                "uq_counter",
-                &json!({
-                    "last_position": new_position,
-                    "updated_at": chrono::Utc::now().timestamp(),
-                }),
-            );
-            return new_position;
-        }
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
 
         // Lire la position actuelle
-        let current: i64 = conn.query_row(
-            "SELECT COALESCE(last_position, 0) FROM uq_counter WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let current: i64 = conn
+            .query_row(
+                "SELECT COALESCE(last_position, 0) FROM uq_counter WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         // ADDITIONNER (jamais soustraire)
         let new_position = (current + 1) as u64;
@@ -806,25 +671,16 @@ impl UqIndex {
         new_position
     }
 
-    /// Lit le compteur Firestore `meta/uq_counter` (helper partage).
-    fn current_position_fs() -> u64 {
-        crate::firestore_index::fs_get_doc("meta", "uq_counter")
-            .and_then(|f| f.get("last_position").and_then(|v| v.as_i64()))
-            .unwrap_or(0)
-            .max(0) as u64
-    }
-
     /// Lire la position actuelle sans l'incrémenter
     pub fn current_position(&self) -> u64 {
-        if self.use_firestore {
-            return Self::current_position_fs();
-        }
         let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT COALESCE(last_position, 0) FROM uq_counter WHERE id = 1",
             [],
             |row| row.get::<_, i64>(0),
-        ).map(|v| v as u64).unwrap_or(0)
+        )
+        .map(|v| v as u64)
+        .unwrap_or(0)
     }
 
     // ====================
@@ -832,12 +688,14 @@ impl UqIndex {
     // ====================
     pub fn pattern_exists(&self, pattern_type: &str, pattern_value: &str) -> bool {
         let conn = self.conn.lock().unwrap();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM generated_patterns 
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM generated_patterns 
              WHERE pattern_type = ?1 AND pattern_value = ?2",
-            params![pattern_type, pattern_value],
-            |row| row.get(0),
-        ).unwrap_or(0);
+                params![pattern_type, pattern_value],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         count > 0
     }
 
@@ -858,16 +716,15 @@ impl UqIndex {
              (pattern_type, pattern_value, position, uq_number, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![pattern_type, pattern_value, position as i64, uq_number, now],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn count(&self) -> u64 {
-        if self.use_firestore {
-            return crate::firestore_index::fs_list_docs("accounts").len() as u64;
-        }
         let conn = self.conn.lock().unwrap();
-        conn.query_row("SELECT COUNT(*) FROM uq_index", [], |r| r.get(0)).unwrap_or(0)
+        conn.query_row("SELECT COUNT(*) FROM uq_index", [], |r| r.get(0))
+            .unwrap_or(0)
     }
 
     /// Stats de l'index
@@ -875,7 +732,7 @@ impl UqIndex {
         json!({
             "total_users": self.count(),
             "db_path": self.db_path,
-            "storage": crate::uq_index::uq_index_path()
+            "storage": "uq_index.db"
         })
     }
 
@@ -895,17 +752,29 @@ impl UqIndex {
             group_type
         );
         let transaction = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-        transaction.execute(
-            "INSERT INTO chat_groups
+        transaction
+            .execute(
+                "INSERT INTO chat_groups
              (group_id, name, type, visibility, description, created_by, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![group_id, name, group_type, visibility, description, owner_id, created_at],
-        ).map_err(|e| e.to_string())?;
-        transaction.execute(
-            "INSERT INTO chat_group_members (group_id, member_id, role, joined_at)
+                params![
+                    group_id,
+                    name,
+                    group_type,
+                    visibility,
+                    description,
+                    owner_id,
+                    created_at
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        transaction
+            .execute(
+                "INSERT INTO chat_group_members (group_id, member_id, role, joined_at)
              VALUES (?1, ?2, 'admin', ?3)",
-            params![group_id, owner_id, created_at],
-        ).map_err(|e| e.to_string())?;
+                params![group_id, owner_id, created_at],
+            )
+            .map_err(|e| e.to_string())?;
         transaction.commit().map_err(|e| e.to_string())?;
         Ok(json!({
             "group_id": group_id,
@@ -923,8 +792,9 @@ impl UqIndex {
 
     pub fn list_chat_groups(&self, user_id: &str) -> Result<Vec<Value>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let mut statement = conn.prepare(
-            "SELECT g.group_id, g.name, g.type, g.visibility, g.description, g.created_by,
+        let mut statement = conn
+            .prepare(
+                "SELECT g.group_id, g.name, g.type, g.visibility, g.description, g.created_by,
                     g.created_at, COUNT(m.member_id), mine.role
              FROM chat_groups g
              LEFT JOIN chat_group_members m ON m.group_id = g.group_id
@@ -933,33 +803,39 @@ impl UqIndex {
              WHERE g.visibility = 'public' OR mine.member_id IS NOT NULL
              GROUP BY g.group_id
              ORDER BY g.type = 'system' DESC, g.created_at DESC",
-        ).map_err(|e| e.to_string())?;
-        let rows = statement.query_map(params![user_id], |row| {
-            let role: Option<String> = row.get(8)?;
-            let is_member = role.is_some();
-            Ok(json!({
-                "group_id": row.get::<_, String>(0)?,
-                "name": row.get::<_, String>(1)?,
-                "type": row.get::<_, String>(2)?,
-                "visibility": row.get::<_, String>(3)?,
-                "description": row.get::<_, String>(4)?,
-                "created_by": row.get::<_, String>(5)?,
-                "created_at": row.get::<_, i64>(6)?,
-                "member_count": row.get::<_, i64>(7)?,
-                "role": role,
-                "is_member": is_member
-            }))
-        }).map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![user_id], |row| {
+                let role: Option<String> = row.get(8)?;
+                let is_member = role.is_some();
+                Ok(json!({
+                    "group_id": row.get::<_, String>(0)?,
+                    "name": row.get::<_, String>(1)?,
+                    "type": row.get::<_, String>(2)?,
+                    "visibility": row.get::<_, String>(3)?,
+                    "description": row.get::<_, String>(4)?,
+                    "created_by": row.get::<_, String>(5)?,
+                    "created_at": row.get::<_, i64>(6)?,
+                    "member_count": row.get::<_, i64>(7)?,
+                    "role": role,
+                    "is_member": is_member
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn join_chat_group(&self, group_id: &str, user_id: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let visibility: String = conn.query_row(
-            "SELECT visibility FROM chat_groups WHERE group_id = ?1",
-            params![group_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        let visibility: String = conn
+            .query_row(
+                "SELECT visibility FROM chat_groups WHERE group_id = ?1",
+                params![group_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if visibility != "public" {
             return Err("Ce canal est privé et nécessite une invitation.".to_string());
         }
@@ -967,7 +843,8 @@ impl UqIndex {
             "INSERT OR IGNORE INTO chat_group_members (group_id, member_id, role, joined_at)
              VALUES (?1, ?2, 'member', ?3)",
             params![group_id, user_id, chrono::Utc::now().timestamp()],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -978,20 +855,24 @@ impl UqIndex {
         member_id: &str,
     ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let role: String = conn.query_row(
-            "SELECT role FROM chat_group_members
+        let role: String = conn
+            .query_row(
+                "SELECT role FROM chat_group_members
              WHERE group_id = ?1 AND member_id = ?2",
-            params![group_id, admin_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+                params![group_id, admin_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if role != "admin" {
             return Err("Seuls les administrateurs peuvent inviter des membres.".to_string());
         }
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM uq_index WHERE uq_number = ?1)",
-            params![member_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM uq_index WHERE uq_number = ?1)",
+                params![member_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if !exists {
             return Err("Le membre UQ demandé n’existe pas.".to_string());
         }
@@ -999,25 +880,30 @@ impl UqIndex {
             "INSERT OR IGNORE INTO chat_group_members (group_id, member_id, role, joined_at)
              VALUES (?1, ?2, 'member', ?3)",
             params![group_id, member_id, chrono::Utc::now().timestamp()],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn leave_chat_group(&self, group_id: &str, user_id: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let role: String = conn.query_row(
-            "SELECT role FROM chat_group_members
+        let role: String = conn
+            .query_row(
+                "SELECT role FROM chat_group_members
              WHERE group_id = ?1 AND member_id = ?2",
-            params![group_id, user_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
-        if role == "admin" {
-            let admins: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM chat_group_members
-                 WHERE group_id = ?1 AND role = 'admin'",
-                params![group_id],
+                params![group_id, user_id],
                 |row| row.get(0),
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
+        if role == "admin" {
+            let admins: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM chat_group_members
+                 WHERE group_id = ?1 AND role = 'admin'",
+                    params![group_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
             if admins <= 1 {
                 return Err("Nommez un autre administrateur avant de quitter.".to_string());
             }
@@ -1025,43 +911,53 @@ impl UqIndex {
         conn.execute(
             "DELETE FROM chat_group_members WHERE group_id = ?1 AND member_id = ?2",
             params![group_id, user_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn delete_chat_group(&self, group_id: &str, user_id: &str) -> Result<(), String> {
         let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
         let tx = conn.transaction().map_err(|e| e.to_string())?;
-        let role: String = tx.query_row(
-            "SELECT role FROM chat_group_members
+        let role: String = tx
+            .query_row(
+                "SELECT role FROM chat_group_members
              WHERE group_id = ?1 AND member_id = ?2",
-            params![group_id, user_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+                params![group_id, user_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if role != "admin" {
             return Err("Seuls les administrateurs peuvent supprimer ce groupe.".to_string());
         }
-        tx.execute("DELETE FROM chat_group_messages WHERE group_id = ?1", params![group_id])
-            .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM chat_group_members WHERE group_id = ?1", params![group_id])
-            .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM chat_groups WHERE group_id = ?1", params![group_id])
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM chat_group_messages WHERE group_id = ?1",
+            params![group_id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM chat_group_members WHERE group_id = ?1",
+            params![group_id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM chat_groups WHERE group_id = ?1",
+            params![group_id],
+        )
+        .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
     }
 
-    pub fn chat_group_messages(
-        &self,
-        group_id: &str,
-        user_id: &str,
-    ) -> Result<Vec<Value>, String> {
+    pub fn chat_group_messages(&self, group_id: &str, user_id: &str) -> Result<Vec<Value>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let member: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM chat_group_members
+        let member: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM chat_group_members
              WHERE group_id = ?1 AND member_id = ?2)",
-            params![group_id, user_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+                params![group_id, user_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if !member {
             return Err("Rejoignez le canal pour consulter ses messages.".to_string());
         }
@@ -1071,20 +967,26 @@ impl UqIndex {
             "DELETE FROM chat_group_messages WHERE created_at < ?1",
             params![cutoff],
         );
-        let mut statement = conn.prepare(
-            "SELECT id, sender_id, content, created_at
+        let mut statement = conn
+            .prepare(
+                "SELECT id, sender_id, content, created_at
              FROM chat_group_messages WHERE group_id = ?1
              ORDER BY id DESC LIMIT 100",
-        ).map_err(|e| e.to_string())?;
-        let rows = statement.query_map(params![group_id], |row| {
-            Ok(json!({
-                "id": row.get::<_, i64>(0)?.to_string(),
-                "sender": row.get::<_, String>(1)?,
-                "content": row.get::<_, String>(2)?,
-                "timestamp": row.get::<_, i64>(3)?
-            }))
-        }).map_err(|e| e.to_string())?;
-        let mut messages = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![group_id], |row| {
+                Ok(json!({
+                    "id": row.get::<_, i64>(0)?.to_string(),
+                    "sender": row.get::<_, String>(1)?,
+                    "content": row.get::<_, String>(2)?,
+                    "timestamp": row.get::<_, i64>(3)?
+                }))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut messages = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
         messages.reverse();
         Ok(messages)
     }
@@ -1096,17 +998,21 @@ impl UqIndex {
         content: &str,
     ) -> Result<i64, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let role: String = conn.query_row(
-            "SELECT m.role FROM chat_group_members m
+        let role: String = conn
+            .query_row(
+                "SELECT m.role FROM chat_group_members m
              WHERE m.group_id = ?1 AND m.member_id = ?2",
-            params![group_id, sender_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
-        let group_type: String = conn.query_row(
-            "SELECT type FROM chat_groups WHERE group_id = ?1",
-            params![group_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+                params![group_id, sender_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let group_type: String = conn
+            .query_row(
+                "SELECT type FROM chat_groups WHERE group_id = ?1",
+                params![group_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if group_type == "channel" && role != "admin" {
             return Err("Seuls les administrateurs peuvent publier dans ce canal.".to_string());
         }
@@ -1119,7 +1025,8 @@ impl UqIndex {
             "INSERT INTO chat_group_messages (group_id, sender_id, content, created_at)
              VALUES (?1, ?2, ?3, ?4)",
             params![group_id, sender_id, content, chrono::Utc::now().timestamp()],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(conn.last_insert_rowid())
     }
 
@@ -1127,7 +1034,8 @@ impl UqIndex {
     pub fn init_user_db(db_path: &str) -> Result<(), String> {
         let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-        conn.execute_batch(r#"
+        conn.execute_batch(
+            r#"
             -- 1. SOLDE
             CREATE TABLE IF NOT EXISTS balance (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1905,7 +1813,9 @@ impl UqIndex {
                 est_actif INTEGER DEFAULT 1
             );
             CREATE INDEX IF NOT EXISTS idx_cadenas_uq ON cadenas_verification(uq_number);
-        "#).map_err(|e| e.to_string())?;
+        "#,
+        )
+        .map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -1918,35 +1828,24 @@ impl UqIndex {
     // ====================
 
     pub fn get_account_by_email(&self, email: &str) -> Option<Value> {
-        if self.use_firestore {
-            let normalized = Self::normalize_email(email);
-            let lowered = email.to_lowercase();
-            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
-                if Self::fs_str(&f, "normalized_email") == normalized
-                    || Self::fs_str(&f, "uq_email").to_lowercase() == lowered
-                {
-                    return Some(serde_json::json!({
-                        "uq_number": Self::fs_str(&f, "uq_number"),
-                        "email": Self::fs_str(&f, "uq_email"),
-                        "pseudo": Self::fs_str(&f, "uq_pseudo"),
-                    }));
-                }
-            }
-            return None;
-        }
         let conn = self.conn.lock().ok()?;
 
         // Normaliser l'email
-        let normalized = email.to_lowercase()
+        let normalized = email
+            .to_lowercase()
             .replace(".", "")
             .replace("-", "")
             .replace("_", "");
 
-        let mut stmt = conn.prepare(
-            "SELECT uq_number, uq_email, uq_pseudo FROM uq_index
-             WHERE normalized_email = ?1 OR LOWER(uq_email) = ?2 LIMIT 1"
-        ).ok()?;
-        let mut rows = stmt.query(rusqlite::params![normalized, email.to_lowercase()]).ok()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT uq_number, uq_email, uq_pseudo FROM uq_index
+             WHERE normalized_email = ?1 OR LOWER(uq_email) = ?2 LIMIT 1",
+            )
+            .ok()?;
+        let mut rows = stmt
+            .query(rusqlite::params![normalized, email.to_lowercase()])
+            .ok()?;
 
         if let Some(row) = rows.next().ok()? {
             return Some(serde_json::json!({
@@ -1958,32 +1857,14 @@ impl UqIndex {
         None
     }
 
-
     /// Liste tous les comptes de l'index
     pub fn list_all(&self) -> Vec<Value> {
-        if self.use_firestore {
-            let mut result: Vec<Value> = crate::firestore_index::fs_list_docs("accounts")
-                .into_iter()
-                .map(|(_id, f)| {
-                    json!({
-                        "uq_number": Self::fs_str(&f, "uq_number"),
-                        "uq_email": Self::fs_str(&f, "uq_email"),
-                        "uq_pseudo": Self::fs_str(&f, "uq_pseudo"),
-                        "is_owner": Self::fs_bool(&f, "is_owner"),
-                        "db_path": Self::fs_str(&f, "db_path"),
-                        "created_at": Self::fs_i64(&f, "created_at"),
-                    })
-                })
-                .collect();
-            result.sort_by_key(|v| v.get("created_at").and_then(|c| c.as_i64()).unwrap_or(0));
-            return result;
-        }
         let conn = self.conn.lock().unwrap();
         let mut result = Vec::new();
 
         if let Ok(mut stmt) = conn.prepare(
             "SELECT uq_number, uq_email, uq_pseudo, is_owner, db_path, created_at
-             FROM uq_index ORDER BY created_at ASC"
+             FROM uq_index ORDER BY created_at ASC",
         ) {
             if let Ok(rows) = stmt.query_map([], |row| {
                 Ok(json!({
@@ -2004,36 +1885,25 @@ impl UqIndex {
         result
     }
     pub fn get_account_by_pseudo(&self, pseudo: &str) -> Option<Value> {
-        if self.use_firestore {
-            let normalized = Self::normalize_pseudo(pseudo);
-            let lowered = pseudo.to_lowercase();
-            for (_id, f) in crate::firestore_index::fs_list_docs("accounts") {
-                if Self::fs_str(&f, "normalized_pseudo") == normalized
-                    || Self::fs_str(&f, "uq_pseudo").to_lowercase() == lowered
-                {
-                    return Some(serde_json::json!({
-                        "uq_number": Self::fs_str(&f, "uq_number"),
-                        "email": Self::fs_str(&f, "uq_email"),
-                        "pseudo": Self::fs_str(&f, "uq_pseudo"),
-                    }));
-                }
-            }
-            return None;
-        }
         let conn = self.conn.lock().ok()?;
 
         // Normaliser le pseudo
-        let normalized = pseudo.to_lowercase()
+        let normalized = pseudo
+            .to_lowercase()
             .replace(".", "")
             .replace("-", "")
             .replace("_", "")
             .replace("uq@", "");
 
-        let mut stmt = conn.prepare(
-            "SELECT uq_number, uq_email, uq_pseudo FROM uq_index
-             WHERE normalized_pseudo = ?1 OR LOWER(uq_pseudo) = ?2 LIMIT 1"
-        ).ok()?;
-        let mut rows = stmt.query(rusqlite::params![normalized, pseudo.to_lowercase()]).ok()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT uq_number, uq_email, uq_pseudo FROM uq_index
+             WHERE normalized_pseudo = ?1 OR LOWER(uq_pseudo) = ?2 LIMIT 1",
+            )
+            .ok()?;
+        let mut rows = stmt
+            .query(rusqlite::params![normalized, pseudo.to_lowercase()])
+            .ok()?;
 
         if let Some(row) = rows.next().ok()? {
             return Some(serde_json::json!({
@@ -2081,35 +1951,35 @@ impl UqIndex {
             result.insert("emploi".into(), em);
             result.insert("mobile_money_number".into(), mm_n);
             result.insert("mobile_money_operator".into(), mm_o);
-            result.insert("date_naissance".into(), if dn > 0 { dn.to_string() } else { String::new() });
+            result.insert(
+                "date_naissance".into(),
+                if dn > 0 {
+                    dn.to_string()
+                } else {
+                    String::new()
+                },
+            );
             result.insert("display_currency".into(), devise);
         }
         result
     }
 
     pub fn update_password(&self, uq_number: &str, new_password: &str) -> Result<(), String> {
-        // Generer un nouveau salt
-        let salt = format!("uq_{}_salt_{}", uq_number.to_lowercase().replace("-", "_"), chrono::Utc::now().timestamp());
-        let new_hash = Self::hash_password(new_password, &salt);
-
-        if self.use_firestore {
-            // Comme SQLite : OK meme si le compte n'existe pas (0 ligne affectee).
-            if let Some(mut f) = crate::firestore_index::fs_get_doc("accounts", uq_number) {
-                if let Some(obj) = f.as_object_mut() {
-                    obj.insert("hash_password".to_string(), json!(new_hash));
-                    obj.insert("salt".to_string(), json!(salt));
-                    crate::firestore_index::fs_set_doc("accounts", uq_number, &f)?;
-                }
-            }
-            return Ok(());
-        }
-
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
+
+        // Generer un nouveau salt
+        let salt = format!(
+            "uq_{}_salt_{}",
+            uq_number.to_lowercase().replace("-", "_"),
+            chrono::Utc::now().timestamp()
+        );
+        let new_hash = Self::hash_password(new_password, &salt);
 
         conn.execute(
             "UPDATE uq_index SET hash_password = ?1, salt = ?2 WHERE uq_number = ?3",
             rusqlite::params![new_hash, salt, uq_number],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -2117,7 +1987,7 @@ impl UqIndex {
     /// Recherche de pseudos (auto-complétion)
     pub fn search_pseudos(&self, query: &str, limite: i64) -> Vec<serde_json::Value> {
         let pattern = format!("%{}%", query);
-        
+
         // 1. Requete SQL enrichie - lock relache apres collecte
         #[derive(Debug)]
         struct PseudoRow {
@@ -2134,7 +2004,7 @@ impl UqIndex {
             mm_op: String,
             kyc: i64,
         }
-        
+
         let sql = format!(
             "SELECT uq_pseudo, uq_number,
                     COALESCE(sexe, ''),
@@ -2159,7 +2029,7 @@ impl UqIndex {
                 Ok(s) => s,
                 Err(_) => return vec![],
             };
-            
+
             let iter = stmt.query_map(rusqlite::params![pattern], |row| {
                 Ok(PseudoRow {
                     pseudo: row.get(0)?,
@@ -2176,7 +2046,7 @@ impl UqIndex {
                     kyc: row.get(11).unwrap_or(0),
                 })
             });
-            
+
             let mut collected = Vec::new();
             if let Ok(r) = iter {
                 for row in r {
@@ -2187,18 +2057,21 @@ impl UqIndex {
             }
             collected
         }; // LOCK RELACHE ICI
-        
+
         // 2. Appels externes HORS du lock
         let mut results = Vec::new();
         for r in rows {
             let (_, display_name) = crate::uq_public_alias::get_public_identity(&r.uq_number);
             let (prenom, nom) = if display_name.contains(' ') {
                 let parts: Vec<&str> = display_name.splitn(2, ' ').collect();
-                (parts[0].to_string(), parts.get(1).unwrap_or(&"").to_string())
+                (
+                    parts[0].to_string(),
+                    parts.get(1).unwrap_or(&"").to_string(),
+                )
             } else {
                 ("".to_string(), display_name.clone())
             };
-            
+
             results.push(json!({
                 "pseudo": r.pseudo,
                 "nom": nom,
@@ -2216,32 +2089,27 @@ impl UqIndex {
                 "verified": r.kyc == 1
             }));
         }
-        
+
         results
     }
 
-/// Ouvre uq_index.db avec la clé maître (SQLCipher)
-pub fn open_encrypted_index() -> Result<rusqlite::Connection, String> {
-    let master = crate::security::master_key::get_master_key()
-        .ok_or_else(|| "Système verrouillé".to_string())?;
-    let key_hex = crate::security::master_key::key_to_hex(&master);
-    
-    let conn = rusqlite::Connection::open(crate::uq_index::uq_index_path())
-        .map_err(|e| format!("Ouverture uq_index échouée: {}", e))?;
-    
-    conn.pragma_update(None, "key", &key_hex)
-        .map_err(|e| format!("Application clé échouée: {}", e))?;
-    
-    // Test
-    conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
-        .map_err(|_| "Déchiffrement uq_index échoué".to_string())?;
-    
-    eprintln!("🔓 uq_index.db déverrouillée");
-    Ok(conn)
+    /// Ouvre uq_index.db avec la clé maître (SQLCipher)
+    pub fn open_encrypted_index() -> Result<rusqlite::Connection, String> {
+        let master = crate::security::master_key::get_master_key()
+            .ok_or_else(|| "Système verrouillé".to_string())?;
+        let key_hex = crate::security::master_key::key_to_hex(&master);
+
+        let conn = rusqlite::Connection::open("uq_index.db")
+            .map_err(|e| format!("Ouverture uq_index échouée: {}", e))?;
+
+        conn.pragma_update(None, "key", &key_hex)
+            .map_err(|e| format!("Application clé échouée: {}", e))?;
+
+        // Test
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
+            .map_err(|_| "Déchiffrement uq_index échoué".to_string())?;
+
+        eprintln!("🔓 uq_index.db déverrouillée");
+        Ok(conn)
+    }
 }
-}
-
-
-
-
-

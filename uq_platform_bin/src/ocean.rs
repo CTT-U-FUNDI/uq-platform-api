@@ -7,7 +7,7 @@
 //   Ocean est la réserve principale des 40 Md BORB.
 //
 // INVARIANT PERMANENT :
-//   Ocean (cases[0]) + Profil 1 (comptes["UQ-996697110"]) + Users
+//   Ocean (cases[0]) + Profil 1 (comptes["UQ-00000001"]) + Users
 //   + les 5 autres cases + enveloppe UBI = 40 000 000 000 BORB, EXACT.
 //
 // Toute recharge est un TRANSFERT INTERNE : rien n'est créé, rien n'est
@@ -18,7 +18,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 /// Profil 1 = propriétaire de la plateforme
-pub const PROFIL_1: &str = "UQ-996697110";
+pub const PROFIL_1: &str = "UQ-00000001";
 
 /// Trésor cible du Profil 1 : 1 000 000 BORB
 pub const TRESOR_CIBLE_BORB: i64 = 1_000_000;
@@ -69,11 +69,7 @@ pub fn etat() -> EtatOcean {
     let orb = crate::persistence::load_global_orb();
 
     let ocean = orb.cases[0];
-    let profil1 = orb
-        .comptes
-        .get(PROFIL_1)
-        .map(|p| p.solde)
-        .unwrap_or(0);
+    let profil1 = orb.comptes.get(PROFIL_1).map(|p| p.solde).unwrap_or(0);
 
     // Solde dépensable réel du Profil 1 (source de vérité)
     let profil1_points = lire_points(PROFIL_1).unwrap_or_else(|| femto_vers_points(profil1));
@@ -109,9 +105,11 @@ pub fn etat() -> EtatOcean {
 fn lire_points(uq: &str) -> Option<i64> {
     let chemin = format!("data/users/{}.db", uq.replace("-", "_").to_lowercase());
     let conn = Connection::open(chemin).ok()?;
-    conn.query_row("SELECT COALESCE(points,0) FROM balance WHERE id = 1", [], |r| {
-        r.get::<_, i64>(0)
-    })
+    conn.query_row(
+        "SELECT COALESCE(points,0) FROM balance WHERE id = 1",
+        [],
+        |r| r.get::<_, i64>(0),
+    )
     .ok()
 }
 
@@ -187,12 +185,14 @@ pub fn recharger_profil1(forcer: bool) -> Result<ResultatRecharge, String> {
         Some(p) if p.porte_cadenas() => p.solde = cible_femto,
         Some(_) => {
             return Err(format!(
-                "OCEAN refuse : {} n'a pas de cadenas structurel lie", PROFIL_1
+                "OCEAN refuse : {} n'a pas de cadenas structurel lie",
+                PROFIL_1
             ));
         }
         None => {
             return Err(format!(
-                "OCEAN refuse : {} absent du BlockOrb (compte fantome)", PROFIL_1
+                "OCEAN refuse : {} absent du BlockOrb (compte fantome)",
+                PROFIL_1
             ));
         }
     }
@@ -310,7 +310,12 @@ pub fn historique() -> Vec<MouvementOcean> {
         .unwrap_or_default()
 }
 
-fn journaliser(type_mouvement: &str, uq: &str, montant_points: i64, retour_femto: u128) -> Result<(), String> {
+fn journaliser(
+    type_mouvement: &str,
+    uq: &str,
+    montant_points: i64,
+    retour_femto: u128,
+) -> Result<(), String> {
     let mut h = historique();
     h.push(MouvementOcean {
         type_mouvement: type_mouvement.to_string(),

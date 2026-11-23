@@ -7,7 +7,7 @@
 //   PUBLIC : pas d'appel (health, price, oracle, QR, pseudos…)
 //   USER   : exiger_auth()          → JWT valide obligatoire
 //            exiger_soi_ou_owner()  → en plus, claims.sub == cible
-//   OWNER  : exiger_owner()         → UQ-996697110 uniquement
+//   OWNER  : exiger_owner()         → UQ-00000001 uniquement
 //
 // Toute réponse d'échec est normalisée (401 / 403) et ne révèle rien.
 // ====================
@@ -18,7 +18,7 @@ use serde_json::json;
 use crate::auth::{AuthManager, Claims};
 
 /// UQ du propriétaire de la plateforme
-pub const OWNER_UQ: &str = "UQ-996697110";
+pub const OWNER_UQ: &str = "UQ-00000001";
 
 /// Rôles acceptés pour un utilisateur normal
 pub const ROLES_USER: &[&str] = &["user", "admin", "guardian", "owner"];
@@ -105,7 +105,10 @@ pub fn exiger_owner(req: &HttpRequest) -> Result<Claims, HttpResponse> {
     };
 
     if !est_owner(&claims) {
-        eprintln!("🚫 [AUTH] {} a tenté une opération réservée à l'owner", claims.sub);
+        eprintln!(
+            "🚫 [AUTH] {} a tenté une opération réservée à l'owner",
+            claims.sub
+        );
         return Err(refuse_owner());
     }
     Ok(claims)
@@ -133,7 +136,7 @@ mod tests {
 
     #[test]
     fn uq_reconnu() {
-        assert!(ressemble_a_un_uq("UQ-996697110"));
+        assert!(ressemble_a_un_uq("UQ-00000001"));
         assert!(ressemble_a_un_uq("uq-732688531"));
         assert!(!ressemble_a_un_uq("uq@jean"));
         assert!(!ressemble_a_un_uq("42"));
@@ -148,7 +151,7 @@ mod tests {
 
         assert!(acces_autorise(&moi, "UQ-732688531"));
         assert!(acces_autorise(&moi, "uq-732688531")); // insensible à la casse
-        assert!(!acces_autorise(&moi, "UQ-996697110"));
+        assert!(!acces_autorise(&moi, "UQ-00000001"));
         assert!(!acces_autorise(&autre, "UQ-732688531"));
         assert!(acces_autorise(&owner, "UQ-732688531"));
     }

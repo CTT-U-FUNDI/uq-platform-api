@@ -86,7 +86,11 @@ pub fn agreger(
     precedentes: &HashMap<String, HashMap<String, f64>>,
     sante_precedente: &HashMap<String, SanteSource>,
     maintenant: i64,
-) -> (SnapshotTaux, HashMap<String, SanteSource>, Vec<serde_json::Value>) {
+) -> (
+    SnapshotTaux,
+    HashMap<String, SanteSource>,
+    Vec<serde_json::Value>,
+) {
     // Par devise : (source, valeur)
     let mut contributions: HashMap<String, Vec<(String, f64)>> = HashMap::new();
     // Instant de récolte par source : sert à dater chaque devise observée.
@@ -130,7 +134,9 @@ pub fn agreger(
         });
 
     for reponse in &reponses {
-        let etat_source = sante.entry(reponse.source.to_string()).or_insert_with(|| sante_pour(reponse));
+        let etat_source = sante
+            .entry(reponse.source.to_string())
+            .or_insert_with(|| sante_pour(reponse));
 
         if reponse.categorie == Categorie::BanqueCentrale {
             // Référence officielle : hors médiane, cadence quotidienne.
@@ -189,7 +195,9 @@ pub fn agreger(
     for (devise, mut listes) in contributions {
         listes.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         let toutes: Vec<f64> = listes.iter().map(|(_, v)| *v).collect();
-        let Some(med) = mediane(&toutes) else { continue };
+        let Some(med) = mediane(&toutes) else {
+            continue;
+        };
 
         // Rejet des valeurs aberrantes, puis médiane recalculée sur le propre.
         let propres: Vec<(String, f64)> = listes
@@ -239,9 +247,16 @@ pub fn agreger(
         };
 
         let ecart_pct = if origines.len() > 1 {
-            let mini = valeurs_propres.iter().cloned().fold(f64::INFINITY, f64::min);
+            let mini = valeurs_propres
+                .iter()
+                .cloned()
+                .fold(f64::INFINITY, f64::min);
             let maxi = valeurs_propres.iter().cloned().fold(f64::MIN, f64::max);
-            Some(if maxi > 0.0 { (maxi - mini) / maxi * 100.0 } else { 0.0 })
+            Some(if maxi > 0.0 {
+                (maxi - mini) / maxi * 100.0
+            } else {
+                0.0
+            })
         } else {
             Some(0.0)
         };
@@ -284,18 +299,18 @@ pub fn agreger(
     }
 
     // USD par définition, pas par estimation : 1 USD = 1 USD.
-    rates
+    rates.entry("USD".to_string()).or_insert(1.0);
+    informations
         .entry("USD".to_string())
-        .or_insert(1.0);
-    informations.entry("USD".to_string()).or_insert(InformationDevise {
-        valeur: 1.0,
-        source: "definition".to_string(),
-        origines: vec![],
-        mediane: Some(1.0),
-        ecart_pct: Some(0.0),
-        officiel_bcc: None,
-        observe_a: maintenant,
-    });
+        .or_insert(InformationDevise {
+            valeur: 1.0,
+            source: "definition".to_string(),
+            origines: vec![],
+            mediane: Some(1.0),
+            ecart_pct: Some(0.0),
+            officiel_bcc: None,
+            observe_a: maintenant,
+        });
 
     let nb_sources = reponses.len();
     let source_globale = if nb_sources == 0 {
@@ -369,11 +384,7 @@ pub fn est_fraiche(info: &InformationDevise, maintenant: i64) -> bool {
 ///
 /// Ne rejoue que ce que le cycle courant n'a PAS observé : une valeur
 /// réellement vue à l'instant gagne toujours contre une valeur resservie.
-pub fn rejouer_connu(
-    snapshot: &mut SnapshotTaux,
-    connu: &SnapshotTaux,
-    maintenant: i64,
-) -> usize {
+pub fn rejouer_connu(snapshot: &mut SnapshotTaux, connu: &SnapshotTaux, maintenant: i64) -> usize {
     let mut rejouees = 0usize;
     for (devise, info) in &connu.informations {
         if snapshot.rates.contains_key(devise) {
@@ -409,7 +420,11 @@ pub fn rejouer_du_passe(
         if snapshot.rates.contains_key(&point.devise) {
             continue;
         }
-        let provenance = if point.source == "agregat" { "mediane" } else { &point.source };
+        let provenance = if point.source == "agregat" {
+            "mediane"
+        } else {
+            &point.source
+        };
         snapshot.rates.insert(point.devise.clone(), point.valeur);
         snapshot.informations.insert(
             point.devise.clone(),
@@ -422,7 +437,11 @@ pub fn rejouer_du_passe(
                 origines: vec![provenance.to_string()],
                 mediane: None,
                 ecart_pct: None,
-                officiel_bcc: if point.source == "bcc" { Some(point.valeur) } else { None },
+                officiel_bcc: if point.source == "bcc" {
+                    Some(point.valeur)
+                } else {
+                    None
+                },
                 observe_a: point.horodatage,
             },
         );
@@ -456,11 +475,18 @@ mod tests {
             reponse("currencyapi", &[("CDF", 2305.0)], 0),
             reponse("fixer", &[("CDF", 9000.0)], 0), // aberrante
         ];
-        let (snapshot, _, anomalies) = agreger(reponses, &HashMap::new(), &HashMap::new(), maintenant);
+        let (snapshot, _, anomalies) =
+            agreger(reponses, &HashMap::new(), &HashMap::new(), maintenant);
         let cdf = snapshot.rates.get("CDF").copied().expect("CDF présent");
-        assert!((cdf - 2305.0).abs() < 20.0, "médiane attendue ~2305, obtenu {}", cdf);
         assert!(
-            anomalies.iter().any(|a| a["type"] == "valeur_aberrante" && a["source"] == "fixer"),
+            (cdf - 2305.0).abs() < 20.0,
+            "médiane attendue ~2305, obtenu {}",
+            cdf
+        );
+        assert!(
+            anomalies
+                .iter()
+                .any(|a| a["type"] == "valeur_aberrante" && a["source"] == "fixer"),
             "la source aberrante doit être journalisée"
         );
     }
@@ -486,7 +512,8 @@ mod tests {
 
         for tick in 1..=(SEUIL_IMMOBILITE as usize + 1) {
             let reponses = vec![reponse("er-api", taux_fixe, 0)];
-            let (snapshot, sante_cycle, _) = agreger(reponses.clone(), &precedentes, &sante, maintenant);
+            let (snapshot, sante_cycle, _) =
+                agreger(reponses.clone(), &precedentes, &sante, maintenant);
             for r in reponses {
                 precedentes.insert(r.source.to_string(), r.taux);
             }
@@ -525,14 +552,19 @@ mod tests {
         // Six cycles, mais des valeurs qui bougent : aucune suspicion.
         for i in 0..6 {
             let reponses = valeur(2300.0 + i as f64 * 2.0);
-            let (snapshot, sante_cycle, _) = agreger(reponses.clone(), &precedentes, &sante, maintenant);
+            let (snapshot, sante_cycle, _) =
+                agreger(reponses.clone(), &precedentes, &sante, maintenant);
             for r in reponses {
                 precedentes.insert(r.source.to_string(), r.taux);
             }
             for (n, m) in sante_cycle {
                 sante.insert(n, m);
             }
-            assert!(snapshot.rates.contains_key("CDF"), "un taux mouvant reste retenu (cycle {})", i);
+            assert!(
+                snapshot.rates.contains_key("CDF"),
+                "un taux mouvant reste retenu (cycle {})",
+                i
+            );
         }
         assert_eq!(
             sante.get("er-api").map(|s| s.etat),
@@ -584,7 +616,11 @@ mod tests {
     fn donnee_trop_ancienne_est_rejetee() {
         let maintenant = chrono::Utc::now().timestamp();
         let (snapshot, sante, anomalies) = agreger(
-            vec![reponse("er-api", &[("CDF", 2309.0)], CADENCE_TEMPS_REEL_SECS + 10)],
+            vec![reponse(
+                "er-api",
+                &[("CDF", 2309.0)],
+                CADENCE_TEMPS_REEL_SECS + 10,
+            )],
             &HashMap::new(),
             &HashMap::new(),
             maintenant,
@@ -618,7 +654,10 @@ mod tests {
             &HashMap::new(),
             maintenant,
         );
-        assert!(!neuf.rates.contains_key("CDF"), "sans rejeu le CDF est perdu");
+        assert!(
+            !neuf.rates.contains_key("CDF"),
+            "sans rejeu le CDF est perdu"
+        );
 
         let rejouees = rejouer_connu(&mut neuf, &vecu, maintenant);
 
@@ -630,8 +669,7 @@ mod tests {
             "la devise rejouée garde sa vraie date d'observation"
         );
         assert_eq!(
-            neuf.informations["BTC"].observe_a,
-            maintenant,
+            neuf.informations["BTC"].observe_a, maintenant,
             "une valeur vue à l'instant ne doit pas être datée du cycle précédent"
         );
     }

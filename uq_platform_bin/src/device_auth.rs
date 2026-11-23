@@ -185,7 +185,8 @@ pub fn chemin_base(uq: &str) -> String {
 
 pub fn ouvrir(uq: &str) -> Result<Connection, String> {
     let chemin = chemin_base(uq);
-    let conn = Connection::open(&chemin).map_err(|e| format!("Base du compte indisponible ({})", e))?;
+    let conn =
+        Connection::open(&chemin).map_err(|e| format!("Base du compte indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     assurer_table(&conn)?;
     Ok(conn)
@@ -400,14 +401,20 @@ mod tests {
         assert_eq!(palier_pour(0, 0, 1_700_000_000), Palier::Complet);
         // Une cle dont la derniere connexion n'est pas horodatee reste au palier
         // strict, meme si un controle complet est connu par ailleurs.
-        assert_eq!(palier_pour(0, 1_699_999_000, 1_700_000_000), Palier::Complet);
+        assert_eq!(
+            palier_pour(0, 1_699_999_000, 1_700_000_000),
+            Palier::Complet
+        );
     }
 
     #[test]
     fn moins_de_24h_reprise_silencieuse() {
         let maint = 1_700_000_000;
         let dernier_complet = maint - 2 * JOUR;
-        assert_eq!(palier_pour(maint - 60, dernier_complet, maint), Palier::Auto);
+        assert_eq!(
+            palier_pour(maint - 60, dernier_complet, maint),
+            Palier::Auto
+        );
         // A 23 h 59 : toujours auto.
         assert_eq!(
             palier_pour(maint - (PALIER_AUTO_SECS - 1), dernier_complet, maint),
@@ -429,7 +436,10 @@ mod tests {
     fn entre_24_et_48h_biometrie_seule() {
         let maint = 1_700_000_000;
         let complet = maint - 3 * JOUR;
-        assert_eq!(palier_pour(maint - 30 * 3600, complet, maint), Palier::Biometrie);
+        assert_eq!(
+            palier_pour(maint - 30 * 3600, complet, maint),
+            Palier::Biometrie
+        );
         assert_eq!(
             palier_pour(maint - (PALIER_COMPLET_SECS - 1), complet, maint),
             Palier::Biometrie
@@ -444,7 +454,10 @@ mod tests {
             palier_pour(maint - PALIER_COMPLET_SECS, complet, maint),
             Palier::Complet
         );
-        assert_eq!(palier_pour(maint - 10 * JOUR, complet, maint), Palier::Complet);
+        assert_eq!(
+            palier_pour(maint - 10 * JOUR, complet, maint),
+            Palier::Complet
+        );
     }
 
     #[test]
@@ -475,7 +488,10 @@ mod tests {
     fn horloge_du_client_avancee_ne_favorise_personne() {
         let maint = 1_700_000_000;
         // Connexion « future » : aucune reprise silencieuse la dessus.
-        assert_eq!(palier_pour(maint + 500, maint + 500, maint), Palier::Complet);
+        assert_eq!(
+            palier_pour(maint + 500, maint + 500, maint),
+            Palier::Complet
+        );
     }
 
     #[test]
@@ -526,9 +542,15 @@ mod tests {
         tracer_controle_complet(&conn, maint).expect("horodate");
         assert!(controle_complet_recent(&conn, maint));
         // Juste apres : toujours dans la fenetre.
-        assert!(controle_complet_recent(&conn, maint + FENETRE_CONTROLE_COMPLET_SECS));
+        assert!(controle_complet_recent(
+            &conn,
+            maint + FENETRE_CONTROLE_COMPLET_SECS
+        ));
         // Une de seconde de plus : la fenetre est fermee.
-        assert!(!controle_complet_recent(&conn, maint + FENETRE_CONTROLE_COMPLET_SECS + 1));
+        assert!(!controle_complet_recent(
+            &conn,
+            maint + FENETRE_CONTROLE_COMPLET_SECS + 1
+        ));
 
         // Un horodatage ecrit dans le futur n'est pas credité.
         tracer_controle_complet(&conn, maint + 10_000).expect("horodate futur");

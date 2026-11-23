@@ -1,11 +1,14 @@
-use std::fs;
-use std::path::Path;
-use std::sync::{Arc, Mutex, OnceLock, atomic::{AtomicU64, Ordering}};
-use std::thread;
-use std::time::Duration;
-use serde::{Serialize, Deserialize};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex, OnceLock,
+};
+use std::thread;
+use std::time::Duration;
 use uq_blockchain::constants::TOTAL_BORB;
 /// Base de donnees persistante JSON
 pub struct Database {
@@ -190,10 +193,11 @@ pub struct Session {
     pub expires_at: i64,
 }
 
-
 impl Database {
     /// Acces public au pool SQLite (pour les modules externes).
-    pub fn conn(&self) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, r2d2::Error> {
+    pub fn conn(
+        &self,
+    ) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, r2d2::Error> {
         self.sqlite_pool.get()
     }
 }
@@ -215,15 +219,11 @@ impl Database {
             Database::default_data()
         };
 
-        // UQ_DB_PATH : chemin absolu du fichier SQLite (disque persistant Render).
-        // Sans la variable, on derive du chemin JSON historique.
-        let sqlite_path = std::env::var("UQ_DB_PATH").unwrap_or_else(|_| {
-            if file_path.ends_with(".json") {
-                file_path.trim_end_matches(".json").to_string() + ".db"
-            } else {
-                file_path.to_string() + ".db"
-            }
-        });
+        let sqlite_path = if file_path.ends_with(".json") {
+            file_path.trim_end_matches(".json").to_string() + ".db"
+        } else {
+            file_path.to_string() + ".db"
+        };
 
         // create r2d2 pool for sqlite
         let manager = SqliteConnectionManager::file(&sqlite_path);
@@ -232,10 +232,12 @@ impl Database {
             .build(manager)
             .expect("Failed to create sqlite r2d2 pool");
 
-        let persist_json = std::env::var("UQ_KEEP_JSON").map(|v| {
-            let vl = v.to_lowercase();
-            !(vl == "0" || vl == "false")
-        }).unwrap_or(false);
+        let persist_json = std::env::var("UQ_KEEP_JSON")
+            .map(|v| {
+                let vl = v.to_lowercase();
+                !(vl == "0" || vl == "false")
+            })
+            .unwrap_or(false);
 
         // Open or create WAL (use env WAL_DIR or default)
         let wal_dir = std::env::var("WAL_DIR").unwrap_or_else(|_| "./data/wal".to_string());
@@ -244,7 +246,9 @@ impl Database {
             Err(e) => {
                 eprintln!("Failed to open WAL: {}", e);
                 // As a fallback create a dummy in-memory wal by opening default dir
-                Arc::new(crate::wal::Wal::open("./data/wal").expect("Failed to create fallback WAL"))
+                Arc::new(
+                    crate::wal::Wal::open("./data/wal").expect("Failed to create fallback WAL"),
+                )
             }
         };
 
@@ -281,18 +285,42 @@ impl Database {
                 if let Ok(entries) = db.wal.read_all() {
                     for entry in entries.into_iter().filter(|e| e.seq > last_snapshot_seq) {
                         if entry.op_type == "tx" {
-                            let sender = entry.payload.get("sender").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let recipient = entry.payload.get("recipient").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let amount = entry.payload.get("amount_points").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let fee = entry.payload.get("fee_points").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let timestamp = entry.payload.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(chrono::Utc::now().timestamp());
+                            let sender = entry
+                                .payload
+                                .get("sender")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let recipient = entry
+                                .payload
+                                .get("recipient")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let amount = entry
+                                .payload
+                                .get("amount_points")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let fee = entry
+                                .payload
+                                .get("fee_points")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let timestamp = entry
+                                .payload
+                                .get("timestamp")
+                                .and_then(|v| v.as_i64())
+                                .unwrap_or(chrono::Utc::now().timestamp());
 
                             // idempotency: skip if transaction already present in memory
                             let exists = {
                                 let d = db.data.lock().unwrap();
                                 d.transactions.iter().any(|t| t.id == entry.op_id)
                             };
-                            if exists { continue; }
+                            if exists {
+                                continue;
+                            }
 
                             // apply to in-memory state
                             {
@@ -306,10 +334,12 @@ impl Database {
                                     timestamp,
                                 });
                                 if let Some(s) = d.accounts.iter_mut().find(|a| a.id == sender) {
-                                    s.balance_points = s.balance_points.saturating_sub(amount as u64);
+                                    s.balance_points =
+                                        s.balance_points.saturating_sub(amount as u64);
                                 }
                                 if let Some(r) = d.accounts.iter_mut().find(|a| a.id == recipient) {
-                                    r.balance_points = r.balance_points.saturating_add(amount as u64);
+                                    r.balance_points =
+                                        r.balance_points.saturating_add(amount as u64);
                                 }
                             }
 
@@ -334,8 +364,14 @@ impl Database {
             let tx_counter = db.tx_since_snapshot.clone();
 
             // config from env
-            let snapshot_interval_secs = std::env::var("SNAPSHOT_INTERVAL_SECS").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(10u64);
-            let snapshot_tx_threshold = std::env::var("SNAPSHOT_TX_THRESHOLD").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(5000u64);
+            let snapshot_interval_secs = std::env::var("SNAPSHOT_INTERVAL_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(10u64);
+            let snapshot_tx_threshold = std::env::var("SNAPSHOT_TX_THRESHOLD")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(5000u64);
 
             thread::Builder::new().name("snapshot-worker".into()).spawn(move || {
                 loop {
@@ -439,12 +475,30 @@ impl Database {
             votes: Vec::new(),
             transactions: Vec::new(),
             six_cases: vec![
-                CaseBalance { name: "Treasury".to_string(), balance: 31_120_000_000 },
-                CaseBalance { name: "Fees".to_string(), balance: 2_240_000_000 },
-                CaseBalance { name: "Rewards".to_string(), balance: 2_240_000_000 },
-                CaseBalance { name: "Savings".to_string(), balance: 2_240_000_000 },
-                CaseBalance { name: "Credit".to_string(), balance: 1_320_000_000 },
-                CaseBalance { name: "Shield".to_string(), balance: 840_000_000 },
+                CaseBalance {
+                    name: "Treasury".to_string(),
+                    balance: 31_120_000_000,
+                },
+                CaseBalance {
+                    name: "Fees".to_string(),
+                    balance: 2_240_000_000,
+                },
+                CaseBalance {
+                    name: "Rewards".to_string(),
+                    balance: 2_240_000_000,
+                },
+                CaseBalance {
+                    name: "Savings".to_string(),
+                    balance: 2_240_000_000,
+                },
+                CaseBalance {
+                    name: "Credit".to_string(),
+                    balance: 1_320_000_000,
+                },
+                CaseBalance {
+                    name: "Shield".to_string(),
+                    balance: 840_000_000,
+                },
             ],
             ubi_claims: Vec::new(),
             proposals: Vec::new(),
@@ -455,7 +509,9 @@ impl Database {
     }
     /// Sauvegarde sur disque (JSON) "” désactivée par défaut, contrôlée par UQ_KEEP_JSON env
     fn save(&self) {
-        if !self.persist_json { return; }
+        if !self.persist_json {
+            return;
+        }
         if let Ok(data) = self.data.lock() {
             if let Ok(json_str) = serde_json::to_string_pretty(&*data) {
                 let _ = fs::write(&self.file_path, json_str);
@@ -466,8 +522,12 @@ impl Database {
     /// Initialise la base SQLite et crée les tables si elles n'existent pas
     fn init_sqlite(&self) -> Result<(), rusqlite::Error> {
         // use pooled connection
-        let conn = self.sqlite_pool.get().map_err(|_e| rusqlite::Error::InvalidQuery)?;
-        conn.execute_batch("PRAGMA journal_mode = WAL;
+        let conn = self
+            .sqlite_pool
+            .get()
+            .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
             CREATE TABLE IF NOT EXISTS accounts (
                 id TEXT PRIMARY KEY,
                 public_key BLOB,
@@ -718,7 +778,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions (sender);
             CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions (recipient);
             CREATE INDEX IF NOT EXISTS idx_offers_created_at ON offers (created_at);
-        ")?;
+        ",
+        )?;
         Ok(())
     }
 
@@ -735,7 +796,9 @@ impl Database {
 
         let tx = conn.transaction()?;
         // accounts: importer si table vide
-        let accounts_count: i64 = tx.query_row("SELECT COUNT(1) FROM accounts", [], |r| r.get(0)).unwrap_or(0);
+        let accounts_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM accounts", [], |r| r.get(0))
+            .unwrap_or(0);
         if accounts_count == 0 {
             for acc in data.accounts.iter() {
                 let _ = tx.execute(
@@ -745,7 +808,9 @@ impl Database {
             }
         }
         // transactions: importer si table vide
-        let tx_count: i64 = tx.query_row("SELECT COUNT(1) FROM transactions", [], |r| r.get(0)).unwrap_or(0);
+        let tx_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM transactions", [], |r| r.get(0))
+            .unwrap_or(0);
         if tx_count == 0 {
             for tr in data.transactions.iter() {
                 let _ = tx.execute(
@@ -755,19 +820,32 @@ impl Database {
             }
         }
         // publications: importer si table vide
-        let pub_count: i64 = tx.query_row("SELECT COUNT(1) FROM publications", [], |r| r.get(0)).unwrap_or(0);
+        let pub_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM publications", [], |r| r.get(0))
+            .unwrap_or(0);
         if pub_count == 0 {
             for p in data.publications.iter() {
-                let id = p.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("pub_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+                let id = p
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        format!(
+                            "pub_{}",
+                            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                        )
+                    });
                 let json_str = serde_json::to_string(p)?;
                 let _ = tx.execute(
                     "INSERT OR IGNORE INTO publications (id, json) VALUES (?1, ?2)",
-                    rusqlite::params![id, json_str]
+                    rusqlite::params![id, json_str],
                 );
             }
         }
         // offers: importer si table vide
-        let offers_count: i64 = tx.query_row("SELECT COUNT(1) FROM offers", [], |r| r.get(0)).unwrap_or(0);
+        let offers_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM offers", [], |r| r.get(0))
+            .unwrap_or(0);
         if offers_count == 0 {
             for o in data.offers.iter() {
                 let _ = tx.execute(
@@ -777,7 +855,9 @@ impl Database {
             }
         }
         // ubi_claims: importer si table vide
-        let ubi_count: i64 = tx.query_row("SELECT COUNT(1) FROM ubi_claims", [], |r| r.get(0)).unwrap_or(0);
+        let ubi_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM ubi_claims", [], |r| r.get(0))
+            .unwrap_or(0);
         if ubi_count == 0 {
             for u in data.ubi_claims.iter() {
                 let _ = tx.execute(
@@ -787,7 +867,9 @@ impl Database {
             }
         }
         // sessions: importer si table vide
-        let sess_count: i64 = tx.query_row("SELECT COUNT(1) FROM sessions", [], |r| r.get(0)).unwrap_or(0);
+        let sess_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM sessions", [], |r| r.get(0))
+            .unwrap_or(0);
         if sess_count == 0 {
             for s in data.sessions.iter() {
                 let _ = tx.execute(
@@ -797,15 +879,25 @@ impl Database {
             }
         }
         // chat_messages: importer si table vide (historique d'un JSON local)
-        let messages_count: i64 = tx.query_row("SELECT COUNT(1) FROM chat_messages", [], |r| r.get(0)).unwrap_or(0);
+        let messages_count: i64 = tx
+            .query_row("SELECT COUNT(1) FROM chat_messages", [], |r| r.get(0))
+            .unwrap_or(0);
         if messages_count == 0 {
             for m in data.messages.iter() {
                 let _ = tx.execute(
                     "INSERT OR IGNORE INTO chat_messages
                      (id, sender, recipient, content, image, delivered, timestamp, expires_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    rusqlite::params![m.id, m.sender, m.recipient, m.content, m.image,
-                        if m.delivered { 1i64 } else { 0i64 }, m.timestamp, m.expires_at]
+                    rusqlite::params![
+                        m.id,
+                        m.sender,
+                        m.recipient,
+                        m.content,
+                        m.image,
+                        if m.delivered { 1i64 } else { 0i64 },
+                        m.timestamp,
+                        m.expires_at
+                    ],
                 );
             }
         }
@@ -840,9 +932,11 @@ impl Database {
     /// Récupère le solde d'un compte (préférence SQLite)
     pub fn get_balance(&self, id: &str) -> (u64, u64) {
         if let Ok(conn) = self.sqlite_pool.get() {
-            let mut stmt = match conn.prepare("SELECT balance_bubbles, balance_points FROM accounts WHERE id = ?1") {
+            let mut stmt = match conn
+                .prepare("SELECT balance_bubbles, balance_points FROM accounts WHERE id = ?1")
+            {
                 Ok(s) => s,
-                Err(_) => return (0,0),
+                Err(_) => return (0, 0),
             };
             let mut rows = stmt.query(rusqlite::params![id]).unwrap();
             if let Ok(Some(row)) = rows.next() {
@@ -853,13 +947,20 @@ impl Database {
         }
         // Fallback to in-memory JSON
         let data = self.data.lock().unwrap();
-        data.accounts.iter()
+        data.accounts
+            .iter()
             .find(|a| a.id == id)
             .map(|a| (a.balance_bubbles, a.balance_points))
             .unwrap_or((0, 0))
     }
     /// Enregistre une transaction (JSON + SQLite)
-    pub fn record_transaction(&self, sender: &str, recipient: &str, amount_points: u64, fee_points: u64) {
+    pub fn record_transaction(
+        &self,
+        sender: &str,
+        recipient: &str,
+        amount_points: u64,
+        fee_points: u64,
+    ) {
         // First, append to WAL (durable append-only source)
         let payload = serde_json::json!({
             "sender": sender,
@@ -872,7 +973,10 @@ impl Database {
             Ok(_entry) => {
                 // proceed to update in-memory state
                 let mut data = self.data.lock().unwrap();
-                let id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+                let id = format!(
+                    "tx_{}",
+                    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                );
                 data.transactions.push(TransactionRecord {
                     id: id.clone(),
                     sender: sender.to_string(),
@@ -892,7 +996,10 @@ impl Database {
 
                 // Also persist to SQLite (best-effort, checkpointing async via snapshots)
                 if let Ok(conn) = self.sqlite_pool.get() {
-                    let id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+                    let id = format!(
+                        "tx_{}",
+                        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                    );
                     let _ = conn.execute(
                         "INSERT INTO transactions (id, sender, recipient, amount_points, fee_points, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                         rusqlite::params![id, sender, recipient, amount_points as i64, fee_points as i64, chrono::Utc::now().timestamp()],
@@ -916,14 +1023,21 @@ impl Database {
     /// Recupere les statistiques des six coffres
     pub fn get_cases_stats(&self) -> Vec<(String, u64)> {
         let data = self.data.lock().unwrap();
-        data.six_cases.iter().map(|c| (c.name.clone(), c.balance)).collect()
+        data.six_cases
+            .iter()
+            .map(|c| (c.name.clone(), c.balance))
+            .collect()
     }
     /// Enregistre la reclamation UBI
     pub fn claim_ubi(&self, account_id: &str, amount_points: u64) {
         {
             let mut data = self.data.lock().unwrap();
             let now = chrono::Utc::now().timestamp();
-            if let Some(claim) = data.ubi_claims.iter_mut().find(|c| c.account_id == account_id) {
+            if let Some(claim) = data
+                .ubi_claims
+                .iter_mut()
+                .find(|c| c.account_id == account_id)
+            {
                 claim.last_claim_at = now;
                 claim.streak_days += 1;
                 claim.total_claimed += amount_points;
@@ -942,7 +1056,10 @@ impl Database {
     pub fn create_proposal(&self, title: &str, description: &str, proposer: &str) {
         {
             let mut data = self.data.lock().unwrap();
-            let id = format!("prop_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            let id = format!(
+                "prop_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            );
             data.proposals.push(Proposal {
                 id,
                 title: title.to_string(),
@@ -973,7 +1090,10 @@ impl Database {
         ephemere: bool,
     ) -> String {
         self.purger_messages_expires();
-        let id = format!("msg_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let id = format!(
+            "msg_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         let maintenant = chrono::Utc::now().timestamp();
         let message = Message {
             id: id.clone(),
@@ -1017,33 +1137,41 @@ impl Database {
     /// pas de zero : les fils, les non-lus et les accusés de lecture survivent
     /// au redemarrage du process.
     pub fn charger_messages_sqlite(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
-        let sortie = conn.prepare(
-            "SELECT id, sender, recipient, content, image, delivered, timestamp, expires_at
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
+        let sortie = conn
+            .prepare(
+                "SELECT id, sender, recipient, content, image, delivered, timestamp, expires_at
              FROM chat_messages WHERE expires_at IS NULL OR expires_at > ?1
              ORDER BY timestamp",
-        ).and_then(|mut stmt| {
-            stmt.query_map([chrono::Utc::now().timestamp()], |row| {
-                Ok(Message {
-                    id: row.get(0)?,
-                    sender: row.get(1)?,
-                    recipient: row.get(2)?,
-                    content: row.get(3)?,
-                    image: row.get(4)?,
-                    delivered: row.get::<_, i64>(5)? != 0,
-                    timestamp: row.get(6)?,
-                    expires_at: row.get(7)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()
-        });
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map([chrono::Utc::now().timestamp()], |row| {
+                    Ok(Message {
+                        id: row.get(0)?,
+                        sender: row.get(1)?,
+                        recipient: row.get(2)?,
+                        content: row.get(3)?,
+                        image: row.get(4)?,
+                        delivered: row.get::<_, i64>(5)? != 0,
+                        timestamp: row.get(6)?,
+                        expires_at: row.get(7)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()
+            });
         let Ok(recharges) = sortie else { return };
         if recharges.is_empty() {
             return;
         }
         let mut data = self.data.lock().unwrap();
         // Le JSON de depart peut deja porter des messages : on ne double pas.
-        let deja_vus = data.messages.iter().map(|m| m.id.clone()).collect::<Vec<_>>();
+        let deja_vus = data
+            .messages
+            .iter()
+            .map(|m| m.id.clone())
+            .collect::<Vec<_>>();
         for message in recharges {
             if !deja_vus.contains(&message.id) {
                 data.messages.push(message);
@@ -1058,8 +1186,7 @@ impl Database {
         let supprimes = {
             let mut data = self.data.lock().unwrap();
             let avant = data.messages.len();
-            data
-                .messages
+            data.messages
                 .retain(|m| m.expires_at.map_or(true, |fin| fin > maintenant));
             avant - data.messages.len()
         };
@@ -1202,8 +1329,17 @@ impl Database {
         out.into_iter().map(|(_, v)| v).collect()
     }
     /// Publie une offre (JSON + SQLite)
-    pub fn publish_offer(&self, seller: &str, description: &str, price_per_mb: u64, total_size_mb: u64) {
-        let id = format!("offer_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+    pub fn publish_offer(
+        &self,
+        seller: &str,
+        description: &str,
+        price_per_mb: u64,
+        total_size_mb: u64,
+    ) {
+        let id = format!(
+            "offer_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         // JSON
         {
             let mut data = self.data.lock().unwrap();
@@ -1230,7 +1366,10 @@ impl Database {
     pub fn create_session(&self, account_id: &str, token: &str, expires_at: i64) {
         {
             let mut data = self.data.lock().unwrap();
-            let id = format!("sess_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            let id = format!(
+                "sess_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            );
             data.sessions.push(Session {
                 id,
                 account_id: account_id.to_string(),
@@ -1241,7 +1380,10 @@ impl Database {
         }
         // also persist session to sqlite via pool
         if let Ok(conn) = self.sqlite_pool.get() {
-            let id = format!("sess_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            let id = format!(
+                "sess_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            );
             let _ = conn.execute(
                 "INSERT OR REPLACE INTO sessions (id, account_id, token, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
                 rusqlite::params![id, account_id, token, chrono::Utc::now().timestamp(), expires_at]
@@ -1272,7 +1414,16 @@ impl Database {
     /// Sauvegarde une publication (JSON + SQLite)
     pub fn save_publication(&self, pub_data: serde_json::Value) {
         // Add to in-memory JSON
-        let id = pub_data.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("pub_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+        let id = pub_data
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                format!(
+                    "pub_{}",
+                    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                )
+            });
         {
             let mut data = self.data.lock().unwrap();
             data.publications.push(pub_data.clone());
@@ -1281,7 +1432,7 @@ impl Database {
         if let Ok(conn) = self.sqlite_pool.get() {
             let _ = conn.execute(
                 "INSERT OR REPLACE INTO publications (id, json) VALUES (?1, ?2)",
-                rusqlite::params![&id, serde_json::to_string(&pub_data).unwrap_or_default()]
+                rusqlite::params![&id, serde_json::to_string(&pub_data).unwrap_or_default()],
             );
         }
         self.save();
@@ -1433,7 +1584,8 @@ impl Database {
             };
             let rows = stmt.query_map([], |row| {
                 let s: String = row.get(0)?;
-                let v: serde_json::Value = serde_json::from_str(&s).unwrap_or(serde_json::json!({}));
+                let v: serde_json::Value =
+                    serde_json::from_str(&s).unwrap_or(serde_json::json!({}));
                 Ok(v)
             });
             if let Ok(iter) = rows {
@@ -1441,16 +1593,31 @@ impl Database {
             }
         }
         let data = self.data.lock().unwrap();
-        data.publications.iter().map(|p| serde_json::json!(p)).collect()
+        data.publications
+            .iter()
+            .map(|p| serde_json::json!(p))
+            .collect()
     }
 
     /// Récupère le dashboard d'un utilisateur
     pub fn get_dashboard(&self, user_id: &str) -> serde_json::Value {
         let data = self.data.lock().unwrap();
-        let tx_count = data.transactions.iter().filter(|t| t.sender == user_id || t.recipient == user_id).count();
-        let msg_count = data.messages.iter().filter(|m| m.recipient == user_id && !m.delivered).count();
-        let offers_count = data.offers.iter().filter(|o| o.seller == user_id && o.active).count();
-        
+        let tx_count = data
+            .transactions
+            .iter()
+            .filter(|t| t.sender == user_id || t.recipient == user_id)
+            .count();
+        let msg_count = data
+            .messages
+            .iter()
+            .filter(|m| m.recipient == user_id && !m.delivered)
+            .count();
+        let offers_count = data
+            .offers
+            .iter()
+            .filter(|o| o.seller == user_id && o.active)
+            .count();
+
         serde_json::json!({
             "user_id": user_id,
             "stats": {
@@ -1486,7 +1653,8 @@ impl Database {
     /// Récupère les notifications d'un utilisateur
     pub fn get_notifications(&self, user_id: &str) -> Vec<serde_json::Value> {
         let data = self.data.lock().unwrap();
-        data.notifications.iter()
+        data.notifications
+            .iter()
             .filter(|n| n["user_id"] == user_id)
             .cloned()
             .collect()
@@ -1494,16 +1662,17 @@ impl Database {
     // ------------------------------------------------------------------------
     // MÉTHODES POUR LE RECYCLAGE DES INACTIFS
     // ------------------------------------------------------------------------
-    
+
     /// Récupère le timestamp de dernière activité
     pub fn get_last_activity(&self, account_id: &str) -> u64 {
         let data = self.data.lock().unwrap();
-        data.accounts.iter()
+        data.accounts
+            .iter()
             .find(|a| a.id == account_id)
             .map(|a| a.created_at as u64)
             .unwrap_or(0)
     }
-    
+
     /// Met a jour le timestamp de derniere activite
     pub fn update_last_activity(&self, account_id: &str, timestamp: u64) {
         let mut data = self.data.lock().unwrap();
@@ -1513,22 +1682,24 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     /// Recycle un compte inactif (5/10/50 ans)
     pub fn recycle_inactive(&self, account_id: &str, years_inactive: u64) -> Result<u128, String> {
         let mut data = self.data.lock().unwrap();
-        let amount = data.accounts.iter()
+        let amount = data
+            .accounts
+            .iter()
             .find(|a| a.id == account_id)
             .map(|a| a.balance_points as u128)
             .unwrap_or(0);
-        
+
         let recycle = match years_inactive {
             0..=5 => 0,
             5..=10 => amount * (years_inactive - 5) as u128 / 1000,
             10..=50 => amount / 2,
             _ => amount,
         };
-        
+
         if recycle > 0 {
             // Transférer au Trésor
             if let Some(case) = data.six_cases.iter_mut().find(|c| c.name == "Treasury") {
@@ -1539,17 +1710,18 @@ impl Database {
                 account.balance_points = account.balance_points.saturating_sub(recycle as u64);
             }
         }
-        
+
         drop(data);
         self.save();
         Ok(recycle)
     }
-    
+
     /// Récupère les comptes inactifs depuis X années
     pub fn get_inactive_accounts(&self, years: u64) -> Vec<String> {
         let data = self.data.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
-        data.accounts.iter()
+        data.accounts
+            .iter()
             .filter(|a| {
                 let last = a.created_at;
                 (now - last) > (years as i64 * 365 * 24 * 3600)
@@ -1557,25 +1729,33 @@ impl Database {
             .map(|a| a.id.clone())
             .collect()
     }
-    
+
     // ------------------------------------------------------------------------
     // MÉTHODES POUR L'ÉPARGNE
     // ------------------------------------------------------------------------
-    
+
     /// Récupère les intérêts du crédit sur la dernière année
     pub fn get_credit_interests_last_year(&self) -> u128 {
         let data = self.data.lock().unwrap();
         let now = chrono::Utc::now().timestamp();
         let one_year_ago = now - 365 * 24 * 3600;
-        
-        data.transactions.iter()
+
+        data.transactions
+            .iter()
             .filter(|tx| tx.timestamp > one_year_ago)
-            .map(|tx| (tx.amount_points as u128) * 5 / 100)  // 5% d'intérêt estimé
+            .map(|tx| (tx.amount_points as u128) * 5 / 100) // 5% d'intérêt estimé
             .sum()
     }
-    
+
     /// Sauvegarde un contrat d'épargne
-    pub fn save_contract(&self, contract_id: &str, account_id: &str, amount: u128, start: i64, end: i64) {
+    pub fn save_contract(
+        &self,
+        contract_id: &str,
+        account_id: &str,
+        amount: u128,
+        start: i64,
+        end: i64,
+    ) {
         let mut data = self.data.lock().unwrap();
         let contract = serde_json::json!({
             "id": contract_id,
@@ -1589,15 +1769,16 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     /// Compte les contrats actifs
     pub fn get_contract_count(&self) -> u64 {
         let data = self.data.lock().unwrap();
-        data.savings_contracts.iter()
+        data.savings_contracts
+            .iter()
             .filter(|c| c["active"] == true)
             .count() as u64
     }
-    
+
     /// Distribue les rendements aux épargnants
     pub fn distribute_savings_yield(&self, total_yield: u128) {
         let mut data = self.data.lock().unwrap();
@@ -1613,11 +1794,11 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     // ------------------------------------------------------------------------
     // MÉTHODES POUR LE CRÉDIT (BORB NÉGATIF)
     // ------------------------------------------------------------------------
-    
+
     /// Nantit les épargnes comme garantie
     pub fn nantir_savings(&self, account_id: &str, amount: u128) {
         let mut data = self.data.lock().unwrap();
@@ -1630,7 +1811,7 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     /// Enregistre une dette
     pub fn set_debt(&self, account_id: &str, amount: u128) {
         let mut data = self.data.lock().unwrap();
@@ -1643,25 +1824,27 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     /// Récupère la dette d'un compte
     pub fn get_debt(&self, account_id: &str) -> u128 {
         let data = self.data.lock().unwrap();
-        data.debts.iter()
+        data.debts
+            .iter()
             .filter(|d| d["account_id"] == account_id)
             .map(|d| d["amount"].as_u64().unwrap_or(0) as u128)
             .sum()
     }
-    
+
     /// Récupère les garanties nanties
     pub fn get_nanties(&self, account_id: &str) -> u128 {
         let data = self.data.lock().unwrap();
-        data.nanties.iter()
+        data.nanties
+            .iter()
             .filter(|n| n["account_id"] == account_id)
             .map(|n| n["amount"].as_u64().unwrap_or(0) as u128)
             .sum()
     }
-    
+
     /// Transfère les garanties saisies au Crédit
     pub fn transfer_to_credit(&self, account_id: &str, amount: u128) {
         let mut data = self.data.lock().unwrap();
@@ -1671,25 +1854,26 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     /// Total des dettes actives
     pub fn get_total_debt(&self) -> u128 {
         let data = self.data.lock().unwrap();
-        data.debts.iter()
+        data.debts
+            .iter()
             .map(|d| d["amount"].as_u64().unwrap_or(0) as u128)
             .sum()
     }
-    
+
     /// Nombre de prêteurs actifs
     pub fn get_lender_count(&self) -> u64 {
         let data = self.data.lock().unwrap();
         data.debts.len() as u64
     }
-    
+
     // ------------------------------------------------------------------------
     // MÉTHODES POUR LE ROBINET 90/10
     // ------------------------------------------------------------------------
-    
+
     /// Le créateur fixe son prix par seconde
     pub fn set_creator_price(&self, creator_id: &str, price_per_second: u128) {
         let mut data = self.data.lock().unwrap();
@@ -1701,14 +1885,18 @@ impl Database {
         drop(data);
         self.save();
     }
-    
+
     /// Paiement atomique du contenu (7 transferts)
     pub fn atomic_content_payment(
         &self,
         creator_id: &str,
         creator_amount: u128,
-        treasury: u128, fees: u128, rewards: u128,
-        savings: u128, credit: u128, shield: u128
+        treasury: u128,
+        fees: u128,
+        rewards: u128,
+        savings: u128,
+        credit: u128,
+        shield: u128,
     ) -> Result<(), String> {
         let mut data = self.data.lock().unwrap();
         let cases = [
@@ -1720,18 +1908,18 @@ impl Database {
             ("Credit", credit),
             ("Shield", shield),
         ];
-        
+
         for (case_name, amount) in cases.iter() {
             if let Some(case) = data.six_cases.iter_mut().find(|c| c.name == *case_name) {
                 case.balance = case.balance.saturating_add(*amount as u64);
             }
         }
-        
+
         drop(data);
         self.save();
         Ok(())
     }
-    
+
     /// Total streamé
     pub fn get_total_streamed(&self) -> u128 {
         let data = self.data.lock().unwrap();
@@ -1743,15 +1931,15 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
+
         let mut stmt = match conn.prepare(
             "SELECT id, tx_type, amount_points, fee_points, counterparty, created_at 
-             FROM journals WHERE account_id = ?1 ORDER BY created_at DESC LIMIT 1000"
+             FROM journals WHERE account_id = ?1 ORDER BY created_at DESC LIMIT 1000",
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = match stmt.query_map(rusqlite::params![account_id], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, i64>(0)?,
@@ -1765,7 +1953,7 @@ impl Database {
             Ok(r) => r,
             Err(_) => return vec![],
         };
-        
+
         let mut result = Vec::new();
         for row in rows {
             if let Ok(entry) = row {
@@ -1838,8 +2026,11 @@ impl Database {
         commission_rate: u32,
     ) -> Result<String, String> {
         let conn = self.sqlite_pool.get().map_err(|error| error.to_string())?;
-        
-        let id = format!("item_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+
+        let id = format!(
+            "item_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         conn.execute(
             "INSERT INTO shop_items (id, shop_id, item_type, media_urls, title, subtitle, description, price_borb, price_usd, category, commission_enabled, commission_rate) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![id, shop_id, item_type, media_urls, title, subtitle, description, price_borb as i64, price_usd, category, if commission_enabled { 1 } else { 0 }, commission_rate as i64]
@@ -1847,12 +2038,34 @@ impl Database {
         Ok(id)
     }
 
+    /// Position et type marketplace d'un élément : renseignés à la création
+    /// ou la modification depuis le Studio (latitude/longitude REAL,
+    /// type_produit parmi les 7 types : physique, numerique, transport,
+    /// sport, en_ligne, domicile, service).
+    pub fn set_shop_item_meta(
+        &self,
+        id: &str,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+        type_produit: Option<&str>,
+    ) -> Result<(), String> {
+        let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE shop_items SET latitude = ?1, longitude = ?2, type_produit = ?3 WHERE id = ?4",
+            rusqlite::params![latitude, longitude, type_produit, id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Fait sortir du flux les ventes solo dont la fenetre de 48 h est passee.
     /// L'element reste dans le compte (`published = 0`) : le vendeur peut le
     /// republier et repartir pour 48 h. Une vitrine de boutique n'est jamais
     /// concernee : sa presence est geree par `synchroniser_vitrines_expirees`.
     pub fn synchroniser_elements_expires(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
         let _ = conn.execute(
             "UPDATE shop_items SET published = 0
               WHERE item_type != 'boutique'
@@ -1870,7 +2083,9 @@ impl Database {
     /// `published = 0` mais reste dans le compte — jamais purgee.
     /// Les interactions et agents rattaches partent avec le brouillon.
     pub fn purger_elements_expires(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(7))
             .format("%Y-%m-%d %H:%M:%S")
             .to_string();
@@ -1879,7 +2094,9 @@ impl Database {
             "SELECT id FROM shop_items
              WHERE published = 0 AND published_at IS NULL AND created_at < ?1",
         ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![cutoff], |row| row.get::<_, String>(0)) {
+            if let Ok(rows) =
+                stmt.query_map(rusqlite::params![cutoff], |row| row.get::<_, String>(0))
+            {
                 ids.extend(rows.flatten());
             }
         }
@@ -1898,7 +2115,10 @@ impl Database {
             );
         }
         if !ids.is_empty() {
-            eprintln!("[ZANDO] {} brouillon(s) supprime(s) apres 7 jours", ids.len());
+            eprintln!(
+                "[ZANDO] {} brouillon(s) supprime(s) apres 7 jours",
+                ids.len()
+            );
         }
     }
 
@@ -1912,14 +2132,14 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
+
         let mut stmt = match conn.prepare(
-            "SELECT id, shop_id, item_type, media_urls, title, subtitle, description, price_borb, price_usd, category, commission_enabled, commission_rate, rating, review_count, comment_count, share_count, published, sold, sold_at, edit_count, edited_at, expires_at, created_at, published_at FROM shop_items ORDER BY created_at DESC LIMIT 500"
+            "SELECT id, shop_id, item_type, media_urls, title, subtitle, description, price_borb, price_usd, category, commission_enabled, commission_rate, rating, review_count, comment_count, share_count, published, sold, sold_at, edit_count, edited_at, expires_at, created_at, published_at, latitude, longitude, type_produit FROM shop_items ORDER BY created_at DESC LIMIT 500"
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = match stmt.query_map([], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
@@ -1946,12 +2166,15 @@ impl Database {
                 "expires_at": row.get::<_, Option<String>>(21).unwrap_or_default(),
                 "created_at": row.get::<_, String>(22).unwrap_or_default(),
                 "published_at": row.get::<_, Option<String>>(23).unwrap_or_default(),
+                "latitude": row.get::<_, Option<f64>>(24).unwrap_or(None),
+                "longitude": row.get::<_, Option<f64>>(25).unwrap_or(None),
+                "type_produit": row.get::<_, Option<String>>(26).unwrap_or_default(),
             }))
         }) {
             Ok(r) => r,
             Err(_) => return vec![],
         };
-        
+
         let mut result = Vec::new();
         for row in rows {
             if let Ok(item) = row {
@@ -1960,7 +2183,7 @@ impl Database {
         }
         result
     }
-    
+
     pub fn get_shop_items(&self, shop_id: &str) -> Vec<serde_json::Value> {
         self.synchroniser_vitrines_expirees();
         self.synchroniser_elements_expires();
@@ -1969,19 +2192,19 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
+
         let mut stmt = match conn.prepare(
             "SELECT id, shop_id, item_type, media_urls, title, subtitle, description, price_borb, price_usd, category, commission_enabled, commission_rate, rating, review_count, comment_count, share_count, published, sold, sold_at, edit_count, edited_at, expires_at,
                     (SELECT COUNT(*) FROM item_interactions i WHERE i.item_id = shop_items.id AND i.type = 'view'),
                     (SELECT COUNT(DISTINCT i.user_id) FROM item_interactions i WHERE i.item_id = shop_items.id AND i.type = 'like'),
                     (SELECT COUNT(*) FROM item_interactions i WHERE i.item_id = shop_items.id AND i.type = 'view' AND i.created_at >= datetime('now', '-30 days')),
-                    created_at, published_at
+                    created_at, published_at, latitude, longitude, type_produit
              FROM shop_items WHERE shop_id = ?1 ORDER BY created_at DESC"
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = match stmt.query_map(rusqlite::params![shop_id], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
@@ -2011,12 +2234,15 @@ impl Database {
                 "views_last_30_days": row.get::<_, i64>(24)?,
                 "created_at": row.get::<_, String>(25).unwrap_or_default(),
                 "published_at": row.get::<_, Option<String>>(26).unwrap_or_default(),
+                "latitude": row.get::<_, Option<f64>>(27).unwrap_or(None),
+                "longitude": row.get::<_, Option<f64>>(28).unwrap_or(None),
+                "type_produit": row.get::<_, Option<String>>(29).unwrap_or_default(),
             }))
         }) {
             Ok(r) => r,
             Err(_) => return vec![],
         };
-        
+
         let mut result = Vec::new();
         for row in rows {
             if let Ok(v) = row {
@@ -2026,10 +2252,14 @@ impl Database {
         result
     }
 
-    pub fn get_shop_daily_analytics(&self, shop_id: &str) -> Result<Vec<serde_json::Value>, String> {
+    pub fn get_shop_daily_analytics(
+        &self,
+        shop_id: &str,
+    ) -> Result<Vec<serde_json::Value>, String> {
         let conn = self.sqlite_pool.get().map_err(|error| error.to_string())?;
-        let mut stmt = conn.prepare(
-            "SELECT date(i.created_at) AS day,
+        let mut stmt = conn
+            .prepare(
+                "SELECT date(i.created_at) AS day,
                     SUM(CASE WHEN i.type = 'view' THEN 1 ELSE 0 END) AS views,
                     COUNT(DISTINCT CASE WHEN i.type = 'like' THEN i.user_id END) AS likes
              FROM shop_items item
@@ -2040,22 +2270,26 @@ impl Database {
                AND i.type IN ('view', 'like')
              GROUP BY date(i.created_at)
              ORDER BY day ASC",
-        ).map_err(|error| error.to_string())?;
-        let rows = stmt.query_map(rusqlite::params![shop_id], |row| {
-            Ok(serde_json::json!({
-                "date": row.get::<_, String>(0)?,
-                "views": row.get::<_, i64>(1)?,
-                "likes": row.get::<_, i64>(2)?,
-            }))
-        }).map_err(|error| error.to_string())?;
-        rows.map(|row| row.map_err(|error| error.to_string())).collect()
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![shop_id], |row| {
+                Ok(serde_json::json!({
+                    "date": row.get::<_, String>(0)?,
+                    "views": row.get::<_, i64>(1)?,
+                    "likes": row.get::<_, i64>(2)?,
+                }))
+            })
+            .map_err(|error| error.to_string())?;
+        rows.map(|row| row.map_err(|error| error.to_string()))
+            .collect()
     }
 
     /// Récupère un élément par ID
     pub fn get_shop_item_by_id(&self, id: &str) -> Option<serde_json::Value> {
         let conn = self.sqlite_pool.get().ok()?;
         conn.query_row(
-            "SELECT id, shop_id, item_type, media_urls, title, subtitle, description, price_borb, price_usd, category, published, sold, sold_at, edit_count, edited_at, expires_at, created_at, published_at
+            "SELECT id, shop_id, item_type, media_urls, title, subtitle, description, price_borb, price_usd, category, published, sold, sold_at, edit_count, edited_at, expires_at, created_at, published_at, latitude, longitude, type_produit
              FROM shop_items WHERE id = ?1",
             rusqlite::params![id],
             |row| {
@@ -2078,6 +2312,9 @@ impl Database {
                     "expires_at": row.get::<_, Option<String>>(15).unwrap_or_default(),
                     "created_at": row.get::<_, String>(16).unwrap_or_default(),
                     "published_at": row.get::<_, Option<String>>(17).unwrap_or_default(),
+                    "latitude": row.get::<_, Option<f64>>(18).unwrap_or(None),
+                    "longitude": row.get::<_, Option<f64>>(19).unwrap_or(None),
+                    "type_produit": row.get::<_, Option<String>>(20).unwrap_or_default(),
                 }))
             },
         ).ok()
@@ -2131,18 +2368,26 @@ impl Database {
         commission_rate: u32,
     ) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let changed = conn.execute(
-            "UPDATE shop_items
+        let changed = conn
+            .execute(
+                "UPDATE shop_items
                 SET media_urls = ?1, description = ?2, price_borb = ?3, price_usd = ?4,
                     commission_enabled = ?5, commission_rate = ?6,
                     edit_count = edit_count + 1, edited_at = datetime('now'),
                     updated_at = datetime('now')
               WHERE id = ?7 AND shop_id = ?8 AND sold = 0",
-            rusqlite::params![
-                media_urls, description, price_borb as i64, price_usd,
-                if commission_enabled { 1 } else { 0 }, commission_rate as i64, id, shop_id
-            ],
-        ).map_err(|e| e.to_string())?;
+                rusqlite::params![
+                    media_urls,
+                    description,
+                    price_borb as i64,
+                    price_usd,
+                    if commission_enabled { 1 } else { 0 },
+                    commission_rate as i64,
+                    id,
+                    shop_id
+                ],
+            )
+            .map_err(|e| e.to_string())?;
         if changed == 0 {
             return Err("Item introuvable ou accès refusé".to_string());
         }
@@ -2153,13 +2398,15 @@ impl Database {
     /// et ne laisse qu'une ligne d'historique dans les analytiques du vendeur.
     pub fn marquer_element_vendu(&self, id: &str, shop_id: &str) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let changed = conn.execute(
-            "UPDATE shop_items
+        let changed = conn
+            .execute(
+                "UPDATE shop_items
                 SET sold = 1, sold_at = datetime('now'), published = 0,
                     updated_at = datetime('now')
               WHERE id = ?1 AND shop_id = ?2 AND sold = 0",
-            rusqlite::params![id, shop_id],
-        ).map_err(|e| e.to_string())?;
+                rusqlite::params![id, shop_id],
+            )
+            .map_err(|e| e.to_string())?;
         if changed == 0 {
             return Err("Item introuvable, déjà vendu ou accès refusé".to_string());
         }
@@ -2169,10 +2416,11 @@ impl Database {
     /// Supprime un élément Zando
     pub fn delete_shop_item(&self, id: &str, shop_id: &str) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let changed = conn.execute(
-            "DELETE FROM shop_items WHERE id = ?1 AND shop_id = ?2",
-            rusqlite::params![id, shop_id],
-        )
+        let changed = conn
+            .execute(
+                "DELETE FROM shop_items WHERE id = ?1 AND shop_id = ?2",
+                rusqlite::params![id, shop_id],
+            )
             .map_err(|e| e.to_string())?;
         if changed == 0 {
             return Err("Item introuvable ou accès refusé".to_string());
@@ -2184,16 +2432,18 @@ impl Database {
     /// ligne ; une vitrine de boutique garde sa propre échéance de présence.
     pub fn publish_shop_item(&self, id: &str, shop_id: &str) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let changed = conn.execute(
-            "UPDATE shop_items
+        let changed = conn
+            .execute(
+                "UPDATE shop_items
                 SET published = 1,
                     published_at = datetime('now'),
                     expires_at = CASE WHEN item_type = 'boutique'
                                       THEN NULL
                                       ELSE datetime('now', '+48 hours') END
               WHERE id = ?1 AND shop_id = ?2 AND sold = 0",
-            rusqlite::params![id, shop_id],
-        ).map_err(|e| e.to_string())?;
+                rusqlite::params![id, shop_id],
+            )
+            .map_err(|e| e.to_string())?;
         if changed == 0 {
             return Err("Item introuvable, vendu ou accès refusé".to_string());
         }
@@ -2245,7 +2495,10 @@ impl Database {
         if id.is_empty() {
             return Err("Fiche sans identifiant".to_string());
         }
-        let conn = self.sqlite_pool.get().map_err(|e| format!("Base inaccessible: {}", e))?;
+        let conn = self
+            .sqlite_pool
+            .get()
+            .map_err(|e| format!("Base inaccessible: {}", e))?;
         conn.execute(
             "INSERT OR REPLACE INTO connexion_offers (id, owner, json, published, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -2253,7 +2506,15 @@ impl Database {
                 &id,
                 annonce.get("owner").and_then(|v| v.as_str()).unwrap_or(""),
                 serde_json::to_string(&annonce).unwrap_or_default(),
-                if annonce.get("publiee").and_then(|v| v.as_bool()).unwrap_or(false) { 1 } else { 0 },
+                if annonce
+                    .get("publiee")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
+                    1
+                } else {
+                    0
+                },
                 annonce.get("maj_a").and_then(|v| v.as_i64()).unwrap_or(0),
             ],
         )
@@ -2278,14 +2539,17 @@ impl Database {
     /// Toutes les annonces publiées, dans l'ordre d'écriture. Le tri par
     /// distance et par puissance se fait dans `connexion::classer`, pas ici.
     pub fn get_annonces_publiees(&self) -> Vec<serde_json::Value> {
-        let Ok(conn) = self.sqlite_pool.get() else { return Vec::new() };
-        let bruts: Vec<String> = match conn.prepare("SELECT json FROM connexion_offers WHERE published = 1") {
-            Ok(mut stmt) => match stmt.query_map([], |row| row.get::<_, String>(0)) {
-                Ok(rows) => rows.flatten().collect(),
-                Err(_) => Vec::new(),
-            },
-            Err(_) => Vec::new(),
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return Vec::new();
         };
+        let bruts: Vec<String> =
+            match conn.prepare("SELECT json FROM connexion_offers WHERE published = 1") {
+                Ok(mut stmt) => match stmt.query_map([], |row| row.get::<_, String>(0)) {
+                    Ok(rows) => rows.flatten().collect(),
+                    Err(_) => Vec::new(),
+                },
+                Err(_) => Vec::new(),
+            };
         bruts
             .into_iter()
             .filter_map(|brut| serde_json::from_str::<serde_json::Value>(&brut).ok())
@@ -2332,7 +2596,9 @@ impl Database {
     /// celui qui note ne sort pas : la fiche publique nomme un vendeur, pas un
     /// client.
     pub fn get_annonce_avis(&self, annonce_id: &str, limite: i64) -> Vec<serde_json::Value> {
-        let Ok(conn) = self.sqlite_pool.get() else { return Vec::new() };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return Vec::new();
+        };
         let Ok(mut stmt) = conn.prepare(
             "SELECT note, texte, created_at FROM connexion_avis
              WHERE annonce_id = ?1 ORDER BY created_at DESC LIMIT ?2",
@@ -2356,10 +2622,12 @@ impl Database {
     /// c'est ce que la liste classée vient coller sur chaque fiche, sans
     /// requête par ligne.
     pub fn get_avis_par_fiche(&self) -> std::collections::HashMap<String, (f64, i64)> {
-        let Ok(conn) = self.sqlite_pool.get() else { return Default::default() };
-        let Ok(mut stmt) =
-            conn.prepare("SELECT annonce_id, COUNT(1), AVG(note) FROM connexion_avis GROUP BY annonce_id")
-        else {
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return Default::default();
+        };
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT annonce_id, COUNT(1), AVG(note) FROM connexion_avis GROUP BY annonce_id",
+        ) else {
             return Default::default();
         };
         let lignes = match stmt.query_map([], |row| {
@@ -2381,7 +2649,9 @@ impl Database {
     /// des frais de présence (5 % par bloc de 24 h). Les brouillons et la
     /// vitrine elle-même ne comptent pas — on ne se facture pas son propre accrochage.
     pub fn valeur_catalogue(&self, owner: &str) -> i64 {
-        let Ok(conn) = self.sqlite_pool.get() else { return 0 };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return 0;
+        };
         conn.query_row(
             "SELECT COALESCE(SUM(price_borb), 0) FROM shop_items
              WHERE shop_id = ?1 AND published = 1 AND item_type <> 'boutique'",
@@ -2395,7 +2665,9 @@ impl Database {
     /// expirée passe hors ligne (`published = 0`), l'élément et la boutique
     /// restent dans le compte du vendeur. Rien n'est supprimé ici.
     pub fn synchroniser_vitrines_expirees(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
         let maintenant = chrono::Utc::now().timestamp();
 
         let mut a_depublier: Vec<(String, String)> = Vec::new();
@@ -2405,11 +2677,18 @@ impl Database {
                     let Ok(value) = serde_json::from_str::<serde_json::Value>(&brut) else {
                         continue;
                     };
-                    if value.get("vitrine_item_id").and_then(|v| v.as_str()).unwrap_or("").is_empty()
+                    if value
+                        .get("vitrine_item_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .is_empty()
                     {
                         continue;
                     }
-                    let echeance = value.get("en_ligne_jusqu_a").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let echeance = value
+                        .get("en_ligne_jusqu_a")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
                     if echeance <= 0 || echeance > maintenant {
                         continue;
                     }
@@ -2488,8 +2767,7 @@ impl Database {
                 }))
             })
             .map_err(|e| e.to_string())?;
-        rows.map(|row| row.map_err(|e| e.to_string()))
-            .collect()
+        rows.map(|row| row.map_err(|e| e.to_string())).collect()
     }
 
     // ====================
@@ -2501,7 +2779,9 @@ impl Database {
     /// lecture, comme la purge des messages. Les likes et les vues deja
     /// enregistres restent dans leurs tables persistantes.
     pub fn purger_publications_expirees(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
         let maintenant = chrono::Utc::now().timestamp();
         let mut expires: Vec<String> = Vec::new();
         if let Ok(mut stmt) = conn.prepare("SELECT id, json FROM publications") {
@@ -2518,15 +2798,23 @@ impl Database {
             }
         }
         for id in &expires {
-            let _ = conn.execute("DELETE FROM publications WHERE id = ?1", rusqlite::params![id]);
+            let _ = conn.execute(
+                "DELETE FROM publications WHERE id = ?1",
+                rusqlite::params![id],
+            );
         }
         if !expires.is_empty() {
-            eprintln!("[PUBLICATIONS] {} publication(s) supprimee(s) apres expiration", expires.len());
+            eprintln!(
+                "[PUBLICATIONS] {} publication(s) supprimee(s) apres expiration",
+                expires.len()
+            );
         }
     }
 
     fn lire_publications(&self) -> Vec<PublicationRecord> {
-        let Ok(conn) = self.sqlite_pool.get() else { return Vec::new() };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         if let Ok(mut stmt) = conn.prepare("SELECT json FROM publications") {
             if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
@@ -2607,7 +2895,10 @@ impl Database {
     ) -> Result<serde_json::Value, String> {
         self.purger_publications_expirees();
         let record = PublicationRecord {
-            id: format!("pub_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+            id: format!(
+                "pub_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ),
             author: author.trim().to_uppercase(),
             kind: kind.to_string(),
             title: title.trim().to_string(),
@@ -2671,16 +2962,16 @@ impl Database {
             .collect();
         // Spécification PARTIE 4 : les comptes certifiés passent devant,
         // tri stable => l'ordre chronologique est conservé à l'intérieur.
-        sortie.sort_by(|a, b| {
-            certifie_du_json(b).cmp(&certifie_du_json(a))
-        });
+        sortie.sort_by(|a, b| certifie_du_json(b).cmp(&certifie_du_json(a)));
         sortie
     }
 
     /// Reporte les likes déjà présents dans les enregistrements de
     /// publications vers la table persistante (une seule fois, idempotent).
     pub fn migrer_tables_reactions(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
         let deja_migre: i64 = conn
             .query_row("SELECT COUNT(*) FROM publication_likes", [], |r| r.get(0))
             .unwrap_or(1);
@@ -2697,23 +2988,52 @@ impl Database {
         }
     }
 
+    /// Ajoute une colonne seulement si absente (PRAGMA table_info d'abord).
+    /// ddl = definition complete apres le nom de colonne, ex: "TEXT DEFAULT ''".
+    pub fn ajouter_colonne_si_absente(
+        conn: &rusqlite::Connection,
+        table: &str,
+        colonne: &str,
+        ddl: &str,
+    ) {
+        let existe = conn
+            .prepare(&format!("PRAGMA table_info({})", table))
+            .and_then(|mut st| {
+                st.query_map([], |r| r.get::<_, String>(1))
+                    .map(|rows| rows.filter_map(|r| r.ok()).any(|c| c == colonne))
+            })
+            .unwrap_or(false);
+        if existe {
+            return;
+        }
+        let _ = conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN {} {}", table, colonne, ddl),
+            [],
+        );
+    }
+
     /// Colonnes ajoutees apres coup a `shop_items` (bases deja creees).
     /// SQLite refuse un doublon : on lit d'abord la liste reelle des colonnes.
     pub fn migrer_colonnes_zando(&self) {
-        let Ok(conn) = self.sqlite_pool.get() else { return };
+        let Ok(conn) = self.sqlite_pool.get() else {
+            return;
+        };
         let mut existantes: Vec<String> = Vec::new();
         if let Ok(mut stmt) = conn.prepare("PRAGMA table_info(shop_items)") {
             if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(1)) {
                 existantes.extend(rows.flatten());
             }
         }
-        let colonnes: [(&str, &str); 6] = [
+        let colonnes: [(&str, &str); 9] = [
             ("subtitle", "TEXT DEFAULT ''"),
             ("sold", "INTEGER NOT NULL DEFAULT 0"),
             ("sold_at", "TEXT"),
             ("edit_count", "INTEGER NOT NULL DEFAULT 0"),
             ("edited_at", "TEXT"),
             ("expires_at", "TEXT"),
+            ("latitude", "REAL"),
+            ("longitude", "REAL"),
+            ("type_produit", "TEXT"),
         ];
         for (nom, ddl) in colonnes {
             if existantes.iter().any(|colonne| colonne == nom) {
@@ -2744,11 +3064,7 @@ impl Database {
 
     /// Like persistant (table `publication_likes`, source de vérité).
     /// Idempotent : un même UQ ne compte qu'une fois.
-    pub fn aimer_publication(
-        &self,
-        id: &str,
-        user: &str,
-    ) -> Result<serde_json::Value, String> {
+    pub fn aimer_publication(&self, id: &str, user: &str) -> Result<serde_json::Value, String> {
         self.purger_publications_expirees();
         let record = self
             .lire_publications()
@@ -2779,7 +3095,11 @@ impl Database {
             .ok_or_else(|| "Publication introuvable".to_string())?;
         let (pseudo, name) = crate::uq_public_alias::get_public_identity(user);
         let auteur = if pseudo.trim().is_empty() {
-            if name.trim().is_empty() { "Membre UQ".to_string() } else { name }
+            if name.trim().is_empty() {
+                "Membre UQ".to_string()
+            } else {
+                name
+            }
         } else {
             pseudo
         };
@@ -2802,7 +3122,12 @@ impl Database {
     // ====================
 
     /// Ajoute un agent à un élément
-    pub fn add_item_agent(&self, item_id: &str, user_id: &str, commission_rate: u32) -> Result<(), String> {
+    pub fn add_item_agent(
+        &self,
+        item_id: &str,
+        user_id: &str,
+        commission_rate: u32,
+    ) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT OR IGNORE INTO item_agents (item_id, user_id, commission_rate) VALUES (?1, ?2, ?3)",
@@ -2817,14 +3142,14 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
+
         let mut stmt = match conn.prepare(
             "SELECT user_id, commission_rate, sales_count, total_earned FROM item_agents WHERE item_id = ?1"
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = match stmt.query_map(rusqlite::params![item_id], |row| {
             Ok(serde_json::json!({
                 "user_id": row.get::<_, String>(0)?,
@@ -2836,7 +3161,7 @@ impl Database {
             Ok(r) => r,
             Err(_) => return vec![],
         };
-        
+
         let mut result = Vec::new();
         for row in rows {
             if let Ok(v) = row {
@@ -2847,13 +3172,20 @@ impl Database {
     }
 
     /// Enregistre une vente via un agent
-    pub fn record_agent_sale(&self, item_id: &str, agent_id: &str, sale_amount_borb: u64) -> Result<u64, String> {
+    pub fn record_agent_sale(
+        &self,
+        item_id: &str,
+        agent_id: &str,
+        sale_amount_borb: u64,
+    ) -> Result<u64, String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let rate: i64 = conn.query_row(
-            "SELECT commission_rate FROM item_agents WHERE item_id = ?1 AND user_id = ?2",
-            rusqlite::params![item_id, agent_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        let rate: i64 = conn
+            .query_row(
+                "SELECT commission_rate FROM item_agents WHERE item_id = ?1 AND user_id = ?2",
+                rusqlite::params![item_id, agent_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         let commission = (sale_amount_borb as i64 * rate) / 100;
         let _ = conn.execute(
             "UPDATE item_agents SET sales_count = sales_count + 1, total_earned = total_earned + ?1 WHERE item_id = ?2 AND user_id = ?3",
@@ -2867,9 +3199,17 @@ impl Database {
     // ====================
 
     /// Crée une demande de contact
-    pub fn create_contact_request(&self, requester_id: &str, target_id: &str, field: &str) -> Result<String, String> {
+    pub fn create_contact_request(
+        &self,
+        requester_id: &str,
+        target_id: &str,
+        field: &str,
+    ) -> Result<String, String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let id = format!("req_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let id = format!(
+            "req_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         conn.execute(
             "INSERT INTO contact_requests (id, requester_id, target_id, field, status) VALUES (?1, ?2, ?3, ?4, 'pending')",
             rusqlite::params![id, requester_id, target_id, field],
@@ -2880,14 +3220,16 @@ impl Database {
     /// Accepte une demande
     pub fn accept_contact_request(&self, id: &str) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let (requester, target, field): (String, String, String) = conn.query_row(
-            "SELECT requester_id, target_id, field FROM contact_requests WHERE id = ?1",
-            rusqlite::params![id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        ).map_err(|e| e.to_string())?;
+        let (requester, target, field): (String, String, String) = conn
+            .query_row(
+                "SELECT requester_id, target_id, field FROM contact_requests WHERE id = ?1",
+                rusqlite::params![id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(|e| e.to_string())?;
         let _ = conn.execute(
             "UPDATE contact_requests SET status = 'accepted' WHERE id = ?1",
-            rusqlite::params![id]
+            rusqlite::params![id],
         );
         let _ = conn.execute(
             "INSERT OR IGNORE INTO shared_contacts (owner_id, shared_with_id, field) VALUES (?1, ?2, ?3)",
@@ -2899,13 +3241,21 @@ impl Database {
     /// Refuse une demande
     pub fn refuse_contact_request(&self, id: &str) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        conn.execute("UPDATE contact_requests SET status = 'refused' WHERE id = ?1", rusqlite::params![id])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE contact_requests SET status = 'refused' WHERE id = ?1",
+            rusqlite::params![id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     /// Partage un contact
-    pub fn share_contact(&self, owner_id: &str, shared_with_id: &str, field: &str) -> Result<(), String> {
+    pub fn share_contact(
+        &self,
+        owner_id: &str,
+        shared_with_id: &str,
+        field: &str,
+    ) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT OR IGNORE INTO shared_contacts (owner_id, shared_with_id, field) VALUES (?1, ?2, ?3)",
@@ -2920,12 +3270,14 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
-        let mut stmt = match conn.prepare("SELECT shared_with_id, field FROM shared_contacts WHERE owner_id = ?1") {
+
+        let mut stmt = match conn
+            .prepare("SELECT shared_with_id, field FROM shared_contacts WHERE owner_id = ?1")
+        {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = match stmt.query_map(rusqlite::params![user_id], |row| {
             Ok(serde_json::json!({
                 "shared_with_id": row.get::<_, String>(0)?,
@@ -2935,7 +3287,7 @@ impl Database {
             Ok(r) => r,
             Err(_) => return vec![],
         };
-        
+
         let mut result = Vec::new();
         for row in rows {
             if let Ok(v) = row {
@@ -2950,13 +3302,22 @@ impl Database {
     // ====================
 
     /// Sauvegarde un brouillon
-    pub fn save_draft(&self, user_id: &str, draft_type: &str, data: &str) -> Result<String, String> {
+    pub fn save_draft(
+        &self,
+        user_id: &str,
+        draft_type: &str,
+        data: &str,
+    ) -> Result<String, String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        let id = format!("draft_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let id = format!(
+            "draft_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         conn.execute(
             "INSERT INTO drafts (id, user_id, draft_type, data) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id, user_id, draft_type, data],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(id)
     }
 
@@ -2984,13 +3345,9 @@ impl Database {
                     "updated_at": row.get::<_, String>(5)?,
                 }))
             },
-        ).ok()
+        )
+        .ok()
     }
-
-    
-    
-    
-    
 
     // ====================
     // ⭐ CUSTOM TYPES (types de lieux personnalisés)
@@ -3010,17 +3367,24 @@ impl Database {
             Ok(c) => c,
             Err(_) => return String::new(),
         };
-        
-        let id = format!("ctype_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+
+        let id = format!(
+            "ctype_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         let now = chrono::Utc::now().timestamp();
-        
+
         let result = conn.execute(
             "INSERT INTO custom_types (id, owner_id, name, emoji, color, description, fields, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![id, owner_id, name, emoji, color, description, fields, now]
         );
-        
-        if result.is_ok() { id } else { String::new() }
+
+        if result.is_ok() {
+            id
+        } else {
+            String::new()
+        }
     }
 
     /// Récupère un type personnalisé par ID
@@ -3050,14 +3414,14 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
+
         let mut stmt = match conn.prepare(
             "SELECT id, owner_id, name, emoji, color, description, fields, created_at FROM custom_types WHERE owner_id = ?1 ORDER BY created_at DESC"
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = stmt.query_map(rusqlite::params![owner_id], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
@@ -3070,7 +3434,7 @@ impl Database {
                 "created_at": row.get::<_, i64>(7)?,
             }))
         });
-        
+
         let mut result = Vec::new();
         if let Ok(iter) = rows {
             for row in iter {
@@ -3088,14 +3452,14 @@ impl Database {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        
+
         let mut stmt = match conn.prepare(
             "SELECT id, owner_id, name, emoji, color, description, fields, created_at FROM custom_types ORDER BY created_at DESC LIMIT 100"
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
-        
+
         let rows = stmt.query_map([], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
@@ -3108,7 +3472,7 @@ impl Database {
                 "created_at": row.get::<_, i64>(7)?,
             }))
         });
-        
+
         let mut result = Vec::new();
         if let Ok(iter) = rows {
             for row in iter {
@@ -3123,8 +3487,11 @@ impl Database {
     /// Supprime un type personnalisé
     pub fn delete_custom_type(&self, id: &str) -> Result<(), String> {
         let conn = self.sqlite_pool.get().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM custom_types WHERE id = ?1", rusqlite::params![id])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM custom_types WHERE id = ?1",
+            rusqlite::params![id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -3160,7 +3527,7 @@ impl Database {
                 }
 
                 // Detecter si c'est le proprietaire
-                let is_owner = uq_number == "UQ-996697110" || uq_number == "UQ-266335331";
+                let is_owner = uq_number == "UQ-00000001" || uq_number == "UQ-266335331";
 
                 let next_step = if is_owner {
                     "unlock".to_string()
@@ -3169,30 +3536,12 @@ impl Database {
                 };
 
                 Ok(Some((is_owner, next_step)))
-            },
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[cfg(test)]
 mod publications_tests {
@@ -3220,7 +3569,7 @@ mod publications_tests {
         let now = chrono::Utc::now().timestamp();
         let ancienne = PublicationRecord {
             id: "pub_old".to_string(),
-            author: "UQ-996697110".to_string(),
+            author: "UQ-00000001".to_string(),
             kind: "annonce".to_string(),
             title: "Ancienne".to_string(),
             body: String::new(),
@@ -3240,7 +3589,7 @@ mod publications_tests {
         db.ecrire_publication(&ancienne).unwrap();
         db.ecrire_publication(&recente).unwrap();
 
-        let liste = db.lister_publications("UQ-996697110");
+        let liste = db.lister_publications("UQ-00000001");
         assert_eq!(liste.len(), 1, "seule la publication recente reste");
         assert_eq!(liste[0]["id"], "pub_new");
 
@@ -3259,17 +3608,18 @@ mod publications_tests {
         let (json, sqlite) = base_test("pub_like");
         let db = Database::new(&json);
         let creee = db
-            .creer_publication("UQ-996697110", "conference", "Titre", "Corps", None, "", "")
+            .creer_publication("UQ-00000001", "conference", "Titre", "Corps", None, "", "")
             .unwrap();
         let id = creee["id"].as_str().unwrap().to_string();
 
-        db.aimer_publication(&id, "UQ-996697110").unwrap();
-        let liste = db.lister_publications("UQ-996697110");
+        db.aimer_publication(&id, "UQ-00000001").unwrap();
+        let liste = db.lister_publications("UQ-00000001");
         assert_eq!(liste[0]["likes"], 1);
         assert_eq!(liste[0]["liked"], true);
 
-        db.commenter_publication(&id, "UQ-996697110", "Bravo").unwrap();
-        let liste = db.lister_publications("UQ-996697110");
+        db.commenter_publication(&id, "UQ-00000001", "Bravo")
+            .unwrap();
+        let liste = db.lister_publications("UQ-00000001");
         assert_eq!(liste[0]["comment_count"], 1);
         assert_eq!(liste[0]["comments"][0]["content"], "Bravo");
         nettoyer(&json, &sqlite);
@@ -3307,7 +3657,7 @@ mod publications_tests {
         // Publication déjà vieille de 7 jours : la purge la retire du flux.
         let vieille = PublicationRecord {
             id: "pub_perimee".to_string(),
-            author: "UQ-996697110".to_string(),
+            author: "UQ-00000001".to_string(),
             kind: "annonce".to_string(),
             title: "Offre".to_string(),
             body: String::new(),
@@ -3325,18 +3675,18 @@ mod publications_tests {
             let conn = db.sqlite_pool.get().unwrap();
             conn.execute(
                 "INSERT INTO publication_likes (publication_id, uq_liker, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_perimee", "UQ-00000002", "UQ-996697110", now],
+                rusqlite::params!["pub_perimee", "UQ-00000002", "UQ-00000001", now],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO publication_views (publication_id, uq_viewer, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_perimee", "UQ-00000003", "UQ-996697110", now],
+                rusqlite::params!["pub_perimee", "UQ-00000003", "UQ-00000001", now],
             )
             .unwrap();
         }
 
         assert!(
-            db.lister_publications("UQ-996697110").is_empty(),
+            db.lister_publications("UQ-00000001").is_empty(),
             "la publication expirée a disparu du flux"
         );
 
@@ -3344,14 +3694,14 @@ mod publications_tests {
         let likes_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_likes WHERE uq_auteur = ?1",
-                ["UQ-996697110"],
+                ["UQ-00000001"],
                 |row| row.get(0),
             )
             .unwrap();
         let vues_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_views WHERE uq_auteur = ?1",
-                ["UQ-996697110"],
+                ["UQ-00000001"],
                 |row| row.get(0),
             )
             .unwrap();
@@ -3368,7 +3718,7 @@ mod publications_tests {
 
         let statut = PublicationRecord {
             id: "pub_statut".to_string(),
-            author: "UQ-996697110".to_string(),
+            author: "UQ-00000001".to_string(),
             kind: "status".to_string(),
             title: "Nouvelle offre".to_string(),
             body: String::new(),
@@ -3396,36 +3746,43 @@ mod publications_tests {
             let conn = db.sqlite_pool.get().unwrap();
             conn.execute(
                 "INSERT INTO publication_likes (publication_id, uq_liker, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_statut", "UQ-00000002", "UQ-996697110", now],
+                rusqlite::params!["pub_statut", "UQ-00000002", "UQ-00000001", now],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO publication_views (publication_id, uq_viewer, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
-                rusqlite::params!["pub_statut", "UQ-00000003", "UQ-996697110", now],
+                rusqlite::params!["pub_statut", "UQ-00000003", "UQ-00000001", now],
             )
             .unwrap();
         }
 
         let liste = db.lister_publications("UQ-00000002");
-        assert_eq!(liste.len(), 1, "le statut de plus de 24 h a disparu du flux");
+        assert_eq!(
+            liste.len(),
+            1,
+            "le statut de plus de 24 h a disparu du flux"
+        );
         assert_eq!(liste[0]["id"], "pub_annonce");
 
         let conn = db.sqlite_pool.get().unwrap();
         let likes_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_likes WHERE uq_auteur = ?1",
-                ["UQ-996697110"],
+                ["UQ-00000001"],
                 |row| row.get(0),
             )
             .unwrap();
         let vues_auteur: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM publication_views WHERE uq_auteur = ?1",
-                ["UQ-996697110"],
+                ["UQ-00000001"],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(likes_auteur, 1, "le like recu sur le statut expire reste au profil");
+        assert_eq!(
+            likes_auteur, 1,
+            "le like recu sur le statut expire reste au profil"
+        );
         assert_eq!(vues_auteur, 1, "la vue du statut expire reste au profil");
         nettoyer(&json, &sqlite);
     }
@@ -3436,7 +3793,7 @@ mod publications_tests {
         let db = Database::new(&json);
         let creee = db
             .creer_publication(
-                "UQ-996697110",
+                "UQ-00000001",
                 "status",
                 "Coque iPhone",
                 "Disponible maintenant",
@@ -3462,13 +3819,13 @@ mod publications_tests {
             let conn = db.sqlite_pool.get().unwrap();
             conn.execute(
                 "INSERT INTO shop_items (id, shop_id, item_type, title, published, created_at, published_at)
-                 VALUES ('item_old', 'UQ-996697110', 'text', 'Vieux', 1, datetime('now','-8 days'), datetime('now','-8 days'))",
+                 VALUES ('item_old', 'UQ-00000001', 'text', 'Vieux', 1, datetime('now','-8 days'), datetime('now','-8 days'))",
                 [],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO shop_items (id, shop_id, item_type, title, published, created_at, published_at)
-                 VALUES ('item_new', 'UQ-996697110', 'text', 'Recent', 1, datetime('now','-1 days'), datetime('now','-1 days'))",
+                 VALUES ('item_new', 'UQ-00000001', 'text', 'Recent', 1, datetime('now','-1 days'), datetime('now','-1 days'))",
                 [],
             )
             .unwrap();
@@ -3535,7 +3892,7 @@ mod chat_messages_tests {
     fn un_message_normal_ne_porte_aucune_fin_de_vie() {
         let (json, sqlite) = base_test("chat_persistant");
         let db = Database::new(&json);
-        let id = db.send_message("UQ-996697110", "UQ-00000002", "Bonjour");
+        let id = db.send_message("UQ-00000001", "UQ-00000002", "Bonjour");
         let porte = db
             .data
             .lock()
@@ -3545,11 +3902,14 @@ mod chat_messages_tests {
             .find(|m| m.id == id)
             .and_then(|m| m.expires_at)
             .is_some();
-        assert!(!porte, "sans mode ephemere, rien ne doit etre programme a la suppression");
+        assert!(
+            !porte,
+            "sans mode ephemere, rien ne doit etre programme a la suppression"
+        );
 
         db.purger_messages_expires();
         assert_eq!(
-            db.get_messages_between("UQ-996697110", "UQ-00000002").len(),
+            db.get_messages_between("UQ-00000001", "UQ-00000002").len(),
             1,
             "la purge laisse le message persistant en place"
         );
@@ -3560,7 +3920,7 @@ mod chat_messages_tests {
     fn un_message_ephemere_porte_sa_date_de_finpuis_disparait() {
         let (json, sqlite) = base_test("chat_ephemere");
         let db = Database::new(&json);
-        let id = db.send_message_avec_image("UQ-996697110", "UQ-00000002", "Photo", None, true);
+        let id = db.send_message_avec_image("UQ-00000001", "UQ-00000002", "Photo", None, true);
         let maintenant = chrono::Utc::now().timestamp();
         let fin = db
             .data
@@ -3576,7 +3936,7 @@ mod chat_messages_tests {
         vieillir(&db, &id, 60);
         db.purger_messages_expires();
         assert!(
-            db.get_messages_between("UQ-996697110", "UQ-00000002")
+            db.get_messages_between("UQ-00000001", "UQ-00000002")
                 .iter()
                 .all(|m| m.id != id),
             "un ephemere ecoule doit etre purge"
@@ -3588,26 +3948,35 @@ mod chat_messages_tests {
     fn la_lecture_confirme_l_envoi_et_le_compte_rend_non_lus() {
         let (json, sqlite) = base_test("chat_lus");
         let db = Database::new(&json);
-        db.send_message("UQ-996697110", "UQ-00000002", "Salut");
-        db.send_message("UQ-996697110", "UQ-00000002", "Ca va ?");
-        db.send_message("UQ-00000002", "UQ-996697110", "Oui");
+        db.send_message("UQ-00000001", "UQ-00000002", "Salut");
+        db.send_message("UQ-00000001", "UQ-00000002", "Ca va ?");
+        db.send_message("UQ-00000002", "UQ-00000001", "Oui");
 
         assert_eq!(db.compter_non_lus("UQ-00000002"), 2);
         assert_eq!(db.conversations_non_lues("UQ-00000002"), 1);
-        assert_eq!(db.non_lus_par_pair("UQ-00000002").get("UQ-996697110").copied(), Some(2));
+        assert_eq!(
+            db.non_lus_par_pair("UQ-00000002")
+                .get("UQ-00000001")
+                .copied(),
+            Some(2)
+        );
 
-        let marques = db.marquer_lus("UQ-00000002", "UQ-996697110");
+        let marques = db.marquer_lus("UQ-00000002", "UQ-00000001");
         assert_eq!(marques, 2, "les deux messages viennent d'etre relus");
         assert_eq!(db.compter_non_lus("UQ-00000002"), 0);
         assert!(
-            db.get_messages_between("UQ-996697110", "UQ-00000002")
+            db.get_messages_between("UQ-00000001", "UQ-00000002")
                 .iter()
-                .filter(|m| m.sender == "UQ-996697110")
+                .filter(|m| m.sender == "UQ-00000001")
                 .all(|m| m.delivered),
             "l'expediteur doit voir ses messages marques lus"
         );
 
-        assert_eq!(db.marquer_lus("UQ-00000002", "UQ-996697110"), 0, "plus rien a marquer");
+        assert_eq!(
+            db.marquer_lus("UQ-00000002", "UQ-00000001"),
+            0,
+            "plus rien a marquer"
+        );
         nettoyer(&json, &sqlite);
     }
 
@@ -3615,7 +3984,8 @@ mod chat_messages_tests {
     fn un_ephemere_ecoule_n_alimente_plus_les_compteurs() {
         let (json, sqlite) = base_test("chat_non_lus_ttl");
         let db = Database::new(&json);
-        let id = db.send_message_avec_image("UQ-996697110", "UQ-00000002", "Vu une fois", None, true);
+        let id =
+            db.send_message_avec_image("UQ-00000001", "UQ-00000002", "Vu une fois", None, true);
         assert_eq!(db.compter_non_lus("UQ-00000002"), 1);
 
         vieillir(&db, &id, 60);
@@ -3632,21 +4002,24 @@ mod chat_messages_tests {
         let (json, sqlite) = base_test("chat_redemarrage");
         {
             let db = Database::new(&json);
-            db.send_message("UQ-996697110", "UQ-00000002", "Bonjour");
-            let relu = db.send_message("UQ-996697110", "UQ-00000002", "Tu la vois ?");
-            db.send_message("UQ-00000002", "UQ-996697110", "Oui");
-            db.marquer_lus("UQ-00000002", "UQ-996697110");
+            db.send_message("UQ-00000001", "UQ-00000002", "Bonjour");
+            let relu = db.send_message("UQ-00000001", "UQ-00000002", "Tu la vois ?");
+            db.send_message("UQ-00000002", "UQ-00000001", "Oui");
+            db.marquer_lus("UQ-00000002", "UQ-00000001");
             let ephemere =
-                db.send_message_avec_image("UQ-996697110", "UQ-00000002", "Photo", None, true);
+                db.send_message_avec_image("UQ-00000001", "UQ-00000002", "Photo", None, true);
             vieillir(&db, &ephemere, 60);
             db.purger_messages_expires();
-            assert_eq!(db.get_messages_between("UQ-996697110", "UQ-00000002").len(), 3);
+            assert_eq!(
+                db.get_messages_between("UQ-00000001", "UQ-00000002").len(),
+                3
+            );
             assert!(relu.starts_with("msg_"));
         }
         // Second processus sur les memes fichiers : c'est ce que fait un
         // redemarrage du serveur, et l'historique doit en sortir intact.
         let db = Database::new(&json);
-        let fils = db.get_messages_between("UQ-996697110", "UQ-00000002");
+        let fils = db.get_messages_between("UQ-00000001", "UQ-00000002");
         assert_eq!(fils.len(), 3, "les trois messages survivent au redemarrage");
         assert_eq!(
             fils.iter().filter(|m| m.delivered).count(),
@@ -3657,9 +4030,13 @@ mod chat_messages_tests {
             fils.iter().all(|m| m.expires_at.is_none()),
             "l'ephemere purge doit etre purge partout a la fois"
         );
-        assert_eq!(db.compter_non_lus("UQ-00000002"), 0, "les accuses de lecture sont en base");
         assert_eq!(
-            db.compter_non_lus("UQ-996697110"),
+            db.compter_non_lus("UQ-00000002"),
+            0,
+            "les accuses de lecture sont en base"
+        );
+        assert_eq!(
+            db.compter_non_lus("UQ-00000001"),
             1,
             "la reponse jamais relue reste comptee apres le redemarrage"
         );
@@ -3670,19 +4047,35 @@ mod chat_messages_tests {
     fn l_envoi_reel_laisse_la_trace_en_base() {
         let (json, sqlite) = base_test("chat_miroir");
         let db = Database::new(&json);
-        let id = db.send_message("UQ-996697110", "UQ-00000002", "Trace");
+        let id = db.send_message("UQ-00000001", "UQ-00000002", "Trace");
         let conn = db.sqlite_pool.get().unwrap();
         let ligne = conn.query_row(
             "SELECT content, delivered, expires_at FROM chat_messages WHERE id = ?1",
             [id.clone()],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<i64>>(2)?)),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
         );
-        assert_eq!(ligne.map(|(c, d, e)| (c, d, e.is_none())), Ok(("Trace".to_string(), 0, true)));
-        db.marquer_lus("UQ-00000002", "UQ-996697110");
+        assert_eq!(
+            ligne.map(|(c, d, e)| (c, d, e.is_none())),
+            Ok(("Trace".to_string(), 0, true))
+        );
+        db.marquer_lus("UQ-00000002", "UQ-00000001");
         let marque: i64 = conn
-            .query_row("SELECT delivered FROM chat_messages WHERE id = ?1", [id], |row| row.get(0))
+            .query_row(
+                "SELECT delivered FROM chat_messages WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(marque, 1, "l UPDATE doit atteindre la table, pas seulement la memoire");
+        assert_eq!(
+            marque, 1,
+            "l UPDATE doit atteindre la table, pas seulement la memoire"
+        );
         nettoyer(&json, &sqlite);
     }
 }

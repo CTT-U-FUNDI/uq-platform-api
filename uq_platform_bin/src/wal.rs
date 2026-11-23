@@ -1,13 +1,16 @@
-﻿use std::fs::{File, OpenOptions, create_dir_all};
-use std::io::{Write, BufReader, BufRead, Seek, SeekFrom};
+use std::fs::{create_dir_all, File, OpenOptions};
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::{Serialize, Deserialize};
-use serde_json::Value as JsonValue;
 use crc32fast::Hasher as Crc32Hasher;
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -50,11 +53,17 @@ impl Wal {
         let last_seq = Self::scan_last_seq(&wal_path).unwrap_or(0);
 
         // Read fsync config from env
-        let fsync_mode = match std::env::var("WAL_FSYNC_MODE").unwrap_or_else(|_| "buffered".to_string()).as_str() {
+        let fsync_mode = match std::env::var("WAL_FSYNC_MODE")
+            .unwrap_or_else(|_| "buffered".to_string())
+            .as_str()
+        {
             "immediate" => FsyncMode::Immediate,
             _ => FsyncMode::Buffered,
         };
-        let flush_interval_ms = std::env::var("WAL_FSYNC_INTERVAL_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(100u64);
+        let flush_interval_ms = std::env::var("WAL_FSYNC_INTERVAL_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(100u64);
 
         let wal = Wal {
             dir,
@@ -68,13 +77,16 @@ impl Wal {
         if let FsyncMode::Buffered = wal.fsync_mode {
             let file_clone = wal.file.clone();
             let interval = wal.flush_interval_ms;
-            thread::Builder::new().name("wal-flusher".into()).spawn(move || loop {
-                thread::sleep(Duration::from_millis(interval));
-                if let Ok(mut f) = file_clone.lock() {
-                    let _ = f.flush();
-                    let _ = f.sync_all();
-                }
-            }).ok();
+            thread::Builder::new()
+                .name("wal-flusher".into())
+                .spawn(move || loop {
+                    thread::sleep(Duration::from_millis(interval));
+                    if let Ok(mut f) = file_clone.lock() {
+                        let _ = f.flush();
+                        let _ = f.sync_all();
+                    }
+                })
+                .ok();
         }
 
         Ok(wal)
@@ -91,20 +103,22 @@ impl Wal {
         for line in reader.lines() {
             match line {
                 Ok(l) => {
-                    if l.trim().is_empty() { continue; }
+                    if l.trim().is_empty() {
+                        continue;
+                    }
                     match serde_json::from_str::<WalEntry>(&l) {
                         Ok(entry) => {
                             // verify checksum
                             let mut hasher = Crc32Hasher::new();
                             // compute checksum over seq,timestamp,op_type,op_id,payload
                             let cs_string = format!(
-                "{}|{}|{}|{}|{}",
-                entry.seq,
-                entry.timestamp_ms,
-                entry.op_type,
-                entry.op_id,
-                entry.payload.to_string()
-            );
+                                "{}|{}|{}|{}|{}",
+                                entry.seq,
+                                entry.timestamp_ms,
+                                entry.op_type,
+                                entry.op_id,
+                                entry.payload.to_string()
+                            );
                             hasher.update(cs_string.as_bytes());
                             let computed = hasher.finalize();
                             if computed == entry.checksum {
@@ -131,13 +145,13 @@ impl Wal {
         // compute checksum
         let mut cs_hasher = Crc32Hasher::new();
         let cs_string = format!(
-                "{}|{}|{}|{}|{}",
-                seq,
-                timestamp_ms,
-                op_type,
-                op_id,
-                payload.to_string()
-            );
+            "{}|{}|{}|{}|{}",
+            seq,
+            timestamp_ms,
+            op_type,
+            op_id,
+            payload.to_string()
+        );
         cs_hasher.update(cs_string.as_bytes());
         let checksum = cs_hasher.finalize();
 
@@ -164,13 +178,17 @@ impl Wal {
     /// Read all valid entries from WAL (verifies checksum and stops at first invalid)
     pub fn read_all(&self) -> std::io::Result<Vec<WalEntry>> {
         let path = self.dir.join("wal.log");
-        if !path.exists() { return Ok(vec![]); }
+        if !path.exists() {
+            return Ok(vec![]);
+        }
         let f = File::open(&path)?;
         let reader = BufReader::new(f);
         let mut res = Vec::new();
         for line in reader.lines() {
             let l = line?;
-            if l.trim().is_empty() { continue; }
+            if l.trim().is_empty() {
+                continue;
+            }
             let entry: WalEntry = match serde_json::from_str(&l) {
                 Ok(e) => e,
                 Err(_) => break,
@@ -198,23 +216,27 @@ impl Wal {
     /// Truncate WAL to last valid entry (if partial write detected)
     pub fn truncate_to_last_valid(&self) -> std::io::Result<()> {
         let path = self.dir.join("wal.log");
-        if !path.exists() { return Ok(()); }
+        if !path.exists() {
+            return Ok(());
+        }
         let file = File::open(&path)?;
         let reader = BufReader::new(file);
         let mut valid_lines: Vec<String> = Vec::new();
         for line in reader.lines() {
             let l = line?;
-            if l.trim().is_empty() { continue; }
+            if l.trim().is_empty() {
+                continue;
+            }
             if let Ok(entry) = serde_json::from_str::<WalEntry>(&l) {
                 let mut hasher = Crc32Hasher::new();
                 let cs_string = format!(
-                "{}|{}|{}|{}|{}",
-                entry.seq,
-                entry.timestamp_ms,
-                entry.op_type,
-                entry.op_id,
-                entry.payload.to_string()
-            );
+                    "{}|{}|{}|{}|{}",
+                    entry.seq,
+                    entry.timestamp_ms,
+                    entry.op_type,
+                    entry.op_id,
+                    entry.payload.to_string()
+                );
                 hasher.update(cs_string.as_bytes());
                 if hasher.finalize() == entry.checksum {
                     valid_lines.push(l);
@@ -224,7 +246,11 @@ impl Wal {
             break; // stop at first invalid
         }
         // rewrite file with valid lines
-        let mut f = OpenOptions::new().write(true).truncate(true).create(true).open(&self.dir.join("wal.log"))?;
+        let mut f = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(&self.dir.join("wal.log"))?;
         for l in valid_lines {
             f.write_all(l.as_bytes())?;
             f.write_all(b"\n")?;
@@ -246,7 +272,8 @@ impl Wal {
             return Ok(None);
         }
         let s = std::fs::read_to_string(&path)?;
-        let v: serde_json::Value = serde_json::from_str(&s).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let v: serde_json::Value = serde_json::from_str(&s)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         Ok(v.get("last_snapshot_seq").and_then(|x| x.as_u64()))
     }
 
@@ -254,7 +281,11 @@ impl Wal {
     pub fn write_meta(&self, last_snapshot_seq: u64) -> std::io::Result<()> {
         let path = self.meta_path();
         let tmp = self.dir.join("wal.meta.tmp");
-        let mut f = OpenOptions::new().create(true).write(true).truncate(true).open(&tmp)?;
+        let mut f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp)?;
         let payload = serde_json::json!({ "last_snapshot_seq": last_snapshot_seq });
         f.write_all(payload.to_string().as_bytes())?;
         f.flush()?;
@@ -267,7 +298,9 @@ impl Wal {
     /// Keeps entries with seq > keep_upto_seq in-place (rewrites wal.log).
     pub fn rotate_after(&self, keep_upto_seq: u64) -> std::io::Result<()> {
         let path = self.dir.join("wal.log");
-        if !path.exists() { return Ok(()); }
+        if !path.exists() {
+            return Ok(());
+        }
         let all = self.read_all()?;
         let keep: Vec<WalEntry> = all.into_iter().filter(|e| e.seq > keep_upto_seq).collect();
 
@@ -292,10 +325,10 @@ impl Wal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use serde_json::json;
     use std::fs::OpenOptions;
     use std::io::Seek;
+    use tempfile::tempdir;
 
     #[test]
     fn test_append_and_read() {
@@ -307,8 +340,8 @@ mod tests {
         assert_eq!(e2.seq, e1.seq + 1);
         let entries = wal.read_all().unwrap();
         assert!(entries.len() >= 2);
-        assert_eq!(entries[entries.len()-2].seq, e1.seq);
-        assert_eq!(entries[entries.len()-1].seq, e2.seq);
+        assert_eq!(entries[entries.len() - 2].seq, e1.seq);
+        assert_eq!(entries[entries.len() - 1].seq, e2.seq);
     }
 
     #[test]
@@ -321,7 +354,7 @@ mod tests {
         // simulate partial write by appending incomplete JSON
         {
             let mut f = OpenOptions::new().append(true).open(&path).unwrap();
-            f.write_all(b"{\"seq\":999,") .unwrap();
+            f.write_all(b"{\"seq\":999,").unwrap();
             f.flush().unwrap();
         }
         // truncate should remove the partial trailing bytes
@@ -339,9 +372,13 @@ mod tests {
         let e = wal.append("tx", p.clone()).unwrap();
         // corrupt the file by changing a byte
         {
-            let mut f = OpenOptions::new().read(true).write(true).open(&path).unwrap();
+            let mut f = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .unwrap();
             let mut s = String::new();
-            use std::io::{Read};
+            use std::io::Read;
             f.read_to_string(&mut s).unwrap();
             // replace a character in the last line
             let corrupted = s.replace("7", "8");
@@ -356,7 +393,3 @@ mod tests {
         assert!(entries.iter().all(|x| x.checksum != 0));
     }
 }
-
-
-
-

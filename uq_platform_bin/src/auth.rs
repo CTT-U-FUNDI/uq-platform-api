@@ -1,11 +1,11 @@
-﻿use serde_json::json;
+use actix_web::{HttpRequest, HttpResponse};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use chrono::{Utc, Duration};
-use sha2::{Sha256, Digest};
-use actix_web::{HttpRequest, HttpResponse};
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey, Algorithm};
-use serde::{Serialize, Deserialize};
 
 /// Gestionnaire d'authentification
 pub struct AuthManager {
@@ -44,7 +44,7 @@ impl AuthManager {
             users: Mutex::new(HashMap::new()),
         }
     }
-    
+
     /// Hash un mot de passe avec SHA-256 + sel
     pub fn hash_password(&self, password: &str, salt: &str) -> String {
         let mut hasher = Sha256::new();
@@ -53,26 +53,34 @@ impl AuthManager {
         let result = hasher.finalize();
         hex::encode(result)
     }
-    
+
     /// Enregistre un utilisateur (role default = "user")
     pub fn register(&self, user_id: &str, password: &str) -> Result<(), String> {
         let mut users = self.users.lock().unwrap();
         if users.contains_key(user_id) {
             return Err("Utilisateur déjà enregistré".to_string());
         }
-        
-        let salt = hex::encode(chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0).to_le_bytes());
+
+        let salt = hex::encode(
+            chrono::Utc::now()
+                .timestamp_nanos_opt()
+                .unwrap_or(0)
+                .to_le_bytes(),
+        );
         let password_hash = self.hash_password(password, &salt);
-        
-        users.insert(user_id.to_string(), UserCredentials {
-            user_id: user_id.to_string(),
-            password_hash,
-            salt,
-            role: "user".to_string(),
-        });
+
+        users.insert(
+            user_id.to_string(),
+            UserCredentials {
+                user_id: user_id.to_string(),
+                password_hash,
+                salt,
+                role: "user".to_string(),
+            },
+        );
         Ok(())
     }
-    
+
     /// Vérifie les identifiants
     pub fn verify_password(&self, user_id: &str, password: &str) -> bool {
         let users = self.users.lock().unwrap();
@@ -83,43 +91,64 @@ impl AuthManager {
             false
         }
     }
-    
+
     /// Crée une session (legacy in-memory) — kept for compatibility
     pub fn create_session(&self, user_id: &str) -> String {
         let mut sessions = self.sessions.lock().unwrap();
         let now = Utc::now();
         let expires = now + Duration::hours(24);
-        
+
         // Générer un token unique
         let mut hasher = Sha256::new();
         hasher.update(user_id.as_bytes());
         hasher.update(now.timestamp().to_le_bytes());
         let token = hex::encode(hasher.finalize());
-        
-        sessions.insert(token.clone(), Session {
-            token: token.clone(),
-            user_id: user_id.to_string(),
-            created_at: now.timestamp(),
-            expires_at: expires.timestamp(),
-        });
-        
+
+        sessions.insert(
+            token.clone(),
+            Session {
+                token: token.clone(),
+                user_id: user_id.to_string(),
+                created_at: now.timestamp(),
+                expires_at: expires.timestamp(),
+            },
+        );
+
         token
     }
 
     /// Create a JWT for a user with a role
-    pub fn create_jwt(&self, user_id: &str, role: &str, ttl_hours: i64) -> Result<String, jsonwebtoken::errors::Error> {
+    pub fn create_jwt(
+        &self,
+        user_id: &str,
+        role: &str,
+        ttl_hours: i64,
+    ) -> Result<String, jsonwebtoken::errors::Error> {
         let now = Utc::now();
         let exp = (now + Duration::hours(ttl_hours)).timestamp() as usize;
         let iat = now.timestamp() as usize;
-        let claims = Claims { sub: user_id.to_string(), role: role.to_string(), exp, iat };
+        let claims = Claims {
+            sub: user_id.to_string(),
+            role: role.to_string(),
+            exp,
+            iat,
+        };
         let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-        encode(&Header::new(Algorithm::HS256), &claims, &EncodingKey::from_secret(secret.as_bytes()))
+        encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
     }
 
     /// Verify a JWT and return claims
     pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
         let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-        let token_data = decode::<Claims>(token, &DecodingKey::from_secret(secret.as_bytes()), &Validation::new(Algorithm::HS256))?;
+        let token_data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::new(Algorithm::HS256),
+        )?;
         Ok(token_data.claims)
     }
 
@@ -133,13 +162,13 @@ impl AuthManager {
             false
         }
     }
-    
+
     /// Déconnecte un utilisateur (legacy)
     pub fn logout(&self, token: &str) {
         let mut sessions = self.sessions.lock().unwrap();
         sessions.remove(token);
     }
-    
+
     /// Nettoie les sessions expirées (legacy)
     pub fn cleanup_expired(&self) -> usize {
         let mut sessions = self.sessions.lock().unwrap();
@@ -148,7 +177,7 @@ impl AuthManager {
         sessions.retain(|_, s| s.expires_at > now);
         before - sessions.len()
     }
-    
+
     /// Statistiques d'authentification
     pub fn get_stats(&self) -> serde_json::Value {
         let sessions = self.sessions.lock().unwrap();
@@ -173,9 +202,13 @@ impl AuthManager {
                                     return Ok(claims);
                                 }
                             }
-                            return Err(HttpResponse::Forbidden().json(serde_json::json!({"error":"insufficient_role"})))
+                            return Err(HttpResponse::Forbidden()
+                                .json(serde_json::json!({"error":"insufficient_role"})));
                         }
-                        Err(_) => return Err(HttpResponse::Unauthorized().json(serde_json::json!({"error":"invalid_token"}))),
+                        Err(_) => {
+                            return Err(HttpResponse::Unauthorized()
+                                .json(serde_json::json!({"error":"invalid_token"})))
+                        }
                     }
                 }
             }
@@ -194,12 +227,15 @@ impl AuthManager {
         };
 
         // 2. Vérifier que is_owner = true dans uq_index
-        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
         let account = idx.get_account(&claims.sub);
 
         match account {
             Some(acc) => {
-                let is_owner = acc.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_owner = acc
+                    .get("is_owner")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 if is_owner {
                     Ok(claims)
                 } else {
@@ -232,12 +268,15 @@ impl AuthManager {
         }
 
         // Sinon, vérifier si owner
-        let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
         let account = idx.get_account(&claims.sub);
 
         match account {
             Some(acc) => {
-                let is_owner = acc.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_owner = acc
+                    .get("is_owner")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 if is_owner {
                     Ok(claims)
                 } else {
@@ -265,8 +304,11 @@ impl AuthManager {
         };
 
         // Vérifier privilège dans la DB du compte
-        let db_path = format!("data/users/{}.db", claims.sub.replace("-", "_").to_lowercase());
-        
+        let db_path = format!(
+            "data/users/{}.db",
+            claims.sub.replace("-", "_").to_lowercase()
+        );
+
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             let enabled: i64 = conn.query_row(
                 "SELECT COALESCE(enabled, 0) FROM privileges WHERE privilege_name = 'arbitration_judge'",
@@ -295,8 +337,11 @@ impl AuthManager {
             Err(resp) => return Err(resp),
         };
 
-        let db_path = format!("data/users/{}.db", claims.sub.replace("-", "_").to_lowercase());
-        
+        let db_path = format!(
+            "data/users/{}.db",
+            claims.sub.replace("-", "_").to_lowercase()
+        );
+
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             let enabled: i64 = conn.query_row(
                 "SELECT COALESCE(enabled, 0) FROM privileges WHERE privilege_name = 'validator_node'",

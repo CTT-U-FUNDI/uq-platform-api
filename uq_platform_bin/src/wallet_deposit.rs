@@ -48,8 +48,8 @@ fn maintenant() -> i64 {
 }
 
 fn ouvrir_index() -> Result<Connection, String> {
-    let conn = Connection::open(crate::uq_index::uq_index_path())
-        .map_err(|e| format!("Index indisponible ({})", e))?;
+    let conn =
+        Connection::open("uq_index.db").map_err(|e| format!("Index indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     assurer_table(&conn)?;
     Ok(conn)
@@ -124,7 +124,10 @@ fn ligne_vers_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Valu
 
 fn lire_depot(conn: &Connection, id: i64) -> Result<Option<serde_json::Value>, String> {
     let mut stmt = conn
-        .prepare(&format!("SELECT {} FROM wallet_deposits WHERE id = ?1", COLONNES))
+        .prepare(&format!(
+            "SELECT {} FROM wallet_deposits WHERE id = ?1",
+            COLONNES
+        ))
         .map_err(|e| format!("Lecture du dépôt impossible: {}", e))?;
     stmt.query_row(params![id], ligne_vers_json)
         .map(Some)
@@ -201,7 +204,8 @@ pub async fn declarer(req: HttpRequest, body: web::Json<serde_json::Value>) -> H
         Ok(v) => v,
         Err(r) => return r,
     };
-    if code_sms.len() < 4 || code_sms.len() > 20
+    if code_sms.len() < 4
+        || code_sms.len() > 20
         || !code_sms.chars().all(|c| c.is_ascii_alphanumeric())
     {
         return HttpResponse::BadRequest().json(json!({
@@ -254,7 +258,8 @@ pub async fn declarer(req: HttpRequest, body: web::Json<serde_json::Value>) -> H
 
     let account_db_path = chemin_base_compte(uq);
     if !std::path::Path::new(&account_db_path).exists() {
-        return HttpResponse::NotFound().json(json!({"status":"error","message":"Compte introuvable"}));
+        return HttpResponse::NotFound()
+            .json(json!({"status":"error","message":"Compte introuvable"}));
     }
     if let Err(response) =
         crate::api_handlers::verifier_pin_compte(&account_db_path, uq, pin, "déclarer un dépôt")
@@ -264,7 +269,9 @@ pub async fn declarer(req: HttpRequest, body: web::Json<serde_json::Value>) -> H
 
     let conn = match ouvrir_index() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let now = maintenant();
     let insert = conn.execute(
@@ -273,8 +280,17 @@ pub async fn declarer(req: HttpRequest, body: web::Json<serde_json::Value>) -> H
              uq_pseudo, code_sms, canal, statut, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'manuel', 'en_attente', ?11)",
         params![
-            uq, nom, prenom, operateur, numero, devise, montant, montant_exact,
-            uq_pseudo, code_sms, now
+            uq,
+            nom,
+            prenom,
+            operateur,
+            numero,
+            devise,
+            montant,
+            montant_exact,
+            uq_pseudo,
+            code_sms,
+            now
         ],
     );
     let depot_id = match insert {
@@ -320,7 +336,9 @@ pub async fn mes_depots(req: HttpRequest, path: web::Path<String>) -> HttpRespon
     }
     let conn = match ouvrir_index() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if let Err(e) = expirer_perimes(&conn) {
         return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}));
@@ -354,7 +372,9 @@ pub async fn annuler(req: HttpRequest, path: web::Path<i64>) -> HttpResponse {
     // connaître le uq propriétaire de la déclaration.
     let conn = match ouvrir_index() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let depot = match lire_depot(&conn, id) {
         Ok(Some(d)) => d,
@@ -364,9 +384,15 @@ pub async fn annuler(req: HttpRequest, path: web::Path<i64>) -> HttpResponse {
                 "message": "Dépôt introuvable"
             }))
         }
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
-    let uq = depot.get("uq").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let uq = depot
+        .get("uq")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if let Err(response) = exiger_soi_ou_owner(&req, &uq) {
         return response;
     }
@@ -418,18 +444,26 @@ pub async fn webhook_aggregateur(_body: web::Json<serde_json::Value>) -> HttpRes
 // ====================
 
 /// GET /api/owner/depots?statut=en_attente — file des dépôts à traiter.
-pub async fn owner_liste(req: HttpRequest, query: web::Query<std::collections::HashMap<String, String>>) -> HttpResponse {
+pub async fn owner_liste(
+    req: HttpRequest,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
     if let Err(response) = exiger_owner(&req) {
         return response;
     }
     let conn = match ouvrir_index() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if let Err(e) = expirer_perimes(&conn) {
         return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}));
     }
-    let statut = query.get("statut").map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let statut = query
+        .get("statut")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let sql = match &statut {
         Some(_) => format!(
             "SELECT {} FROM wallet_deposits WHERE statut = ?1 ORDER BY created_at DESC LIMIT 100",
@@ -492,29 +526,25 @@ async fn crediter_depot(
     if taux <= 0.0 || !taux.is_finite() {
         return Err(format!("Taux de conversion indisponible pour {}", devise));
     }
-    let (_amount_minor, points) =
-        match calculate_currency_to_borb_points(montant, taux) {
-            Ok(v) => v,
-            Err(ConvertedTransferAmountError::Invalid) => {
-                return Err("Montant de dépôt invalide".to_string())
-            }
-            Err(ConvertedTransferAmountError::Precision) => {
-                return Err("Montant de dépôt incompatible avec la précision BORB".to_string())
-            }
-            Err(ConvertedTransferAmountError::TooLarge) => {
-                return Err("Montant de dépôt trop élevé".to_string())
-            }
-        };
+    let (_amount_minor, points) = match calculate_currency_to_borb_points(montant, taux) {
+        Ok(v) => v,
+        Err(ConvertedTransferAmountError::Invalid) => {
+            return Err("Montant de dépôt invalide".to_string())
+        }
+        Err(ConvertedTransferAmountError::Precision) => {
+            return Err("Montant de dépôt incompatible avec la précision BORB".to_string())
+        }
+        Err(ConvertedTransferAmountError::TooLarge) => {
+            return Err("Montant de dépôt trop élevé".to_string())
+        }
+    };
 
     let account_db = chemin_base_compte(uq);
     if !std::path::Path::new(&account_db).exists() {
         return Err("Base du compte déposant introuvable".to_string());
     }
-    conn.execute(
-        "ATTACH DATABASE ?1 AS user_account",
-        params![account_db],
-    )
-    .map_err(|e| format!("ATTACH compte impossible: {}", e))?;
+    conn.execute("ATTACH DATABASE ?1 AS user_account", params![account_db])
+        .map_err(|e| format!("ATTACH compte impossible: {}", e))?;
 
     let now = maintenant();
     let tx = conn
@@ -572,7 +602,9 @@ pub async fn owner_confirmer(req: HttpRequest, path: web::Path<i64>) -> HttpResp
     let id = path.into_inner();
     let mut conn = match ouvrir_index() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if let Err(e) = expirer_perimes(&conn) {
         return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}));
@@ -585,7 +617,9 @@ pub async fn owner_confirmer(req: HttpRequest, path: web::Path<i64>) -> HttpResp
                 "message": "Dépôt introuvable"
             }))
         }
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if depot.get("statut").and_then(|v| v.as_str()) != Some("en_attente") {
         return HttpResponse::BadRequest().json(json!({
@@ -609,8 +643,13 @@ pub async fn owner_confirmer(req: HttpRequest, path: web::Path<i64>) -> HttpResp
                 "Dépôt validé",
                 &format!(
                     "Ton dépôt de {} {} a été confirmé et crédité ({} BORB en réserve).",
-                    montant, devise,
-                    credit.get("points_borb").and_then(|v| v.as_f64()).unwrap_or(0.0) / 100.0
+                    montant,
+                    devise,
+                    credit
+                        .get("points_borb")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0)
+                        / 100.0
                 ),
                 &format!("depot:{}", id),
             );
@@ -631,7 +670,11 @@ pub async fn owner_confirmer(req: HttpRequest, path: web::Path<i64>) -> HttpResp
 
 /// POST /api/owner/depots/{id}/refuser — body { motif? } : le propriétaire
 /// n'a PAS reçu l'argent (ou litige) : le dépôt est clos sans crédit.
-pub async fn owner_refuser(req: HttpRequest, path: web::Path<i64>, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn owner_refuser(
+    req: HttpRequest,
+    path: web::Path<i64>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let claims = match exiger_owner(&req) {
         Ok(c) => c,
         Err(r) => return r,
@@ -645,7 +688,9 @@ pub async fn owner_refuser(req: HttpRequest, path: web::Path<i64>, body: web::Js
         .to_string();
     let conn = match ouvrir_index() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let depot = match lire_depot(&conn, id) {
         Ok(Some(d)) => d,
@@ -655,7 +700,9 @@ pub async fn owner_refuser(req: HttpRequest, path: web::Path<i64>, body: web::Js
                 "message": "Dépôt introuvable"
             }))
         }
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if depot.get("statut").and_then(|v| v.as_str()) != Some("en_attente") {
         return HttpResponse::BadRequest().json(json!({
@@ -690,7 +737,11 @@ pub async fn owner_refuser(req: HttpRequest, path: web::Path<i64>, body: web::Js
         "Dépôt refusé",
         &format!(
             "Ton dépôt n'a pas été confirmé{}.",
-            if motif.is_empty() { String::new() } else { format!(": {}", motif) }
+            if motif.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", motif)
+            }
         ),
         &format!("depot:{}", id),
     );

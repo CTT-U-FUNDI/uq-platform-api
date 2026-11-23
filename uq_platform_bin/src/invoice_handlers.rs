@@ -1,34 +1,38 @@
-﻿// ====================
+// ====================
 // INVOICE HANDLERS — 4 ROUTES
 // Factures universelles (PDF + JSON)
 // ====================
 
 use actix_web::{web, HttpResponse};
-use serde_json::json;
-use rusqlite::params;
 use printpdf::*;
+use rusqlite::params;
+use serde_json::json;
 
 /// GET /api/invoices
 pub async fn invoices_list() -> HttpResponse {
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
         "SELECT invoice_id, tx_id, created_at, amount_borb, amount_usd, rate_at_tx,
                 fee_borb, type, from_user, to_user, status
-         FROM invoices ORDER BY created_at DESC LIMIT 100"
+         FROM invoices ORDER BY created_at DESC LIMIT 100",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "invoices": []
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "invoices": []
+            }))
+        }
     };
 
     let rows = stmt.query_map([], |row| {
@@ -49,7 +53,9 @@ pub async fn invoices_list() -> HttpResponse {
 
     let mut invoices = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { invoices.push(row); }
+        for row in r.flatten() {
+            invoices.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({
@@ -62,16 +68,20 @@ pub async fn invoices_list() -> HttpResponse {
 /// GET /api/invoices/{id}
 pub async fn invoice_get(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : JWT obligatoire
-    if let Err(r) = crate::auth_guard::exiger_auth(&req) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
 
     let invoice_id = path.into_inner();
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let result = conn.query_row(
@@ -129,16 +139,20 @@ pub async fn invoice_get(req: actix_web::HttpRequest, path: web::Path<String>) -
 /// Génère un PDF pour la facture
 pub async fn invoice_pdf(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : JWT obligatoire
-    if let Err(r) = crate::auth_guard::exiger_auth(&req) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
 
     let invoice_id = path.into_inner();
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let result = conn.query_row(
@@ -163,12 +177,26 @@ pub async fn invoice_pdf(req: actix_web::HttpRequest, path: web::Path<String>) -
         },
     );
 
-    let (inv_id, tx_id, created_at, amount_borb, amount_usd, rate, fee_borb, inv_type, from_user, to_user, signature) = match result {
+    let (
+        inv_id,
+        tx_id,
+        created_at,
+        amount_borb,
+        amount_usd,
+        rate,
+        fee_borb,
+        inv_type,
+        from_user,
+        to_user,
+        signature,
+    ) = match result {
         Ok(data) => data,
-        Err(_) => return HttpResponse::NotFound().json(json!({
-            "status": "error",
-            "message": "Facture introuvable"
-        })),
+        Err(_) => {
+            return HttpResponse::NotFound().json(json!({
+                "status": "error",
+                "message": "Facture introuvable"
+            }))
+        }
     };
 
     // Générer le PDF
@@ -183,38 +211,110 @@ pub async fn invoice_pdf(req: actix_web::HttpRequest, path: web::Path<String>) -
     layer.use_text("FACTURE OFFICIELLE", 16.0, Mm(20.0), Mm(260.0), &font);
 
     // ID Facture
-    layer.use_text(format!("Facture N° : {}", inv_id), 12.0, Mm(20.0), Mm(245.0), &font_bold);
-    layer.use_text(format!("Transaction : {}", tx_id), 10.0, Mm(20.0), Mm(238.0), &font);
+    layer.use_text(
+        format!("Facture N° : {}", inv_id),
+        12.0,
+        Mm(20.0),
+        Mm(245.0),
+        &font_bold,
+    );
+    layer.use_text(
+        format!("Transaction : {}", tx_id),
+        10.0,
+        Mm(20.0),
+        Mm(238.0),
+        &font,
+    );
 
     // Date
     let date_str = chrono::DateTime::from_timestamp(created_at, 0)
         .map(|d| d.format("%d/%m/%Y %H:%M").to_string())
         .unwrap_or_else(|| "Date inconnue".to_string());
-    layer.use_text(format!("Date : {}", date_str), 10.0, Mm(20.0), Mm(231.0), &font);
+    layer.use_text(
+        format!("Date : {}", date_str),
+        10.0,
+        Mm(20.0),
+        Mm(231.0),
+        &font,
+    );
 
     // Type
-    layer.use_text(format!("Objet : {}", inv_type), 10.0, Mm(20.0), Mm(224.0), &font);
+    layer.use_text(
+        format!("Objet : {}", inv_type),
+        10.0,
+        Mm(20.0),
+        Mm(224.0),
+        &font,
+    );
 
     // Acteurs
-    layer.use_text(format!("De : {}", from_user), 10.0, Mm(20.0), Mm(210.0), &font);
+    layer.use_text(
+        format!("De : {}", from_user),
+        10.0,
+        Mm(20.0),
+        Mm(210.0),
+        &font,
+    );
     layer.use_text(format!("A : {}", to_user), 10.0, Mm(20.0), Mm(203.0), &font);
 
     // Montants
     layer.use_text("DETAILS FINANCIERS", 12.0, Mm(20.0), Mm(185.0), &font_bold);
-    layer.use_text(format!("Montant : {} BORB", amount_borb), 10.0, Mm(20.0), Mm(175.0), &font);
-    layer.use_text(format!("Equivalent USD : {:.2} USD", amount_usd), 10.0, Mm(20.0), Mm(168.0), &font);
-    layer.use_text(format!("Taux applique : 1 BORB = {:.4} USD", rate), 10.0, Mm(20.0), Mm(161.0), &font);
-    layer.use_text(format!("Frais : {} BORB", fee_borb), 10.0, Mm(20.0), Mm(154.0), &font);
+    layer.use_text(
+        format!("Montant : {} BORB", amount_borb),
+        10.0,
+        Mm(20.0),
+        Mm(175.0),
+        &font,
+    );
+    layer.use_text(
+        format!("Equivalent USD : {:.2} USD", amount_usd),
+        10.0,
+        Mm(20.0),
+        Mm(168.0),
+        &font,
+    );
+    layer.use_text(
+        format!("Taux applique : 1 BORB = {:.4} USD", rate),
+        10.0,
+        Mm(20.0),
+        Mm(161.0),
+        &font,
+    );
+    layer.use_text(
+        format!("Frais : {} BORB", fee_borb),
+        10.0,
+        Mm(20.0),
+        Mm(154.0),
+        &font,
+    );
 
     // Signature
     if let Some(sig) = signature {
         layer.use_text("SIGNATURE", 10.0, Mm(20.0), Mm(135.0), &font_bold);
-        layer.use_text(format!("Hash : {}", &sig[..sig.len().min(40)]), 8.0, Mm(20.0), Mm(128.0), &font);
+        layer.use_text(
+            format!("Hash : {}", &sig[..sig.len().min(40)]),
+            8.0,
+            Mm(20.0),
+            Mm(128.0),
+            &font,
+        );
     }
 
     // Footer
-    layer.use_text("Document genere par UQ Platform", 8.0, Mm(20.0), Mm(20.0), &font);
-    layer.use_text("Verifiable sur la blockchain UQ", 8.0, Mm(20.0), Mm(15.0), &font);
+    layer.use_text(
+        "Document genere par UQ Platform",
+        8.0,
+        Mm(20.0),
+        Mm(20.0),
+        &font,
+    );
+    layer.use_text(
+        "Verifiable sur la blockchain UQ",
+        8.0,
+        Mm(20.0),
+        Mm(15.0),
+        &font,
+    );
 
     // Sauvegarder en bytes (printpdf 0.7 attend un BufWriter)
     let mut pdf_bytes: Vec<u8> = Vec::new();
@@ -225,24 +325,34 @@ pub async fn invoice_pdf(req: actix_web::HttpRequest, path: web::Path<String>) -
 
     HttpResponse::Ok()
         .content_type("application/pdf")
-        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}.pdf\"", inv_id)))
+        .insert_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{}.pdf\"", inv_id),
+        ))
         .body(pdf_bytes)
 }
 
 /// GET /api/invoices/by-user/{uq}
-pub async fn invoices_by_user(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
+pub async fn invoices_by_user(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     let __cible = path.to_string();
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) {
+        return r;
+    }
 
     let uq_number = path.into_inner();
-    let db_path = crate::uq_index::uq_index_path();
+    let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": format!("DB error: {}", e)
-        })),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("DB error: {}", e)
+            }))
+        }
     };
 
     let mut stmt = match conn.prepare(
@@ -250,14 +360,16 @@ pub async fn invoices_by_user(req: actix_web::HttpRequest, path: web::Path<Strin
                 fee_borb, type, from_user, to_user, status
          FROM invoices
          WHERE from_user = ?1 OR to_user = ?1
-         ORDER BY created_at DESC LIMIT 100"
+         ORDER BY created_at DESC LIMIT 100",
     ) {
         Ok(s) => s,
-        Err(_) => return HttpResponse::Ok().json(json!({
-            "status": "success",
-            "uq_number": uq_number,
-            "invoices": []
-        })),
+        Err(_) => {
+            return HttpResponse::Ok().json(json!({
+                "status": "success",
+                "uq_number": uq_number,
+                "invoices": []
+            }))
+        }
     };
 
     let rows = stmt.query_map(params![uq_number], |row| {
@@ -278,7 +390,9 @@ pub async fn invoices_by_user(req: actix_web::HttpRequest, path: web::Path<Strin
 
     let mut invoices = Vec::new();
     if let Ok(r) = rows {
-        for row in r.flatten() { invoices.push(row); }
+        for row in r.flatten() {
+            invoices.push(row);
+        }
     }
 
     HttpResponse::Ok().json(json!({
@@ -288,5 +402,3 @@ pub async fn invoices_by_user(req: actix_web::HttpRequest, path: web::Path<Strin
         "invoices": invoices
     }))
 }
-
-

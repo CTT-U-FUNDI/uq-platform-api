@@ -19,7 +19,7 @@ use serde_json::json;
 use crate::database::Database;
 
 const SEUILS_ANCIENNETE_SECS: [i64; 4] = [
-    6 * 30 * 24 * 3600, // 6 mois
+    6 * 30 * 24 * 3600,  // 6 mois
     12 * 30 * 24 * 3600, // 1 an
     24 * 30 * 24 * 3600, // 2 ans
     i64::MAX,
@@ -45,16 +45,13 @@ const PLAFOND_SIGNALEMENTS: u32 = 30;
 const SEUIL_SIGNALEMENTS_ABUSIFS: i64 = 3;
 const POINTS_PAR_ABUS: u32 = 5;
 const PLAFOND_ABUS: u32 = 15;
-fn chemins_index() -> [String; 2] {
-    [
-        crate::uq_index::uq_index_path(),
-        concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db").to_string(),
-    ]
-}
+const INDEX_ANCRE: &str = "uq_index.db";
+const CHEMIN_INDEX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/uq_index.db");
 /// Ordre de recherche du registre : le répertoire courant du serveur d'abord
 /// (comme `data/users/*.db` et `uq_platform_db.db`), l'emplacement d'origine en
 /// repli. Le relatif-d'abord permet à un bac de test isolé de lire sa propre
 /// copie sans jamais toucher au registre de production.
+const CHEMINS_REGISTRE: [&str; 2] = [INDEX_ANCRE, CHEMIN_INDEX];
 const ANCIENNETE_CERTIFICATION_SECS: i64 = 12 * 30 * 24 * 3600;
 
 fn normaliser(uq: &str) -> String {
@@ -94,8 +91,8 @@ fn inscriptions(uqs: &[&str]) -> std::collections::HashMap<String, i64> {
     if uqs.is_empty() {
         return sortie;
     }
-    for chemin in chemins_index() {
-        let Ok(conn) = rusqlite::Connection::open(&chemin) else {
+    for chemin in CHEMINS_REGISTRE {
+        let Ok(conn) = rusqlite::Connection::open(chemin) else {
             continue;
         };
         let bruts = lire_inscriptions(&conn, uqs);
@@ -109,10 +106,10 @@ fn inscriptions(uqs: &[&str]) -> std::collections::HashMap<String, i64> {
 
 /// Ouvre le registre sans le créer : un chemin absent est ignoré.
 fn connexion_registre() -> Option<rusqlite::Connection> {
-    chemins_index()
+    CHEMINS_REGISTRE
         .into_iter()
-        .filter(|chemin| std::path::Path::new(&chemin).exists())
-        .find_map(|chemin| rusqlite::Connection::open(&chemin).ok())
+        .filter(|chemin| std::path::Path::new(chemin).exists())
+        .find_map(|chemin| rusqlite::Connection::open(chemin).ok())
 }
 
 /// Ventes reçues par compte, en une passe. Deux sources, disjointes : les
@@ -125,13 +122,12 @@ fn ventes_par_compte(db: &Database) -> std::collections::HashMap<String, i64> {
     let Some(conn) = connexion_registre() else {
         return compteurs;
     };
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT recipient_uq, COUNT(*) FROM wallet_transfers GROUP BY recipient_uq",
-    ) else {
+    let Ok(mut stmt) =
+        conn.prepare("SELECT recipient_uq, COUNT(*) FROM wallet_transfers GROUP BY recipient_uq")
+    else {
         return compteurs;
     };
-    let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
-    else {
+    let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))) else {
         return compteurs;
     };
     for (destinataire, n) in rows.flatten() {
@@ -191,9 +187,11 @@ fn lire_uqs(conn: &Connection, sql: &str, cible: &str, limite: i64, decalage: i6
         Ok(s) => s,
         Err(_) => return vec![],
     };
-    stmt.query_map(rusqlite::params![cible, limite, decalage], |r| r.get::<_, String>(0))
-        .map(|rows| rows.filter_map(|x| x.ok()).collect())
-        .unwrap_or_default()
+    stmt.query_map(rusqlite::params![cible, limite, decalage], |r| {
+        r.get::<_, String>(0)
+    })
+    .map(|rows| rows.filter_map(|x| x.ok()).collect())
+    .unwrap_or_default()
 }
 
 // ====================
@@ -223,14 +221,16 @@ struct Agrégats {
 
 fn agregats(db: &Database, conn: &Connection, uq: &str) -> Agrégats {
     let count = |sql: &str| -> i64 {
-        conn.query_row(sql, [uq], |r| r.get::<_, i64>(0)).unwrap_or(0)
+        conn.query_row(sql, [uq], |r| r.get::<_, i64>(0))
+            .unwrap_or(0)
     };
     let mut publications = 0i64;
     let mut commentaires_recus = 0i64;
     if let Ok(mut stmt) = conn.prepare("SELECT json FROM publications") {
         if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
             for raw in rows.flatten() {
-                if let Ok(record) = serde_json::from_str::<crate::database::PublicationRecord>(&raw) {
+                if let Ok(record) = serde_json::from_str::<crate::database::PublicationRecord>(&raw)
+                {
                     if record.author == uq {
                         publications += 1;
                         commentaires_recus += record.comments.len() as i64;
@@ -244,12 +244,10 @@ fn agregats(db: &Database, conn: &Connection, uq: &str) -> Agrégats {
         if let Ok(mut stmt) = conn.prepare("SELECT json FROM publications") {
             if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
                 for raw in rows.flatten() {
-                    if let Ok(record) = serde_json::from_str::<crate::database::PublicationRecord>(&raw) {
-                        n += record
-                            .comments
-                            .iter()
-                            .filter(|c| c.author == uq)
-                            .count() as i64;
+                    if let Ok(record) =
+                        serde_json::from_str::<crate::database::PublicationRecord>(&raw)
+                    {
+                        n += record.comments.iter().filter(|c| c.author == uq).count() as i64;
                     }
                 }
             }
@@ -267,17 +265,17 @@ fn agregats(db: &Database, conn: &Connection, uq: &str) -> Agrégats {
             |r| Ok((r.get::<_, f64>(0)?, r.get::<_, i64>(1)?)),
         )
         .unwrap_or((0.0, 0));
-    let cree_le = inscriptions(&[uq]).get(&normaliser(uq)).copied().unwrap_or(0);
+    let cree_le = inscriptions(&[uq])
+        .get(&normaliser(uq))
+        .copied()
+        .unwrap_or(0);
     let kyc = kyc_verifie(uq);
-    let fraude = db
-        .get_sanctions(1000)
-        .iter()
-        .any(|s| {
-            ["account_id", "uq", "id"]
-                .iter()
-                .filter_map(|k| s.get(*k).and_then(|v| v.as_str()))
-                .any(|v| normaliser(v) == uq)
-        });
+    let fraude = db.get_sanctions(1000).iter().any(|s| {
+        ["account_id", "uq", "id"]
+            .iter()
+            .filter_map(|k| s.get(*k).and_then(|v| v.as_str()))
+            .any(|v| normaliser(v) == uq)
+    });
     // Signalements de chat : stockés dans le registre central, pas dans la base
     // du compte. Un registre indisponible laisse les compteurs a zero plutôt que
     // de faire echouer le profil.
@@ -323,16 +321,23 @@ fn score(a: &Agrégats) -> serde_json::Value {
     let communaute_likes = ((a.likes_recus / PAS_LIKES).max(0) as u32).min(MAX_PT_LIKES);
     let communaute_vues = ((a.vues_recues / PAS_VUES).max(0) as u32).min(MAX_PT_VUES);
     // Sanctions issues de la moderation du chat, soustraites du total.
-    let sanction_subie = (a.signalements_confirmes.max(0) as u32 * POINTS_PAR_SIGNALEMENT)
-        .min(PLAFOND_SIGNALEMENTS);
+    let sanction_subie =
+        (a.signalements_confirmes.max(0) as u32 * POINTS_PAR_SIGNALEMENT).min(PLAFOND_SIGNALEMENTS);
     let sanction_emise = if a.signalements_abusifs >= SEUIL_SIGNALEMENTS_ABUSIFS {
         (a.signalements_abusifs as u32 * POINTS_PAR_ABUS).min(PLAFOND_ABUS)
     } else {
         0
     };
     let sanction = sanction_subie + sanction_emise;
-    let total = (anciennete + kyc + reputation + publications + ventes + reponses
-        + communaute_abonnes + communaute_likes + communaute_vues)
+    let total = (anciennete
+        + kyc
+        + reputation
+        + publications
+        + ventes
+        + reponses
+        + communaute_abonnes
+        + communaute_likes
+        + communaute_vues)
         .saturating_sub(sanction);
     let certifie = total == 100
         && a.kyc
@@ -389,8 +394,11 @@ pub fn badges_collectifs(
     auteurs: &[String],
 ) -> std::collections::HashMap<String, String> {
     let mut resultat = std::collections::HashMap::new();
-    let cibles: std::collections::HashSet<String> =
-        auteurs.iter().map(|a| normaliser(a)).filter(|a| !a.is_empty()).collect();
+    let cibles: std::collections::HashSet<String> = auteurs
+        .iter()
+        .map(|a| normaliser(a))
+        .filter(|a| !a.is_empty())
+        .collect();
     if cibles.is_empty() {
         return resultat;
     }
@@ -443,9 +451,9 @@ pub fn badges_collectifs(
     );
 
     let mut notes = std::collections::HashMap::<String, (f64, i64)>::new();
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT uq_note, AVG(note), COUNT(*) FROM profile_ratings GROUP BY uq_note",
-    ) {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT uq_note, AVG(note), COUNT(*) FROM profile_ratings GROUP BY uq_note")
+    {
         if let Ok(rows) = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -505,17 +513,13 @@ pub fn badges_collectifs(
             signalements_confirmes: lire(&signalements_subis, auteur),
             signalements_abusifs: lire(&signalements_abusifs, auteur),
         };
-        let badge = score(&agregat)["badge"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let badge = score(&agregat)["badge"].as_str().unwrap_or("").to_string();
         if !badge.is_empty() {
             resultat.insert(auteur.clone(), badge);
         }
     }
     resultat
 }
-
 
 /// GET /api/profile/stats/{uq} — stats agrégées + score + badge (public).
 pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpResponse {
@@ -534,7 +538,8 @@ pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpRes
             "SELECT COUNT(*) FROM followers WHERE uq_follower = ?1 AND status = 'accepted'",
             rusqlite::params![uq],
             |row| row.get(0),
-        ).unwrap_or(0)
+        )
+        .unwrap_or(0)
     } else {
         0
     };
@@ -562,15 +567,20 @@ pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpRes
 
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if !compte_valide(&conn, &uq) {
-        return HttpResponse::NotFound().json(json!({"status":"error","message":"Compte introuvable"}));
+        return HttpResponse::NotFound()
+            .json(json!({"status":"error","message":"Compte introuvable"}));
     }
     let a = agregats(&db, &conn, &uq);
     let scores = score(&a);
     let (pseudo, name) = crate::uq_public_alias::get_public_identity(&uq);
-    let lecteur = crate::auth_guard::exiger_auth(&req).ok().map(|c| normaliser(&c.sub));
+    let lecteur = crate::auth_guard::exiger_auth(&req)
+        .ok()
+        .map(|c| normaliser(&c.sub));
     let suit = lecteur
         .as_ref()
         .map(|l| {
@@ -628,8 +638,7 @@ pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpRes
                 _ => false,
             }
     };
-    let profile_fields =
-        crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path()).get_full_profile(&uq);
+    let profile_fields = crate::uq_index::UqIndex::shared("uq_index.db").get_full_profile(&uq);
     let public_alias = rusqlite::Connection::open(&preferences_path)
         .and_then(|connection| {
             connection.query_row(
@@ -656,18 +665,28 @@ pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpRes
             "mobile_money_number",
             "mobile_money_number",
         ),
-        ("privacy_trading_currency", "display_currency", "trading_currency"),
+        (
+            "privacy_trading_currency",
+            "display_currency",
+            "trading_currency",
+        ),
     ];
     let mut public_profile = serde_json::Map::new();
     for (preference, field, output) in public_fields {
         if !visible_to_reader(preference) {
             continue;
         }
-        if let Some(value) = profile_fields.get(field).filter(|value| !value.trim().is_empty()) {
+        if let Some(value) = profile_fields
+            .get(field)
+            .filter(|value| !value.trim().is_empty())
+        {
             public_profile.insert(output.to_string(), json!(value));
         }
     }
-    let (demande_envoyee_par_moi, demande_envoyee_vers_moi, _est_ami_expose) = if let Some(ref lecteur_uq) = lecteur {
+    let (demande_envoyee_par_moi, demande_envoyee_vers_moi, _est_ami_expose) = if let Some(
+        ref lecteur_uq,
+    ) = lecteur
+    {
         let env: i64 = conn.query_row(
             "SELECT COUNT(*) FROM followers WHERE uq_follower = ?1 AND uq_followed = ?2 AND status = 'pending'",
             rusqlite::params![lecteur_uq, uq],
@@ -689,11 +708,26 @@ pub async fn profile_stats(req: HttpRequest, path: web::Path<String>) -> HttpRes
     };
     let couleur_anneau = {
         let rep = reputation.as_object();
-        let v = rep.and_then(|o| o.get("vert")).and_then(|x| x.as_i64()).unwrap_or(0);
-        let b = rep.and_then(|o| o.get("blanc")).and_then(|x| x.as_i64()).unwrap_or(0);
-        let o2 = rep.and_then(|o| o.get("orange")).and_then(|x| x.as_i64()).unwrap_or(0);
-        let r = rep.and_then(|o| o.get("rouge")).and_then(|x| x.as_i64()).unwrap_or(0);
-        let n = rep.and_then(|o| o.get("noir")).and_then(|x| x.as_i64()).unwrap_or(0);
+        let v = rep
+            .and_then(|o| o.get("vert"))
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
+        let b = rep
+            .and_then(|o| o.get("blanc"))
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
+        let o2 = rep
+            .and_then(|o| o.get("orange"))
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
+        let r = rep
+            .and_then(|o| o.get("rouge"))
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
+        let n = rep
+            .and_then(|o| o.get("noir"))
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
         crate::reputation_routes::couleur_dominante(v, b, o2, r, n)
     };
 
@@ -739,7 +773,9 @@ pub async fn publication_like_add(req: HttpRequest, path: web::Path<String>) -> 
     let liker = normaliser(&claims.sub);
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let auteur: Option<String> = conn
         .query_row(
@@ -749,7 +785,8 @@ pub async fn publication_like_add(req: HttpRequest, path: web::Path<String>) -> 
         )
         .ok();
     let Some(auteur) = auteur else {
-        return HttpResponse::NotFound().json(json!({"status":"error","message":"Publication introuvable"}));
+        return HttpResponse::NotFound()
+            .json(json!({"status":"error","message":"Publication introuvable"}));
     };
     let deja_liké = conn
         .query_row(
@@ -785,7 +822,9 @@ pub async fn publication_like_remove(req: HttpRequest, path: web::Path<String>) 
     let liker = normaliser(&claims.sub);
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let supprimes = conn
         .execute(
@@ -809,7 +848,9 @@ pub async fn publication_view_record(req: HttpRequest, path: web::Path<String>) 
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let auteur: Option<String> = conn
         .query_row(
@@ -819,9 +860,12 @@ pub async fn publication_view_record(req: HttpRequest, path: web::Path<String>) 
         )
         .ok();
     let Some(auteur) = auteur else {
-        return HttpResponse::NotFound().json(json!({"status":"error","message":"Publication introuvable"}));
+        return HttpResponse::NotFound()
+            .json(json!({"status":"error","message":"Publication introuvable"}));
     };
-    let anonyme = crate::auth_guard::exiger_auth(&req).ok().map(|c| normaliser(&c.sub));
+    let anonyme = crate::auth_guard::exiger_auth(&req)
+        .ok()
+        .map(|c| normaliser(&c.sub));
     let _ = conn.execute(
         "INSERT INTO publication_views (publication_id, uq_viewer, uq_auteur, created_at) VALUES (?1,?2,?3,?4)",
         rusqlite::params![&id, anonyme, normaliser(&auteur), chrono::Utc::now().timestamp()],
@@ -844,19 +888,26 @@ pub async fn follow_add(req: HttpRequest, path: web::Path<String>) -> HttpRespon
     };
     let cible = match resoudre_identifiant(&path.into_inner()) {
         Some(uq) => uq,
-        None => return HttpResponse::BadRequest().json(json!({"status":"error","message":"Identifiant de compte invalide"})),
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"status":"error","message":"Identifiant de compte invalide"}))
+        }
     };
     let suiveur = normaliser(&claims.sub);
     if suiveur == cible {
-        return HttpResponse::BadRequest().json(json!({"status":"error","message":"Impossible de se suivre soi-même"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"status":"error","message":"Impossible de se suivre soi-même"}));
     }
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if !compte_valide(&conn, &cible) {
-        return HttpResponse::NotFound().json(json!({"status":"error","message":"Compte introuvable"}));
+        return HttpResponse::NotFound()
+            .json(json!({"status":"error","message":"Compte introuvable"}));
     }
     let insere = conn
         .execute(
@@ -866,7 +917,11 @@ pub async fn follow_add(req: HttpRequest, path: web::Path<String>) -> HttpRespon
         .unwrap_or(0)
         > 0;
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM followers WHERE uq_followed = ?1", [&cible], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM followers WHERE uq_followed = ?1",
+            [&cible],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     HttpResponse::Ok().json(json!({"status":"success","total_abonnes":total,"deja_suivi":!insere}))
 }
@@ -879,20 +934,29 @@ pub async fn follow_remove(req: HttpRequest, path: web::Path<String>) -> HttpRes
     };
     let cible = match resoudre_identifiant(&path.into_inner()) {
         Some(uq) => uq,
-        None => return HttpResponse::BadRequest().json(json!({"status":"error","message":"Identifiant de compte invalide"})),
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"status":"error","message":"Identifiant de compte invalide"}))
+        }
     };
     let suiveur = normaliser(&claims.sub);
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let _ = conn.execute(
         "DELETE FROM followers WHERE uq_follower = ?1 AND uq_followed = ?2",
         rusqlite::params![&suiveur, &cible],
     );
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM followers WHERE uq_followed = ?1", [&cible], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM followers WHERE uq_followed = ?1",
+            [&cible],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     HttpResponse::Ok().json(json!({"status":"success","total_abonnes":total}))
 }
@@ -918,16 +982,25 @@ pub async fn follow_followers(
 ) -> HttpResponse {
     let cible = match resoudre_identifiant(&path.into_inner()) {
         Some(uq) => uq,
-        None => return HttpResponse::BadRequest().json(json!({"status":"error","message":"Identifiant de compte invalide"})),
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"status":"error","message":"Identifiant de compte invalide"}))
+        }
     };
     let (limite, decalage) = pagination(&query);
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM followers WHERE uq_followed = ?1", [&cible], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM followers WHERE uq_followed = ?1",
+            [&cible],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     let uqs = lire_uqs(
         &conn,
@@ -949,16 +1022,25 @@ pub async fn follow_following(
 ) -> HttpResponse {
     let cible = match resoudre_identifiant(&path.into_inner()) {
         Some(uq) => uq,
-        None => return HttpResponse::BadRequest().json(json!({"status":"error","message":"Identifiant de compte invalide"})),
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"status":"error","message":"Identifiant de compte invalide"}))
+        }
     };
     let (limite, decalage) = pagination(&query);
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM followers WHERE uq_follower = ?1", [&cible], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM followers WHERE uq_follower = ?1",
+            [&cible],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     let uqs = lire_uqs(
         &conn,
@@ -974,39 +1056,52 @@ pub async fn follow_following(
 }
 
 /// POST /api/profile/{uq}/note — {note: 1..5} par noteur, unique.
-pub async fn profile_note(req: HttpRequest, path: web::Path<String>, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn profile_note(
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let claims = match crate::auth_guard::exiger_auth(&req) {
         Ok(c) => c,
         Err(r) => return r,
     };
     let cible = match resoudre_identifiant(&path.into_inner()) {
         Some(uq) => uq,
-        None => return HttpResponse::BadRequest().json(json!({"status":"error","message":"Identifiant de compte invalide"})),
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"status":"error","message":"Identifiant de compte invalide"}))
+        }
     };
     let noteur = normaliser(&claims.sub);
     if noteur == cible {
-        return HttpResponse::BadRequest().json(json!({"status":"error","message":"Impossible de se noter soi-même"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"status":"error","message":"Impossible de se noter soi-même"}));
     }
     let Some(note) = body.get("note").and_then(|v| v.as_i64()) else {
-        return HttpResponse::BadRequest().json(json!({"status":"error","message":"note requise (1 à 5)"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"status":"error","message":"note requise (1 à 5)"}));
     };
     if !(1..=5).contains(&note) {
-        return HttpResponse::BadRequest().json(json!({"status":"error","message":"note hors bornes (1 à 5)"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"status":"error","message":"note hors bornes (1 à 5)"}));
     }
     let db = Database::shared("uq_platform_db.json");
     let conn = match db.connexion() {
         Ok(c) => c,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({"status":"error","message":e})),
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({"status":"error","message":e}))
+        }
     };
     if !compte_valide(&conn, &cible) {
-        return HttpResponse::NotFound().json(json!({"status":"error","message":"Compte introuvable"}));
+        return HttpResponse::NotFound()
+            .json(json!({"status":"error","message":"Compte introuvable"}));
     }
     let _ = conn.execute(
         "INSERT INTO profile_ratings (uq_note, uq_noteur, note, created_at) VALUES (?1,?2,?3,?4)
          ON CONFLICT(uq_note, uq_noteur) DO UPDATE SET note=excluded.note, created_at=excluded.created_at",
         rusqlite::params![&cible, &noteur, note, chrono::Utc::now().timestamp()],
     );
-    let (moyenne, avis) : (f64, i64) = conn
+    let (moyenne, avis): (f64, i64) = conn
         .query_row(
             "SELECT COALESCE(AVG(note),0.0), COUNT(*) FROM profile_ratings WHERE uq_note = ?1",
             [&cible],
@@ -1076,7 +1171,10 @@ mod tests {
         let note = score(&a);
         assert_eq!(note["total"], 90);
         assert_eq!(note["sanction"]["signalements_confirmes"], 10);
-        assert_eq!(note["certifie"], false, "un compte sanctionne n'est plus certifie");
+        assert_eq!(
+            note["certifie"], false,
+            "un compte sanctionne n'est plus certifie"
+        );
     }
 
     #[test]
@@ -1085,7 +1183,10 @@ mod tests {
         a.signalements_confirmes = 99;
         let note = score(&a);
         assert_eq!(note["sanction"]["total"], PLAFOND_SIGNALEMENTS as i64);
-        assert_eq!(note["total"], 0, "cinq points de score face a trente de sanction");
+        assert_eq!(
+            note["total"], 0,
+            "cinq points de score face a trente de sanction"
+        );
         assert_eq!(note["badge"], "");
     }
 
@@ -1100,7 +1201,10 @@ mod tests {
             (3 * POINTS_PAR_ABUS) as i64
         );
         a.signalements_abusifs = 99;
-        assert_eq!(score(&a)["sanction"]["signalements_abusifs"], PLAFOND_ABUS as i64);
+        assert_eq!(
+            score(&a)["sanction"]["signalements_abusifs"],
+            PLAFOND_ABUS as i64
+        );
     }
 
     #[test]
@@ -1113,7 +1217,11 @@ mod tests {
             (30 * 30 * 24 * 3600, 20),
         ] {
             a.anciennete_secs = secs;
-            assert_eq!(score(&a)["composantes"]["anciennete"], attendu, "{secs} secondes");
+            assert_eq!(
+                score(&a)["composantes"]["anciennete"],
+                attendu,
+                "{secs} secondes"
+            );
         }
     }
 
@@ -1195,7 +1303,10 @@ mod tests {
 
     #[test]
     fn pseudo_resolu_vers_un_uq_valide() {
-        assert_eq!(resoudre_identifiant("uq-732837813").as_deref(), Some("UQ-732837813"));
+        assert_eq!(
+            resoudre_identifiant("uq-732837813").as_deref(),
+            Some("UQ-732837813")
+        );
         assert_eq!(resoudre_identifiant("  "), None);
         assert_eq!(resoudre_identifiant("../data/users/x"), None);
     }
@@ -1204,11 +1315,11 @@ mod tests {
     fn registre_reperifie_par_uq_normalise() {
         let carte = carte_registre(vec![
             ("uq-732688531".to_string(), 1_700_000_000),
-            ("UQ-996697110".to_string(), -5),
+            ("UQ-00000001".to_string(), -5),
         ]);
         assert_eq!(carte.get("UQ-732688531").copied(), Some(1_700_000_000));
         // Date négative jamais utilisée comme ancienneté.
-        assert_eq!(carte.get("UQ-996697110").copied(), Some(0));
+        assert_eq!(carte.get("UQ-00000001").copied(), Some(0));
         assert_eq!(carte.get("uq-732688531"), None);
     }
 }

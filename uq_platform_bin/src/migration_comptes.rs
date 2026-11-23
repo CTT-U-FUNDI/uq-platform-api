@@ -60,7 +60,10 @@ pub fn migrer_compte(uq_number: &str) -> RapportCompte {
         ..Default::default()
     };
 
-    let chemin = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    let chemin = format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    );
 
     // 1. Migrations versionnées (v4 = colonnes, v5 = tables d'historique)
     match crate::db::init_with_migrations(&chemin) {
@@ -97,7 +100,9 @@ pub fn migrer_compte(uq_number: &str) -> RapportCompte {
 
     // 4. Nombre de transactions
     rapport.transactions = conn
-        .query_row("SELECT COUNT(*) FROM transactions", [], |r| r.get::<_, i64>(0))
+        .query_row("SELECT COUNT(*) FROM transactions", [], |r| {
+            r.get::<_, i64>(0)
+        })
         .unwrap_or(0);
 
     // 5. Backfill du chaînage : les transactions antérieures à la spécification
@@ -176,7 +181,13 @@ fn backfill_chainage(conn: &Connection, uq_number: &str) -> Result<usize, String
     let lignes: Vec<(i64, String, i64, i64, i64, String, String)> = stmt
         .query_map([], |r| {
             Ok((
-                r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?,
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -275,9 +286,12 @@ mod tests {
 
     #[test]
     fn nom_de_fichier_reconnu() {
-        assert_eq!(uq_depuis_fichier("uq_732837813.db"), Some("UQ-732837813".to_string()));
+        assert_eq!(
+            uq_depuis_fichier("uq_732837813.db"),
+            Some("UQ-732837813".to_string())
+        );
         assert_eq!(uq_depuis_fichier("uq_xxx.db"), None);
-        assert_eq!(uq_depuis_fichier("uq_996697110.db.backup"), None);
+        assert_eq!(uq_depuis_fichier("uq_00000001.db.backup"), None);
         assert_eq!(uq_depuis_fichier("block_orb_global.json"), None);
     }
 }

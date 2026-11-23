@@ -4,11 +4,11 @@
 //! Auth : signature Ed25519 du wallet (comme 2FA) — pas de JWT.
 
 use actix_web::{web, HttpRequest, HttpResponse};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::json;
 use std::sync::OnceLock;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
-use crate::wallets_store::{WalletsStore, WalletType};
+use crate::wallets_store::{WalletType, WalletsStore};
 
 static STORE: OnceLock<WalletsStore> = OnceLock::new();
 fn store() -> &'static WalletsStore {
@@ -68,7 +68,10 @@ pub async fn ajouter_wallet(
     let uq = path.into_inner();
     let vk_hex = body.get("vk").and_then(|v| v.as_str()).unwrap_or("");
     let nom = body.get("nom").and_then(|v| v.as_str()).unwrap_or("Wallet");
-    let r#type_str = body.get("type").and_then(|v| v.as_str()).unwrap_or("online");
+    let r#type_str = body
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("online");
     let ts = body.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
     let signature = body.get("signature").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -139,10 +142,7 @@ pub async fn maj_statut(
 }
 
 /// POST /api/wallets/{uq}/usb — lie une clé USB à un wallet offline
-pub async fn lier_usb(
-    body: web::Json<serde_json::Value>,
-    path: web::Path<String>,
-) -> HttpResponse {
+pub async fn lier_usb(body: web::Json<serde_json::Value>, path: web::Path<String>) -> HttpResponse {
     let uq = path.into_inner();
     let vk_hex = body.get("vk").and_then(|v| v.as_str()).unwrap_or("");
     let usb_hash = body.get("usb_hash").and_then(|v| v.as_str()).unwrap_or("");
@@ -165,7 +165,10 @@ pub async fn code_2fa_wallet(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
     let (uq, vk) = path.into_inner();
-    let ts = query.get("ts").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let ts = query
+        .get("ts")
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
     let signature = query.get("signature").map(|s| s.as_str()).unwrap_or("");
 
     if !signature_wallet_valide(&uq, &vk, ts, signature) {
@@ -183,9 +186,7 @@ pub async fn code_2fa_wallet(
 }
 
 /// POST /api/wallets/{uq}/verifier-2fa — vérifie le code 2FA d'un wallet
-pub async fn verifier_2fa(
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
+pub async fn verifier_2fa(body: web::Json<serde_json::Value>) -> HttpResponse {
     let uq = body.get("uq").and_then(|v| v.as_str()).unwrap_or("");
     let vk = body.get("vk").and_then(|v| v.as_str()).unwrap_or("");
     let code = body.get("code").and_then(|v| v.as_str()).unwrap_or("");

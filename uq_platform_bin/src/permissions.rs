@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // PERMISSIONS — Calculées en temps réel
 // ====================
 
@@ -65,13 +65,19 @@ pub fn compute_permissions(uq_number: &str) -> Permissions {
     let mut perms = Permissions::default();
 
     // 1. uq_index (is_owner)
-    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
     if let Some(account) = idx.get_account(uq_number) {
-        perms.is_owner = account.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false);
+        perms.is_owner = account
+            .get("is_owner")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
     }
 
     // 2. DB du compte
-    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    let db_path = format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    );
     let conn = match Connection::open(&db_path) {
         Ok(c) => c,
         Err(_) => {
@@ -115,7 +121,9 @@ pub fn compute_permissions(uq_number: &str) -> Permissions {
         .unwrap_or_default();
 
     for (name, enabled) in &privileges {
-        if *enabled != 1 { continue; }
+        if *enabled != 1 {
+            continue;
+        }
         match name.as_str() {
             "coffre_access" => perms.coffre_access = true,
             "wallet_access" => perms.wallet_access = true,

@@ -18,15 +18,15 @@
 // ====================
 
 use actix_web::{web, HttpResponse};
-use serde_json::json;
-use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
+use serde_json::json;
 use std::str::FromStr;
 
-use crate::montant::{MontantBorb, CAPACITE_TOTALE};
 use crate::block_orb::BlockOrb;
-use crate::transaction_engine::{TransactionEngine, TxType};
+use crate::montant::{MontantBorb, CAPACITE_TOTALE};
 use crate::persistence;
+use crate::transaction_engine::{TransactionEngine, TxType};
 
 // ====================
 // CONSTANTES UBI
@@ -68,10 +68,16 @@ fn prix_borb_regule() -> Result<Decimal, HttpResponse> {
 // ====================
 // POST /api/core/send
 // ====================
-pub async fn core_send(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn core_send(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let from = body.get("from").and_then(|v| v.as_str()).unwrap_or("");
     let to = body.get("to").and_then(|v| v.as_str()).unwrap_or("");
-    let amount_usd = body.get("amount_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let amount_usd = body
+        .get("amount_usd")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
 
     if from.is_empty() || to.is_empty() || amount_usd <= 0.0 {
         return HttpResponse::BadRequest().json(json!({
@@ -81,7 +87,9 @@ pub async fn core_send(req: actix_web::HttpRequest, body: web::Json<serde_json::
     }
 
     // 🔐 Déplacement de valeur : l'appelant doit être le porteur (ou owner).
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, from) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, from) {
+        return r;
+    }
 
     // 🚪 PORTE BORB : le destinataire doit avoir un cadenas structurel réel.
     if let Err(e) = crate::kyc::cadenas::porte_cadenas_structurel(to) {
@@ -149,13 +157,13 @@ pub async fn core_send(req: actix_web::HttpRequest, body: web::Json<serde_json::
                 Err(e) => HttpResponse::InternalServerError().json(json!({
                     "status": "error",
                     "message": format!("Erreur frais: {}", e)
-                }))
+                })),
             }
         }
         Err(e) => HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": e
-        }))
+        })),
     }
 }
 
@@ -166,7 +174,9 @@ pub async fn core_send(req: actix_web::HttpRequest, body: web::Json<serde_json::
 pub async fn core_balance(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     let __cible = path.to_string();
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) {
+        return r;
+    }
 
     let user = path.into_inner();
     let orb = persistence::load_global_orb();
@@ -223,23 +233,28 @@ pub async fn core_prix() -> HttpResponse {
 pub async fn core_cases() -> HttpResponse {
     let orb = persistence::load_global_orb();
 
-    let cases_json: Vec<_> = orb.cases.iter().enumerate().map(|(i, &val)| {
-        let nom = match i {
-            0 => "Ocean (Tresor)",
-            1 => "Nuages (Frais)",
-            2 => "Rivieres (Recompenses)",
-            3 => "Glaciers (Epargne)",
-            4 => "Nappes (Credit)",
-            5 => "Vapeur (Bouclier)",
-            _ => "Inconnu",
-        };
-        json!({
-            "index": i,
-            "nom": nom,
-            "femto": val.to_string(),
-            "borb": MontantBorb(val).to_borb_decimal().to_string()
+    let cases_json: Vec<_> = orb
+        .cases
+        .iter()
+        .enumerate()
+        .map(|(i, &val)| {
+            let nom = match i {
+                0 => "Ocean (Tresor)",
+                1 => "Nuages (Frais)",
+                2 => "Rivieres (Recompenses)",
+                3 => "Glaciers (Epargne)",
+                4 => "Nappes (Credit)",
+                5 => "Vapeur (Bouclier)",
+                _ => "Inconnu",
+            };
+            json!({
+                "index": i,
+                "nom": nom,
+                "femto": val.to_string(),
+                "borb": MontantBorb(val).to_borb_decimal().to_string()
+            })
         })
-    }).collect();
+        .collect();
 
     HttpResponse::Ok().json(json!({
         "status": "success",
@@ -275,19 +290,22 @@ pub async fn core_invariant() -> HttpResponse {
 // ====================
 
 pub async fn core_reconcile(req: actix_web::HttpRequest) -> HttpResponse {
-    let claims = match crate::auth::AuthManager::require_role(
-        &req,
-        &["user", "admin", "guardian", "owner"],
-    ) {
-        Ok(c) => c,
-        Err(resp) => return resp,
-    };
+    let claims =
+        match crate::auth::AuthManager::require_role(&req, &["user", "admin", "guardian", "owner"])
+        {
+            Ok(c) => c,
+            Err(resp) => return resp,
+        };
 
     let est_admin = claims.role == "admin"
         || claims.role == "owner"
         || crate::owner_guard::check_is_owner(&claims.sub);
 
-    let cible = if est_admin { None } else { Some(claims.sub.clone()) };
+    let cible = if est_admin {
+        None
+    } else {
+        Some(claims.sub.clone())
+    };
 
     match persistence::reconcilier_blockorb(cible.as_deref()) {
         Ok(rapport) => {
@@ -333,12 +351,13 @@ pub async fn core_reconcile(req: actix_web::HttpRequest) -> HttpResponse {
 // ====================
 
 pub async fn core_migrate_accounts(req: actix_web::HttpRequest) -> HttpResponse {
-    let claims = match crate::auth::AuthManager::require_role(&req, &["admin", "guardian", "owner"]) {
+    let claims = match crate::auth::AuthManager::require_role(&req, &["admin", "guardian", "owner"])
+    {
         Ok(c) => c,
         Err(resp) => return resp,
     };
 
-    let est_owner = claims.sub == "UQ-996697110"
+    let est_owner = claims.sub == "UQ-00000001"
         || claims.role == "admin"
         || crate::owner_guard::check_is_owner(&claims.sub);
 
@@ -367,7 +386,10 @@ pub async fn core_migrate_accounts(req: actix_web::HttpRequest) -> HttpResponse 
 // POST /api/core/ubi/claim
 // ====================
 
-pub async fn core_ubi_claim(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn core_ubi_claim(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let user = body.get("user").and_then(|v| v.as_str()).unwrap_or("");
 
     if user.is_empty() {
@@ -378,7 +400,9 @@ pub async fn core_ubi_claim(req: actix_web::HttpRequest, body: web::Json<serde_j
     }
 
     // 🔐 Crédit depuis l'enveloppe UBI : réservé au porteur (ou owner).
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, user) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, user) {
+        return r;
+    }
 
     // 🚪 PORTE BORB : cadenas déverrouillé par la clé KYC ET cadenas
     //    structurel réel (identifiants personnels + hash conforme).
@@ -526,9 +550,15 @@ pub async fn core_ubi_info() -> HttpResponse {
 // POST /api/core/init
 // ====================
 
-pub async fn core_init(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn core_init(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let user = body.get("user").and_then(|v| v.as_str()).unwrap_or("");
-    let amount_usd = body.get("amount_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let amount_usd = body
+        .get("amount_usd")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
 
     if user.is_empty() || amount_usd <= 0.0 {
         return HttpResponse::BadRequest().json(json!({
@@ -538,7 +568,9 @@ pub async fn core_init(req: actix_web::HttpRequest, body: web::Json<serde_json::
     }
 
     // 🔐 Mintage depuis le Trésor : réservé à l'owner.
-    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
 
     // 🚪 PORTE BORB : un mint du Trésor n'entre que dans un wallet cadenassé
     //    pour de vrai (identifiants personnels + hash conforme).
@@ -617,12 +649,24 @@ pub fn charger_infos_utilisateur(db_path: &str) -> (String, String, String, Stri
     use rusqlite::Connection;
 
     if !std::path::Path::new(db_path).exists() {
-        return (String::new(), String::new(), String::new(), "RDC".to_string());
+        return (
+            String::new(),
+            String::new(),
+            String::new(),
+            "RDC".to_string(),
+        );
     }
 
     let conn = match Connection::open(db_path) {
         Ok(c) => c,
-        Err(_) => return (String::new(), String::new(), String::new(), "RDC".to_string()),
+        Err(_) => {
+            return (
+                String::new(),
+                String::new(),
+                String::new(),
+                "RDC".to_string(),
+            )
+        }
     };
 
     let mut nom = String::new();
@@ -669,13 +713,15 @@ pub fn charger_infos_utilisateur(db_path: &str) -> (String, String, String, Stri
 pub async fn core_cadeaux(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     let __cible = path.to_string();
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) {
+        return r;
+    }
 
     let user = path.into_inner();
     let orb = persistence::load_global_orb();
-    
+
     let solde = orb.comptes_cadeaux.get(&user).copied().unwrap_or(0);
-    
+
     HttpResponse::Ok().json(json!({
         "status": "success",
         "user": user,
@@ -701,31 +747,39 @@ pub async fn core_cadeaux(req: actix_web::HttpRequest, path: web::Path<String>) 
 //
 // ====================
 
-pub async fn core_parrainage(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn core_parrainage(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let parrain = body.get("parrain").and_then(|v| v.as_str()).unwrap_or("");
     let filleul = body.get("filleul").and_then(|v| v.as_str()).unwrap_or("");
-    let code_promo = body.get("code_promo").and_then(|v| v.as_str()).unwrap_or("");
-    
+    let code_promo = body
+        .get("code_promo")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
     if parrain.is_empty() || filleul.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": "Parametres manquants (parrain, filleul)"
         }));
     }
-    
+
     if parrain == filleul {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": "Le parrain et le filleul ne peuvent pas etre identiques"
         }));
     }
-    
+
     // 🔐 Crédit Trésor/enveloppe : réservé à l'owner (le flow d'inscription passe par le backend).
-    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
-    
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     // 🚫 Section critique BlockOrb.
     let (mut orb, _garde) = persistence::orb_charge_verrouille();
-    
+
     // 1. Verifier que le parrain existe
     if !orb.comptes.contains_key(parrain) && !orb.comptes_cadeaux.contains_key(parrain) {
         return HttpResponse::BadRequest().json(json!({
@@ -733,12 +787,12 @@ pub async fn core_parrainage(req: actix_web::HttpRequest, body: web::Json<serde_
             "message": "Parrain introuvable"
         }));
     }
-    
+
     // 2. Verifier que le filleul existe
     if !orb.comptes.contains_key(filleul) && !orb.comptes_cadeaux.contains_key(filleul) {
         // Accepter quand meme (le filleul vient d'etre cree)
     }
-    
+
     // 3. Montant : 1 USD en BORB
     let prix_usd = match prix_borb_regule() {
         Ok(p) => p,
@@ -746,7 +800,7 @@ pub async fn core_parrainage(req: actix_web::HttpRequest, body: web::Json<serde_
     };
     let montant_usd = Decimal::from_f64_retain(1.0).unwrap_or(Decimal::ZERO);
     let montant = MontantBorb::from_usd_decimal(montant_usd, prix_usd);
-    
+
     // 4. Verifier l'enveloppe (ou le Tresor)
     let deposite_dans_enveloppe = orb.ubi_enveloppe >= montant.0;
     if !deposite_dans_enveloppe {
@@ -761,21 +815,24 @@ pub async fn core_parrainage(req: actix_web::HttpRequest, body: web::Json<serde_
     } else {
         orb.ubi_enveloppe -= montant.0;
     }
-    
+
     // 5. Crediter le parrain (solde CADEAUX) — via le porteur : cadeau
     //    refuse si le parrain n'est pas trace avec un cadenas structurel.
     let solde_avant = orb.comptes_cadeaux.get(parrain).copied().unwrap_or(0);
     if let Err(e) = orb.crediter_cadeau(parrain, montant.0) {
         // Rembourse la source (enveloppe ou Tresor) precedemment debitée
-        if deposite_dans_enveloppe { orb.ubi_enveloppe += montant.0; }
-        else { orb.cases[0] += montant.0; }
+        if deposite_dans_enveloppe {
+            orb.ubi_enveloppe += montant.0;
+        } else {
+            orb.cases[0] += montant.0;
+        }
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
             "code": "CADENAS_REQUIS",
             "message": format!("Parrainage refuse : {}", e)
         }));
     }
-    
+
     // 6. Verifier invariant
     if !orb.verifier() {
         orb.comptes_cadeaux.insert(parrain.to_string(), solde_avant);
@@ -784,10 +841,10 @@ pub async fn core_parrainage(req: actix_web::HttpRequest, body: web::Json<serde_
             "message": "INVARIANT CASSE — parrainage annule"
         }));
     }
-    
+
     // 7. Sauvegarder
     let _ = persistence::save_global_orb(&orb);
-    
+
     HttpResponse::Ok().json(json!({
         "status": "success",
         "parrain": parrain,
@@ -806,7 +863,9 @@ fn enregistrer_image(
     b64: Option<&str>,
     ecrire: impl FnOnce(&[u8]) -> Result<String, String>,
 ) -> Result<Option<String>, (&'static str, String)> {
-    let Some(b64) = b64.filter(|v| !v.is_empty()) else { return Ok(None) };
+    let Some(b64) = b64.filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
     use base64::Engine;
     let octets = base64::engine::general_purpose::STANDARD
         .decode(b64)
@@ -852,13 +911,16 @@ fn rejet_image(champ: &str, cause: &str, message: &str) -> HttpResponse {
 //
 // ====================
 
-pub async fn core_verify_identity(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn core_verify_identity(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     use crate::kyc::dossier::{KycDossier, KycStatus};
     use crate::kyc::queue::KycQueue;
     use crate::kyc::storage::KycStore;
-    
+
     let uq_number = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
-    
+
     if uq_number.is_empty() {
         return HttpResponse::BadRequest().json(json!({
             "status": "error",
@@ -866,61 +928,137 @@ pub async fn core_verify_identity(req: actix_web::HttpRequest, body: web::Json<s
         }));
     }
 
-    // 🔐 On ne soumet le dossier KYC que de soi-même (ou pour soi en tant qu'owner).
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, uq_number) { return r; }
-    
-    // 1. Charger la file d'attente
+    if let Err(refus) = crate::auth_guard::exiger_soi_ou_owner(&req, uq_number) {
+        return refus;
+    }
+
+    let pays = body
+        .get("pays")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let numero_document = body
+        .get("document_number")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let photo = body
+        .get("photo_base64")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let selfie = body
+        .get("selfie_base64")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let session = body
+        .get("session_vivacite")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if pays.is_empty() || numero_document.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error", "code": "IDENTITE_INCOMPLETE",
+            "message": "Le pays et le numéro du document sont obligatoires"
+        }));
+    }
+    if photo.is_empty() || selfie.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error", "code": "CAPTURES_REQUISES",
+            "message": "La photo du document et le selfie sont obligatoires"
+        }));
+    }
+    let vivacite = match crate::kyc_live::valider_session(session, uq_number) {
+        Some(bilan) => bilan,
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "status": "error", "code": "VIVACITE_REQUISE",
+                "message": "Une vivacité confirmée pour ce compte est obligatoire"
+            }))
+        }
+    };
+
     let mut queue = KycStore::load_queue();
-    
+
     // 2. Creer le dossier
     let mut dossier = KycDossier::new(uq_number.to_string());
-    dossier.nom = body.get("nom").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    dossier.prenom = body.get("prenom").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    dossier.date_naissance = body.get("date_naissance").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    dossier.pays = body.get("pays").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    dossier.adresse = body.get("adresse").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    dossier.telephone = body.get("telephone").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    dossier.document_number = body.get("document_number").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    
+    dossier.nom = body
+        .get("nom")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    dossier.prenom = body
+        .get("prenom")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    dossier.date_naissance = body
+        .get("date_naissance")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    dossier.pays = pays.to_string();
+    dossier.adresse = body
+        .get("adresse")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    dossier.telephone = body
+        .get("telephone")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    dossier.document_number = numero_document.to_string();
+
+    if queue.document_deja_utilise(pays, numero_document, uq_number) {
+        return HttpResponse::Conflict().json(json!({
+            "status": "error", "code": "DOCUMENT_DEJA_UTILISE",
+            "message": "Ce document est déjà associé à un autre dossier KYC"
+        }));
+    }
+
     // 3. Piece d'identite
-    match enregistrer_image(body.get("photo_base64").and_then(|v| v.as_str()),
-                            |octets| KycStore::save_photo(uq_number, octets)) {
+    match enregistrer_image(
+        body.get("photo_base64").and_then(|v| v.as_str()),
+        |octets| KycStore::save_photo(uq_number, octets),
+    ) {
         Ok(chemin) => dossier.photo_identite_path = chemin,
         Err((cause, message)) => return rejet_image("Photo", cause, &message),
     }
 
     // 4. Video de vivacite (parcours historique)
-    match enregistrer_image(body.get("video_base64").and_then(|v| v.as_str()),
-                            |octets| KycStore::save_video(uq_number, octets)) {
+    match enregistrer_image(
+        body.get("video_base64").and_then(|v| v.as_str()),
+        |octets| KycStore::save_video(uq_number, octets),
+    ) {
         Ok(chemin) => dossier.video_selfie_path = chemin,
         Err((cause, message)) => return rejet_image("Video", cause, &message),
     }
 
     // 4bis. Selfie guide de l'assistant + bilan de vivacite deja verifie par le
     // moteur (l'en-tete est separe : le nonce ne vient jamais de l'appelant).
-    match enregistrer_image(body.get("selfie_base64").and_then(|v| v.as_str()),
-                            |octets| KycStore::save_selfie(uq_number, octets)) {
+    match enregistrer_image(
+        body.get("selfie_base64").and_then(|v| v.as_str()),
+        |octets| KycStore::save_selfie(uq_number, octets),
+    ) {
         Ok(chemin) => dossier.selfie_path = chemin,
         Err((cause, message)) => return rejet_image("Selfie", cause, &message),
     }
-    if let Some(session) = body.get("session_vivacite").and_then(|v| v.as_str()) {
-        dossier.vivacite = crate::kyc_live::valider_session(session, uq_number);
-    }
+    dossier.vivacite = Some(vivacite);
 
     // 5. Metriques IA avant la mise en file : le dossier enregistre doit etre
     // complet, la version en file etait jusque-la vidée de ses mesures.
-    use crate::kyc::metrics_calc::calculer_metriques;
     use crate::kyc::ia::KycIa;
-    
+    use crate::kyc::metrics_calc::calculer_metriques;
+
     let metrics = calculer_metriques(&[], None);
     let ia = KycIa::new();
     let suggestion = ia.proposer(&metrics);
-    
+
     dossier.ai_metrics = metrics;
     dossier.ai_suggestion = Some(format!("{:?}", suggestion.decision));
     dossier.ai_confidence = Some(suggestion.confiance);
     queue.ajouter(dossier.clone());
-    
+
     // 6. Sauvegarder : un dossier qui n'est pas écrit n'est pas soumis.
     if let Err(e) = KycStore::save_queue(&queue) {
         return HttpResponse::InternalServerError().json(json!({
@@ -929,7 +1067,7 @@ pub async fn core_verify_identity(req: actix_web::HttpRequest, body: web::Json<s
             "message": format!("Dossier non enregistre : {}", e)
         }));
     }
-    
+
     HttpResponse::Ok().json(json!({
         "status": "success",
         "uq_number": uq_number,
@@ -954,14 +1092,18 @@ pub async fn core_verify_identity(req: actix_web::HttpRequest, body: web::Json<s
 
 pub async fn core_kyc_queue(req: actix_web::HttpRequest) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — OWNER uniquement
-    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
 
-    use crate::kyc::storage::KycStore;
     use crate::kyc::dossier::KycStatus;
+    use crate::kyc::storage::KycStore;
 
     let queue = KycStore::load_queue();
 
-    let en_attente: Vec<_> = queue.dossiers.iter()
+    let en_attente: Vec<_> = queue
+        .dossiers
+        .iter()
         .filter(|d| d.statut == KycStatus::EnAttente)
         .map(|d| {
             serde_json::json!({
@@ -1006,12 +1148,50 @@ pub async fn core_kyc_queue(req: actix_web::HttpRequest) -> HttpResponse {
 //
 // ====================
 
-pub async fn core_kyc_validate(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
-    // 🔐 SÉCURITÉ (vague 1) — OWNER uniquement
-    if let Err(r) = crate::auth_guard::exiger_owner(&req) { return r; }
+/// Applique la décision KYC sur le compte : déverrouillage si valide,
+/// puis PURGE des données biométriques (photo/vidéo) — Render ne
+/// conserve aucune trace du dossier après décision.
+fn appliquer_decision_kyc(uq_number: &str, valide: bool) {
+    let nom_db = uq_number.replace('-', "_").to_lowercase();
+    let db_path = format!("data/users/{}.db", nom_db);
+    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+        let now = chrono::Utc::now().timestamp();
+        if valide {
+            let _ = conn.execute(
+                "UPDATE identities SET is_verified = 1, updated_at = ?1 WHERE uq_number = ?2",
+                rusqlite::params![now, uq_number],
+            );
+            let _ = conn.execute(
+                "UPDATE my_profile SET kyc_status = 'verified' WHERE id = 1",
+                [],
+            );
+            let _ = conn.execute(
+                "UPDATE cadenas_verification SET est_verifie = 1, verrouille = 0, verifie_at = ?1 WHERE id = 1",
+                rusqlite::params![now],
+            );
+        } else {
+            let _ = conn.execute(
+                "UPDATE my_profile SET kyc_status = 'rejected' WHERE id = 1",
+                [],
+            );
+        }
+    }
+    // Purge biométrique : photo + vidéo + dossier détruits dans les
+    // deux cas — le KYC ne garde rien sur Render après décision.
+    let _ = crate::kyc::storage::KycStore::supprimer_dossier(uq_number);
+}
 
-    use crate::kyc::storage::KycStore;
+pub async fn core_kyc_validate(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ (vague 1) — OWNER uniquement
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     use crate::kyc::queue::KycQueue;
+    use crate::kyc::storage::KycStore;
 
     let uq_number = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
     let decision = body.get("decision").and_then(|v| v.as_str()).unwrap_or("");
@@ -1027,53 +1207,59 @@ pub async fn core_kyc_validate(req: actix_web::HttpRequest, body: web::Json<serd
     let mut queue = KycStore::load_queue();
 
     match decision {
-        "VALIDER" => {
-            match queue.valider(uq_number, "proprietaire") {
-                Ok(_) => match KycStore::save_queue(&queue) {
-                    Ok(_) => HttpResponse::Ok().json(json!({
+        "VALIDER" => match queue.valider(uq_number, "proprietaire") {
+            Ok(_) => match KycStore::save_queue(&queue) {
+                Ok(_) => {
+                    // Déverrouillage + purge KYC : Render ne garde AUCUNE
+                    // donnée biométrique — la décision valide libère le
+                    // compte puis les fichiers photo/vidéo sont détruits.
+                    appliquer_decision_kyc(uq_number, true);
+                    HttpResponse::Ok().json(json!({
                         "status": "success",
                         "uq_number": uq_number,
                         "decision": "VALIDE",
-                        "message": "Identite validee"
-                    })),
-                    Err(e) => HttpResponse::InternalServerError().json(json!({
-                        "status": "error",
-                        "code": "disque",
-                        "message": format!("Validation non enregistree : {}", e)
-                    })),
-                },
-                Err(e) => HttpResponse::BadRequest().json(json!({
+                        "message": "Identite verifiee et compte deverrouille"
+                    }))
+                }
+                Err(e) => HttpResponse::InternalServerError().json(json!({
                     "status": "error",
-                    "message": e
-                }))
-            }
-        }
-        "REFUSER" => {
-            match queue.refuser(uq_number, raison, "proprietaire") {
-                Ok(_) => match KycStore::save_queue(&queue) {
-                    Ok(_) => HttpResponse::Ok().json(json!({
+                    "code": "disque",
+                    "message": format!("Validation non enregistree : {}", e)
+                })),
+            },
+            Err(e) => HttpResponse::BadRequest().json(json!({
+                "status": "error",
+                "message": e
+            })),
+        },
+        "REFUSER" => match queue.refuser(uq_number, raison, "proprietaire") {
+            Ok(_) => match KycStore::save_queue(&queue) {
+                Ok(_) => {
+                    // Refus : purge aussi les données biométriques.
+                    appliquer_decision_kyc(uq_number, false);
+                    HttpResponse::Ok().json(json!({
                         "status": "success",
                         "uq_number": uq_number,
                         "decision": "REFUSE",
                         "raison": raison,
                         "message": "Identite refusee"
-                    })),
-                    Err(e) => HttpResponse::InternalServerError().json(json!({
-                        "status": "error",
-                        "code": "disque",
-                        "message": format!("Refus non enregistre : {}", e)
-                    })),
-                },
-                Err(e) => HttpResponse::BadRequest().json(json!({
+                    }))
+                }
+                Err(e) => HttpResponse::InternalServerError().json(json!({
                     "status": "error",
-                    "message": e
-                }))
-            }
-        }
+                    "code": "disque",
+                    "message": format!("Refus non enregistre : {}", e)
+                })),
+            },
+            Err(e) => HttpResponse::BadRequest().json(json!({
+                "status": "error",
+                "message": e
+            })),
+        },
         _ => HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": "Decision invalide (VALIDER ou REFUSER)"
-        }))
+        })),
     }
 }
 
@@ -1088,7 +1274,9 @@ pub async fn core_kyc_validate(req: actix_web::HttpRequest, body: web::Json<serd
 pub async fn core_kyc_statut(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     let __cible = path.to_string();
-    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) { return r; }
+    if let Err(r) = crate::auth_guard::exiger_soi_ou_owner(&req, &__cible) {
+        return r;
+    }
 
     use crate::kyc::storage::KycStore;
 
@@ -1110,8 +1298,6 @@ pub async fn core_kyc_statut(req: actix_web::HttpRequest, path: web::Path<String
             "uq_number": user,
             "statut": "AUCUN",
             "message": "Aucun dossier KYC"
-        }))
+        })),
     }
 }
-
-

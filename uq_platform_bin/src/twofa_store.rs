@@ -12,7 +12,7 @@ use crate::totp;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TwoFaCompte {
-    pub secret_b32: String,          // secret du COMPTE (jamais exposé)
+    pub secret_b32: String, // secret du COMPTE (jamais exposé)
     pub created_at: u64,
     pub rotated_at: u64,
     /// vk_hex -> true : wallets liés (le code TOTP dépend du vk)
@@ -30,12 +30,18 @@ impl TwoFaStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
         let _ = std::fs::create_dir_all(&dir);
-        Self { dir, cache: Mutex::new(HashMap::new()) }
+        Self {
+            dir,
+            cache: Mutex::new(HashMap::new()),
+        }
     }
 
     fn path(&self, uq: &str) -> PathBuf {
         // uq est validé en amont (ressemble_a_un_uq) — pas de traversal
-        self.dir.join(format!("{}.json", uq.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_")))
+        self.dir.join(format!(
+            "{}.json",
+            uq.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "_")
+        ))
     }
 
     fn charger(&self, uq: &str) -> Option<TwoFaCompte> {
@@ -99,7 +105,9 @@ impl TwoFaStore {
     pub fn rotate(&self, uq: &str) -> serde_json::Value {
         let mut c = match self.charger(uq) {
             Some(c) => c,
-            None => return serde_json::json!({"status":"error","message":"2FA non activée — enroll d'abord"}),
+            None => {
+                return serde_json::json!({"status":"error","message":"2FA non activée — enroll d'abord"})
+            }
         };
         let now = now_ts();
         c.secret_b32 = totp::nouveau_secret_compte();
@@ -141,7 +149,10 @@ impl TwoFaStore {
         if !c.wallets.contains_key(vk_hex) {
             return None;
         }
-        Some(totp::code_pour(&totp::secret_wallet(&c.secret_b32, vk_hex), now_ts()))
+        Some(totp::code_pour(
+            &totp::secret_wallet(&c.secret_b32, vk_hex),
+            now_ts(),
+        ))
     }
 
     /// Vérifie code TOTP OU code de secours pour un wallet lié.

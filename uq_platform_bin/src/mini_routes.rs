@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde_json::json;
-use uq_vault::mini_server::MiniServer;
 use uq_vault::authenticity::AuthenticityVerifier;
+use uq_vault::mini_server::MiniServer;
 
 pub struct MiniServerState {
     pub mini: std::sync::Mutex<MiniServer>,
@@ -36,12 +36,15 @@ pub async fn mini_health(state: web::Data<std::sync::Arc<MiniServerState>>) -> H
     }))
 }
 
-pub async fn mini_store(state: web::Data<std::sync::Arc<MiniServerState>>, body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn mini_store(
+    state: web::Data<std::sync::Arc<MiniServerState>>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     let fragment = body.get("fragment").and_then(|v| v.as_str()).unwrap_or("");
     let bytes = fragment.as_bytes().to_vec();
     let mut mini = state.mini.lock().unwrap();
     match mini.store(bytes) {
         Ok(()) => HttpResponse::Ok().json(json!({"status": "success", "stored": true})),
-        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": e}))
+        Err(e) => HttpResponse::BadRequest().json(json!({"status": "error", "message": e})),
     }
 }

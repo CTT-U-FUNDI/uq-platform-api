@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // DEMANDE CALCULATOR — Modèle C
 // ====================
 //
@@ -41,17 +41,17 @@ impl DemandeState {
         } else {
             volume_24h_borb as f64 / total_soldes_borb as f64
         };
-        
+
         // 2. Demande = Soldes + (Volume × Vitesse)
         let volume_effectif = (volume_24h_borb as f64 * vitesse) as u128;
         let demande_borb = total_soldes_borb + volume_effectif;
-        
+
         // 3. Convertir en USD
         let demande_usd = (demande_borb as f64 * prix_usd) as u128;
-        
+
         // 4. Calculer le nouveau prix
         let nouveau_prix = crate::regulateur::Regulateur::calculer_prix(demande_usd);
-        
+
         Self {
             total_soldes_borb,
             volume_24h_borb,
@@ -68,9 +68,17 @@ impl DemandeState {
 pub fn calculer_demande_globale() -> Result<DemandeState, String> {
     // 1. Lire le prix actuel
     let prix_state = crate::persistence::load_prix();
-    let prix_usd: f64 = prix_state.prix_actuel.trim().parse().map_err(|e: std::num::ParseFloatError| {
-        format!("prix_actuel illisible ({}) : aucun recalcul de la demande", e)
-    })?;
+    let prix_usd: f64 =
+        prix_state
+            .prix_actuel
+            .trim()
+            .parse()
+            .map_err(|e: std::num::ParseFloatError| {
+                format!(
+                    "prix_actuel illisible ({}) : aucun recalcul de la demande",
+                    e
+                )
+            })?;
     if !prix_usd.is_finite() || prix_usd <= 0.0 {
         return Err(format!(
             "prix_actuel non exploitable ({}) : la demande ne sera pas calculée sur un prix inventé",
@@ -85,35 +93,33 @@ pub fn calculer_demande_globale() -> Result<DemandeState, String> {
     let volume_24h = scanner_volume_24h();
 
     // 4. Calculer la demande
-    Ok(DemandeState::calculer(
-        total_soldes,
-        volume_24h,
-        prix_usd,
-    ))
+    Ok(DemandeState::calculer(total_soldes, volume_24h, prix_usd))
 }
 
 /// Scanne tous les soldes dans uq_index.db + data/users/
 fn scanner_tous_les_soldes() -> u128 {
     let mut total: u128 = 0;
-    
+
     // 1. Lire uq_index.db pour avoir la liste des comptes
-    let idx = crate::uq_index::UqIndex::shared(&crate::uq_index::uq_index_path());
-    
+    let idx = crate::uq_index::UqIndex::shared("uq_index.db");
+
     // Pour chaque compte, ouvrir sa DB et lire balance
     let accounts_dir = "data/users";
-    
+
     if let Ok(entries) = std::fs::read_dir(accounts_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("db") {
                 if let Ok(conn) = rusqlite::Connection::open(&path) {
                     // Essayer plusieurs formats de solde
-                    let balance: i64 = conn.query_row(
-                        "SELECT COALESCE(points, 0) FROM balance WHERE id = 1",
-                        [],
-                        |row| row.get(0),
-                    ).unwrap_or(0);
-                    
+                    let balance: i64 = conn
+                        .query_row(
+                            "SELECT COALESCE(points, 0) FROM balance WHERE id = 1",
+                            [],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or(0);
+
                     // Convertir points → BORB (1 BORB = 100 points)
                     let borb = (balance / 100) as u128;
                     total += borb;
@@ -121,7 +127,7 @@ fn scanner_tous_les_soldes() -> u128 {
             }
         }
     }
-    
+
     eprintln!("💰 Soldes totaux : {} BORB", total);
     total
 }
@@ -131,9 +137,9 @@ fn scanner_volume_24h() -> u128 {
     let mut total: u128 = 0;
     let now = chrono::Utc::now().timestamp();
     let cutoff = now - 86400; // 24h
-    
+
     let accounts_dir = "data/users";
-    
+
     if let Ok(entries) = std::fs::read_dir(accounts_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -145,7 +151,7 @@ fn scanner_volume_24h() -> u128 {
                         rusqlite::params![cutoff],
                         |row| row.get(0),
                     ).unwrap_or(0);
-                    
+
                     // Convertir points → BORB
                     let borb = (count / 100) as u128;
                     total += borb;
@@ -153,7 +159,7 @@ fn scanner_volume_24h() -> u128 {
             }
         }
     }
-    
+
     eprintln!("📊 Volume 24h : {} BORB", total);
     total
 }

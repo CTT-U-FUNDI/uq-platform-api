@@ -15,7 +15,7 @@ lazy_static::lazy_static! {
     static ref RELAY: Mutex<HashMap<String, Vec<(Instant, serde_json::Value)>>> = Mutex::new(HashMap::new());
 }
 
-const TTL_MS: u64 = 60_000;      // 60 s : une offre SDP ne sert qu'une fois
+const TTL_MS: u64 = 60_000; // 60 s : une offre SDP ne sert qu'une fois
 const MAX_PAR_BOITE: usize = 20; // anti-flood
 const TAILLE_MAX: usize = 16_384; // 16 Ko par signal — SDP tient largement
 
@@ -33,7 +33,11 @@ fn nettoyer() {
 /// `kind` : "offer" | "answer" | "ice" | "bye" | "pair".
 pub async fn signal_post(body: web::Json<serde_json::Value>) -> HttpResponse {
     let to = body.get("to").and_then(|v| v.as_str()).unwrap_or("").trim();
-    let kind = body.get("kind").and_then(|v| v.as_str()).unwrap_or("").trim();
+    let kind = body
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
     let payload = body.get("payload").cloned().unwrap_or(json!(null));
 
     if to.is_empty() || to.len() > 128 || kind.is_empty() || kind.len() > 16 {
@@ -52,7 +56,10 @@ pub async fn signal_post(body: web::Json<serde_json::Value>) -> HttpResponse {
             // le plus vieux saute — jamais de blocage
             box_.remove(0);
         }
-        box_.push((now, json!({ "kind": kind, "payload": payload, "at": now.elapsed().as_millis() as u64 })));
+        box_.push((
+            now,
+            json!({ "kind": kind, "payload": payload, "at": now.elapsed().as_millis() as u64 }),
+        ));
     }
     HttpResponse::Ok().json(json!({ "status": "queued" }))
 }

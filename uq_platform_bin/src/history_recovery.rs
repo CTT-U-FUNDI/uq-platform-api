@@ -19,16 +19,19 @@
 // reconstruit que des LIGNES D'HISTORIQUE, jamais de la monnaie.
 // ====================
 
-use rusqlite::{Connection, params};
 use crate::blockchain_lib::RECOVERY_MIN_VALIDATORS;
 use crate::p2p_history::{FragmentTx, HistoryFragment, HistoryRequest};
+use rusqlite::{params, Connection};
 
 // ====================
 // OUTILS
 // ====================
 
 pub fn db_path(uq_number: &str) -> String {
-    format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase())
+    format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    )
 }
 
 pub fn compte_existe(uq_number: &str) -> bool {
@@ -37,8 +40,8 @@ pub fn compte_existe(uq_number: &str) -> bool {
 
 /// Signature locale d'un message (le client peut fournir la sienne)
 pub fn signature_par_defaut(message: &str) -> String {
-    let secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "uq_history_default_secret".to_string());
+    let secret =
+        std::env::var("JWT_SECRET").unwrap_or_else(|_| "uq_history_default_secret".to_string());
     crate::p2p_history::signature_locale(&secret, message)
 }
 
@@ -265,7 +268,12 @@ pub fn enregistrer_fragment_chez_voisin(
             .map_err(|e| e.to_string())?;
     }
 
-    Ok(HistoryFragment::new(provider_uq, lost_uq, transactions.to_vec(), &signature))
+    Ok(HistoryFragment::new(
+        provider_uq,
+        lost_uq,
+        transactions.to_vec(),
+        &signature,
+    ))
 }
 
 /// Dépose un fragment dans la DB du DEMANDEUR (c'est là que se fait la
@@ -377,7 +385,11 @@ pub fn reconstruire_historique(
             continue;
         }
 
-        let type_tx = if tx.sender_uq == uq_number { "send" } else { "receive" };
+        let type_tx = if tx.sender_uq == uq_number {
+            "send"
+        } else {
+            "receive"
+        };
         let contrepartie = if tx.sender_uq == uq_number {
             tx.recipient_uq.clone()
         } else {
@@ -475,15 +487,17 @@ pub fn valider_recuperation(
         return Err("Demande deja validee".to_string());
     }
 
-    let signature = signature_client
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            let msg = crate::p2p_history::HistoryValidation::new(
-                validator_uq, &lost_uq, request_id, approuve, "",
-            )
-            .message_a_signer();
-            signature_par_defaut(&msg)
-        });
+    let signature = signature_client.map(|s| s.to_string()).unwrap_or_else(|| {
+        let msg = crate::p2p_history::HistoryValidation::new(
+            validator_uq,
+            &lost_uq,
+            request_id,
+            approuve,
+            "",
+        )
+        .message_a_signer();
+        signature_par_defaut(&msg)
+    });
 
     let maintenant = chrono::Utc::now().timestamp();
     conn_demandeur
@@ -536,7 +550,11 @@ pub fn valider_recuperation(
             params![
                 confirmations,
                 nouveau_statut,
-                if nouveau_statut == "open" { 0 } else { maintenant },
+                if nouveau_statut == "open" {
+                    0
+                } else {
+                    maintenant
+                },
                 request_id
             ],
         )

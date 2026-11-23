@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+  >
+  <title>Boutique Connexion</title>
+  <link rel="stylesheet" href="/connexion/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <svg class="hero__icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 9a14 14 0 0 1 18 0M6.5 12.5a9 9 0 0 1 11 0M10 16a4 4 0 0 1 4 0M12 20h.01"/>
+    </svg>
+    <div>
+      <p class="eyebrow">Boutique système UQ</p>
+      <h1>Boutique Connexion</h1>
+      <p>Partage et découvre de la connexion Wi-Fi</p>
+    </div>
+  </header>
+
+  <div id="network" class="notice notice--network" role="status" aria-live="polite">
+    Connexion au module natif…
+  </div>
+  <div class="notice notice--warning">
+    <strong>Facturation indisponible.</strong>
+    La facturation à la seconde n'est pas encore disponible. Reviens bientôt.
+  </div>
+
+  <nav class="tabs" focusgroup="tablist nomemory" aria-label="Sections Connexion">
+    <button type="button" id="tab-buy" role="tab" aria-selected="true" focusgroupstart>Acheter</button>
+    <button type="button" id="tab-sell" role="tab" aria-selected="false">Vendre</button>
+    <button type="button" id="tab-mine" role="tab" aria-selected="false">Mes offres</button>
+    <button type="button" id="tab-trust" role="tab" aria-selected="false">Confiance</button>
+  </nav>
+
+  <main>
+    <section id="panel-buy" class="panel" role="tabpanel" aria-labelledby="tab-buy" tabindex="0">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Acheter</p>
+          <h2>Connexions près de toi</h2>
+        </div>
+        <button type="button" id="refresh-nearby" class="secondary">Actualiser</button>
+      </div>
+      <p class="muted">Le débit est estimé par le vendeur et n'est pas garanti à ton emplacement.</p>
+      <div id="buy-status" class="status" role="status" aria-live="polite"></div>
+      <div id="offers" class="cards"></div>
+    </section>
+
+    <section id="panel-sell" class="panel" role="tabpanel" aria-labelledby="tab-sell" tabindex="0" hidden>
+      <p class="eyebrow">Vendre</p>
+      <h2>Publier une fiche</h2>
+      <div class="notice">
+        Le serveur accepte une fiche publique sans prix. La durée et la facturation serveur ne sont pas encore disponibles.
+      </div>
+      <form id="publish-form">
+        <label for="offer-name">Nom affiché</label>
+        <input id="offer-name" name="nom" required maxlength="60" autocomplete="off">
+
+        <label for="network">Type de connexion</label>
+        <select id="network" name="reseau" required>
+          <option value="mobile">Mobile data</option>
+          <option value="starlink">Routeur / satellite</option>
+        </select>
+
+        <label for="speed">Débit estimé (Mbps)</label>
+        <input id="speed" name="debit_mbps" type="number" min="0" max="1000" step="0.1" required inputmode="decimal">
+
+        <label for="latency">Latence estimée (ms)</label>
+        <input id="latency" name="latence_ms" type="number" min="0" max="5000" step="1" required inputmode="numeric">
+
+        <label for="signal">Puissance du signal (%)</label>
+        <input id="signal" name="signal" type="number" min="0" max="100" step="1" required inputmode="numeric">
+
+        <label for="zone">Zone ou quartier</label>
+        <input id="zone" name="zone" maxlength="80" autocomplete="address-level2">
+
+        <fieldset>
+          <legend>Position</legend>
+          <label class="check">
+            <input id="location-consent" type="checkbox">
+            Je consens à partager cette position pour le classement local.
+          </label>
+          <button type="button" id="capture-location" class="secondary">Utiliser ma position</button>
+          <span id="location-value" class="muted">Position non captée.</span>
+        </fieldset>
+
+        <div class="notice">
+          Le script routeur n'est pas publié: aucun modèle n'a été déclaré compatible par le backend.
+          Le partage mobile dépend des capacités réelles d'Android et n'est pas activable depuis cette page.
+        </div>
+        <button type="submit" class="primary" id="publish-button">Publier la fiche</button>
+      </form>
+      <div id="sell-status" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="panel-mine" class="panel" role="tabpanel" aria-labelledby="tab-mine" tabindex="0" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Mes offres</p>
+          <h2>Ma fiche de connexion</h2>
+        </div>
+        <button type="button" id="refresh-mine" class="secondary">Actualiser</button>
+      </div>
+      <div id="mine-status" class="status" role="status" aria-live="polite"></div>
+      <div id="mine"></div>
+    </section>
+
+    <section id="panel-trust" class="panel" role="tabpanel" aria-labelledby="tab-trust" tabindex="0" hidden>
+      <p class="eyebrow">Confiance</p>
+      <h2>Avis et limites</h2>
+      <div class="notice">
+        Aucun score Connexion sur 100 n'est encore calculé par le backend. Les avis d'une fiche sont affichés sans inventer de réputation.
+      </div>
+      <div id="trust-status" class="status" role="status" aria-live="polite"></div>
+      <div id="trust"></div>
+    </section>
+  </main>
+
+  <dialog id="offer-dialog">
+    <article>
+      <button type="button" id="close-dialog" class="dialog-close" aria-label="Fermer">×</button>
+      <h2 id="dialog-title">Détails de la connexion</h2>
+      <div id="dialog-body"></div>
+      <button type="button" class="primary" disabled>
+        Acheter la connexion
+      </button>
+      <p class="warning">
+        La facturation à la seconde n'est pas encore disponible. Reviens bientôt.
+      </p>
+      <p class="muted">
+        Le contact vendeur, la demande de localisation et le chat de session sont indisponibles tant que le backend n'expose pas de contrat.
+      </p>
+    </article>
+  </dialog>
+
+  <script src="/connexion/app.js" defer></script>
+</body>
+</html>

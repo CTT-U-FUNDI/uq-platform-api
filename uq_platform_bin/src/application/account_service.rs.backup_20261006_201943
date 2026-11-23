@@ -1,0 +1,498 @@
+﻿// ═══════════════════════════════════════════════════════════════
+// ACCOUNT SERVICE — Création et migration des comptes
+// ═══════════════════════════════════════════════════════════════
+
+use rusqlite::{Connection, params};
+use serde::{Deserialize, Serialize};
+use crate::domain::validation::{self, AccountInput};
+use crate::db;
+use crate::uq_index::UqIndex;
+
+// ─────────────────────────────────────────────────────────────────
+// INPUT / OUTPUT
+// ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAccountInput {
+    pub prenom: String,
+    pub nom: String,
+    pub password: String,
+    pub date_naissance: String,
+    pub lieu_naissance: String,
+    pub pays: Option<String>,
+    pub adresse: Option<String>,
+    pub telephone: Option<String>,
+    pub email: Option<String>,
+    pub pseudo: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccountCreated {
+    pub uq_number: String,
+    pub email: String,
+    pub pseudo: String,
+    pub full_name: String,
+    pub prenom: String,
+    pub nom: String,
+    pub date_naissance: String,
+    pub lieu_naissance: String,
+    pub pays: String,
+    pub code_promo: String,
+    pub cadenas: String,
+    pub db_path: String,
+    pub position: u64,
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CREATE ACCOUNT — Fonction principale
+// ─────────────────────────────────────────────────────────────────
+
+pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<AccountCreated, String> {
+    // ═══ 1. VALIDATION ═══
+    let validation_input = AccountInput {
+        prenom: input.prenom.clone(),
+        nom: input.nom.clone(),
+        password: input.password.clone(),
+        date_naissance: input.date_naissance.clone(),
+        lieu_naissance: input.lieu_naissance.clone(),
+        pays: input.pays.clone().unwrap_or_else(|| "RDC".to_string()),
+        telephone: input.telephone.clone().unwrap_or_default(),
+    };
+
+    let v = validation::validate_account_input(&validation_input);
+    if !v.is_ok() {
+        return Err(v.message());
+    }
+
+    let pays = input.pays.clone().unwrap_or_else(|| "RDC".to_string()).to_uppercase();
+    let adresse = input.adresse.clone().unwrap_or_default();
+    let telephone = input.telephone.clone().unwrap_or_default();
+
+    // ═══ 2. GÉNÉRATION UQ NUMBER ═══
+    let index = UqIndex::shared("uq_index.db");
+    // ═══ ADDITIONNEUR INFINI ═══
+    // Jamais de soustraction. Persiste. Ne recule jamais.
+    let position = index.next_position();
+
+    use uq_blockchain::uq_address::{generate_uq_number, generate_uq_email, generate_uq_pseudo};
+
+    let mut generated_number = generate_uq_number(&pays, &input.nom, &input.prenom, position);
+    let mut uq_attempts = 0u64;
+    while index.pattern_exists("uq_number", &generated_number) {
+        uq_attempts += 1;
+        if uq_attempts > 1000 {
+            return Err("Impossible de générer un UQ number unique".to_string());
+        }
+        generated_number = generate_uq_number(&pays, &input.nom, &input.prenom, position + uq_attempts);
+    }
+
+    // ═══ 3. GESTION COLLISIONS ═══
+    let mut collision = 0u64;
+    let mut email = String::new();
+    let mut pseudo = String::new();
+
+    if let (Some(e), Some(p)) = (&input.email, &input.pseudo) {
+        email = e.clone();
+        pseudo = p.clone();
+    } else {
+        loop {
+            let test_email = generate_uq_email(&input.prenom, collision);
+            let test_pseudo = generate_uq_pseudo(&input.prenom, collision);
+
+            let email_exists = index.pattern_exists("email", &test_email) 
+                            || index.get_account_by_email(&test_email).is_some();
+            let pseudo_exists = index.pattern_exists("pseudo", &test_pseudo)
+                             || index.get_account_by_pseudo(&test_pseudo).is_some();
+
+            if !email_exists && !pseudo_exists {
+                email = test_email;
+                pseudo = test_pseudo;
+                break;
+            }
+
+            collision += 1;
+            if collision > 100 {
+                email = generate_uq_email(&input.prenom, position + 1);
+                pseudo = generate_uq_pseudo(&input.prenom, position + 1);
+                break;
+            }
+        }
+    }
+
+    let mut code_promo = format!("UQ-{}-{}", input.prenom.to_uppercase(), position);
+    let mut promo_attempts = 0u64;
+    while index.pattern_exists("code_promo", &code_promo) {
+        promo_attempts += 1;
+        if promo_attempts > 1000 {
+            return Err("Impossible de générer un code promo unique".to_string());
+        }
+        code_promo = format!("UQ-{}-{}", input.prenom.to_uppercase(), position + promo_attempts);
+    }
+
+    // ═══ 4. CRÉATION DB + MIGRATIONS ═══
+    let db_filename = generated_number.replace("-", "_").to_lowercase();
+    let db_path = format!("data/users/{}.db", db_filename);
+
+    std::fs::create_dir_all("data/users").map_err(|e| e.to_string())?;
+
+    // ★ ICI : appliquer TOUTES les migrations (75 tables)
+    db::init_with_migrations(&db_path)
+        .map_err(|e| format!("Erreur init DB: {}", e))?;
+
+    // ═══ 5. GÉNÉRATION CLÉS WALLET ═══
+    let placeholder_public_key: [u8; 32] = [0u8; 32];  // Sera rempli au KYC
+
+    // ═══ 6. INSERTION uq_index ═══
+    let salt = format!("uq_{}_salt", generated_number.to_lowercase().replace("-", "_"));
+    let hash_password = UqIndex::hash_password(&input.password, &salt);
+    let hash_identity = UqIndex::hash_identity(&input.nom, &input.prenom, &pays, position);
+
+    // ═══ 6.5 ENREGISTRER LES 4 PATTERNS ═══
+    // Vérificateur de patterns : garantit l'unicité
+    let _ = index.record_pattern("uq_number", &generated_number, position, &generated_number);
+    let _ = index.record_pattern("email", &email, position, &generated_number);
+    let _ = index.record_pattern("pseudo", &pseudo, position, &generated_number);
+    let _ = index.record_pattern("code_promo", &code_promo, position, &generated_number);
+
+    eprintln!("📋 Patterns enregistrés pour {} :", generated_number);
+    eprintln!("   - uq_number  : {}", generated_number);
+    eprintln!("   - email      : {}", email);
+    eprintln!("   - pseudo     : {}", pseudo);
+    eprintln!("   - code_promo : {}", code_promo);
+
+    index.insert_account(
+        &generated_number,
+        &email,
+        &pseudo,
+        &hash_identity,
+        &hash_password,
+        &salt,
+        &placeholder_public_key,
+        is_owner,
+        &db_path,
+    ).map_err(|e| format!("Erreur index: {}", e))?;
+
+    // ═══ 6.6 INSÉRER LE CODE PROMO DANS code_promos ═══
+    if let Err(e) = index.insert_code_promo(&code_promo, &generated_number, &input.prenom, position) {
+        eprintln!("⚠️  Erreur insertion code_promo: {}", e);
+    } else {
+        eprintln!("✅ Code promo inséré: {}", code_promo);
+    }
+
+    // ═══ 7. CONFIGURATION COMPLÈTE DU COMPTE ═══
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp();
+
+    // 7.1 user_login_config
+    let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
+    conn.execute(
+        "INSERT OR REPLACE INTO user_login_config 
+         (uq_number, is_owner, requires_unlock_code, requires_triple_attempt, pin_required_step, max_fails_before_iphone, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![&generated_number, is_owner as i64, unlock, triple, pin_step, max_fails, now],
+    ).map_err(|e| e.to_string())?;
+
+    // 7.2 identities
+    let identity_type = if is_owner { "owner" } else { "public" };
+    conn.execute(
+        "INSERT OR REPLACE INTO identities 
+         (identity_type, uq_number, public_uq, nom, prenom, email, pseudo, date_naissance, lieu_naissance, pays, adresse, telephone, is_public, is_verified, created_at, updated_at)
+         VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?13)",
+        params![
+            identity_type, &generated_number,
+            &input.nom, &input.prenom, &email, &pseudo,
+            &input.date_naissance, &input.lieu_naissance, &pays,
+            &adresse, &telephone,
+            if is_owner { 0 } else { 1 },
+            now
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // 7.3 privileges
+    let privileges: Vec<(&str, &str)> = if is_owner {
+        vec![
+            ("owner_full_access", "Accès complet propriétaire"),
+            ("coffre_access", "Accès coffres"),
+            ("wallet_access", "Accès portefeuille"),
+            ("fixorb_operations", "Opérations FIXORB"),
+            ("ubi_claim", "Réclamation UBI"),
+            ("zando_publish", "Publication Zando"),
+            ("kyc_bypass", "KYC auto-validé"),
+            ("admin_panel", "Panneau admin"),
+            ("guardian_access", "Terminal gardien"),
+            ("freeze_override", "Gel/dégel comptes"),
+            ("arbitration_judge", "Juge arbitrage"),
+            ("validator_node", "Noeud validateur PoS"),
+            ("public_transfer", "Transfert UQ public"),
+        ]
+    } else {
+        vec![
+            ("coffre_access", "Accès coffres"),
+            ("wallet_access", "Accès portefeuille"),
+            ("fixorb_operations", "Opérations FIXORB"),
+            ("ubi_claim", "Réclamation UBI"),
+            ("zando_publish", "Publication Zando"),
+        ]
+    };
+
+    for (name, notes) in privileges {
+        conn.execute(
+            "INSERT OR REPLACE INTO privileges (privilege_name, enabled, granted_at, granted_by, notes)
+             VALUES (?1, 1, ?2, 'system', ?3)",
+            params![name, now, notes],
+        ).ok();
+    }
+
+    // 7.4 wallet
+    conn.execute(
+        "INSERT OR REPLACE INTO wallet (id, balance_fxb, balance_points, balance_frozen, last_updated)
+         VALUES (1, 0.0, 0, 0, ?1)",
+        params![now],
+    ).ok();
+
+    // 7.5 balance
+    conn.execute(
+        "INSERT OR REPLACE INTO balance (id, bubbles, points, frozen_points, updated_at)
+         VALUES (1, 0, 0, 0, ?1)",
+        params![now],
+    ).ok();
+
+    // 7.6 my_fixorb_units
+    for unit in ["FXB", "fxb", "mfxb", "nfxb", "pfxb", "ffxb"].iter() {
+        conn.execute(
+            "INSERT OR IGNORE INTO my_fixorb_units (unit, balance, created_at)
+             VALUES (?1, 0, ?2)",
+            params![unit, now],
+        ).ok();
+    }
+
+    // 7.7 my_profile
+    conn.execute(
+        "INSERT OR REPLACE INTO my_profile (id, full_name, phone, address, city, country, kyc_status, created_at)
+         VALUES (1, ?1, ?2, ?3, '', ?4, 'pending', ?5)",
+        params![
+            format!("{} {}", &input.prenom, &input.nom).trim(),
+            &telephone, &adresse, &pays, now
+        ],
+    ).ok();
+
+    // 7.75 vaults (4 coffres)
+    let vaults = vec![
+        ("Coffre Principal", "owner"),
+        ("Coffre UBI", "ubi"),
+        ("Coffre Savings", "savings"),
+        ("Coffre Shield", "shield"),
+    ];
+    for (name, vtype) in vaults {
+        conn.execute(
+            "INSERT OR IGNORE INTO vaults (vault_name, vault_type, balance_fxb, balance_points, locked, created_at)
+             VALUES (?1, ?2, 0.0, 0, 0, ?3)",
+            params![name, vtype, now],
+        ).ok();
+    }
+
+    // 7.8 pin_status
+    conn.execute(
+        "INSERT OR REPLACE INTO pin_status (id, pin_enabled, created_at)
+         VALUES (1, 0, ?1)",
+        params![now],
+    ).ok();
+
+    // 7.9 security_login_cooldown_uq
+    conn.execute(
+        "INSERT OR REPLACE INTO security_login_cooldown_uq 
+         (uq_number, is_owner, failure_count, cooldown_level, cooldown_until, last_attempt, first_failure_at, attempts_ok, is_locked, locked_until)
+         VALUES (?1, ?2, 0, 0, 0, ?3, 0, 0, 0, 0)",
+        params![&generated_number, is_owner as i64, now],
+    ).ok();
+
+    // 7.10 my_private_key : GÉNÉRÉ AU KYC (pas à la création)
+
+    // ═══ 8. POSE CADENAS KYC ═══
+    let infos_cadenas = crate::kyc::cadenas::InfosCompte {
+        uq_number: generated_number.clone(),
+        nom: input.nom.clone(),
+        prenom: input.prenom.clone(),
+        date_naissance: input.date_naissance.clone(),
+        lieu_naissance: input.lieu_naissance.clone(),
+        pays: pays.clone(),
+        adresse: if adresse.is_empty() { None } else { Some(adresse.clone()) },
+        telephone: if telephone.is_empty() { None } else { Some(telephone.clone()) },
+        created_at: now,
+    };
+
+    let cadenas_hash = crate::kyc::cadenas::poser_cadenas_creation(&generated_number, &infos_cadenas)
+        .unwrap_or_else(|e| {
+            eprintln!("⚠️  Cadenas non posé: {}", e);
+            "NON_POSE".to_string()
+        });
+
+    // ═══ 9. PORTEFEUILLE GLOBAL ═══
+    {
+        let mut orb = crate::persistence::load_global_orb();
+        orb.comptes.insert(
+            generated_number.clone(),
+            crate::block_orb::Portefeuille {
+                solde: 0,
+                cadenas: Some(cadenas_hash.clone()),
+                cadenas_at: Some(now),
+                alerte_piratage: false,
+                alerte_details: None,
+                internal_clock: chrono::Utc::now().timestamp(),
+                last_signature: None,
+                last_tx_hash: None,
+                universal_key_hash: None,
+                history: Vec::new(),
+            },
+        );
+        let _ = crate::persistence::save_global_orb(&orb);
+        internal_clock: chrono::Utc::now().timestamp(),
+                last_signature: None,
+                last_tx_hash: None,
+                universal_key_hash: None,
+                history: Vec::new(),
+            }
+
+    eprintln!("✅ Compte créé: {} (position {})", generated_number, position);
+
+    Ok(AccountCreated {
+        uq_number: generated_number,
+        email,
+        pseudo,
+        full_name: format!("{} {}", input.prenom, input.nom).trim().to_string(),
+        prenom: input.prenom,
+        nom: input.nom,
+        date_naissance: input.date_naissance,
+        lieu_naissance: input.lieu_naissance,
+        pays,
+        code_promo,
+        cadenas: cadenas_hash,
+        db_path,
+        position,
+    })
+}
+
+// ─────────────────────────────────────────────────────────────────
+// MIGRATE EXISTING ACCOUNT — Réparer un compte existant
+// ─────────────────────────────────────────────────────────────────
+
+pub fn migrate_existing_account(uq_number: &str) -> Result<(), String> {
+    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+
+    if !std::path::Path::new(&db_path).exists() {
+        return Err(format!("DB introuvable: {}", db_path));
+    }
+
+    // Appliquer les migrations (crée les tables manquantes)
+    db::init_with_migrations(&db_path)?;
+
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp();
+
+    // Déterminer si owner
+    let is_owner = uq_number == "UQ-00000001";
+
+    // user_login_config
+    let existing = conn.query_row(
+        "SELECT COUNT(*) FROM user_login_config WHERE uq_number = ?1",
+        params![uq_number],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0);
+
+    if existing == 0 {
+        let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
+        conn.execute(
+            "INSERT INTO user_login_config 
+             (uq_number, is_owner, requires_unlock_code, requires_triple_attempt, pin_required_step, max_fails_before_iphone, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![uq_number, is_owner as i64, unlock, triple, pin_step, max_fails, now],
+        ).ok();
+        eprintln!("   ✅ user_login_config créé pour {}", uq_number);
+    }
+
+    // privileges
+    let priv_count = conn.query_row("SELECT COUNT(*) FROM privileges", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    if priv_count == 0 {
+        let privileges: Vec<(&str, &str)> = if is_owner {
+            vec![
+                ("owner_full_access", "Accès complet propriétaire"),
+                ("coffre_access", "Accès coffres"),
+                ("wallet_access", "Accès portefeuille"),
+                ("fixorb_operations", "Opérations FIXORB"),
+                ("ubi_claim", "Réclamation UBI"),
+                ("zando_publish", "Publication Zando"),
+                ("kyc_bypass", "KYC auto-validé"),
+                ("admin_panel", "Panneau admin"),
+                ("guardian_access", "Terminal gardien"),
+                ("freeze_override", "Gel/dégel comptes"),
+                ("arbitration_judge", "Juge arbitrage"),
+                ("validator_node", "Noeud validateur PoS"),
+                ("public_transfer", "Transfert UQ public"),
+            ]
+        } else {
+            vec![
+                ("coffre_access", "Accès coffres"),
+                ("wallet_access", "Accès portefeuille"),
+                ("fixorb_operations", "Opérations FIXORB"),
+                ("ubi_claim", "Réclamation UBI"),
+                ("zando_publish", "Publication Zando"),
+            ]
+        };
+        for (name, notes) in privileges {
+            conn.execute(
+                "INSERT OR REPLACE INTO privileges (privilege_name, enabled, granted_at, granted_by, notes)
+                 VALUES (?1, 1, ?2, 'system', ?3)",
+                params![name, now, notes],
+            ).ok();
+        }
+        eprintln!("   ✅ privileges créés pour {}", uq_number);
+    }
+
+    // wallet (synchroniser avec balance.points)
+    let wallet_count = conn.query_row("SELECT COUNT(*) FROM wallet", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    if wallet_count == 0 {
+        let points: i64 = conn.query_row("SELECT COALESCE(points, 0) FROM balance WHERE id = 1", [], |r| r.get(0)).unwrap_or(0);
+        conn.execute(
+            "INSERT INTO wallet (id, balance_fxb, balance_points, balance_frozen, last_updated)
+             VALUES (1, ?1, ?2, 0, ?3)",
+            params![points as f64 / 100.0, points, now],
+        ).ok();
+        eprintln!("   ✅ wallet créé pour {} ({} points)", uq_number, points);
+    }
+
+    // my_profile (si vide)
+    let profile_count = conn.query_row("SELECT COUNT(*) FROM my_profile", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    if profile_count == 0 {
+        conn.execute(
+            "INSERT OR REPLACE INTO my_profile (id, kyc_status, created_at)
+             VALUES (1, 'pending', ?1)",
+            params![now],
+        ).ok();
+    }
+
+    eprintln!("✅ Compte migré: {}", uq_number);
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────
+// MIGRATE ALL EXISTING ACCOUNTS
+// ─────────────────────────────────────────────────────────────────
+
+pub fn migrate_all_existing_accounts() -> Result<Vec<String>, String> {
+    let index = UqIndex::shared("uq_index.db");
+    let accounts = index.list_all();
+
+    let mut migrated = Vec::new();
+
+    for account in accounts {
+        let uq = account.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
+        if uq.is_empty() { continue; }
+
+        match migrate_existing_account(uq) {
+            Ok(_) => migrated.push(uq.to_string()),
+            Err(e) => eprintln!("⚠️  {} : {}", uq, e),
+        }
+    }
+
+    Ok(migrated)
+}

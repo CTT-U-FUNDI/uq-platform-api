@@ -1,9 +1,9 @@
-﻿// ====================
+// ====================
 // LOGIN SERVICE — Login piloté par user_login_config
 // Un SEUL flux, adapté automatiquement selon le compte
 // ====================
 
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 // ====================
@@ -39,7 +39,7 @@ impl LoginConfig {
             uq_number: uq.to_string(),
             is_owner: true,
             requires_unlock_code: true,
-            requires_triple_attempt: false,
+            requires_triple_attempt: true,
             pin_required_step: 3,
             max_fails_before_iphone: 3,
         }
@@ -60,7 +60,7 @@ pub struct LoginStep1Result {
 
 #[derive(Debug, Serialize)]
 pub struct LoginStep2Result {
-    pub status: String,        // "attempt_required" | "step_required" | "error"
+    pub status: String, // "attempt_required" | "step_required" | "error"
     pub is_owner: bool,
     pub next_step: i64,
     pub tfa_token: String,
@@ -74,21 +74,13 @@ pub struct LoginStep2Result {
 // ====================
 
 pub fn get_login_config(uq_number: &str) -> Result<LoginConfig, String> {
-    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    let db_path = format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    );
 
     if !std::path::Path::new(&db_path).exists() {
-        // Comptes servis par Firestore (uq_index) n'ont pas de DB locale :
-        // la config login est DERIVEE de l'index — le serveur ne garde
-        // que les preuves, pas de fichier par compte.
-        let idx = crate::uq_index::UqIndex::shared("uq_index.db");
-        let is_owner = idx.get_account(uq_number)
-            .map(|a| a.get("is_owner").and_then(|v| v.as_bool()).unwrap_or(false))
-            .unwrap_or(uq_number == crate::auth_guard::OWNER_UQ);
-        return Ok(if is_owner {
-            LoginConfig::default_owner(uq_number)
-        } else {
-            LoginConfig::default_user(uq_number)
-        });
+        return Err("Compte introuvable".to_string());
     }
 
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
@@ -112,7 +104,7 @@ pub fn get_login_config(uq_number: &str) -> Result<LoginConfig, String> {
         }),
         Err(_) => {
             // Pas de config → utiliser les défauts
-            let is_owner = uq_number == "UQ-996697110";
+            let is_owner = uq_number == "UQ-00000001";
             if is_owner {
                 Ok(LoginConfig::default_owner(uq_number))
             } else {
@@ -136,7 +128,10 @@ pub fn account_exists(uq_number: &str) -> bool {
 // ====================
 
 pub fn ensure_config_exists(uq_number: &str) -> Result<(), String> {
-    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    let db_path = format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    );
 
     if !std::path::Path::new(&db_path).exists() {
         return Err("Compte introuvable".to_string());
@@ -145,16 +140,19 @@ pub fn ensure_config_exists(uq_number: &str) -> Result<(), String> {
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
     // Vérifier si la config existe
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_login_config WHERE uq_number = ?1",
-        params![uq_number],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM user_login_config WHERE uq_number = ?1",
+            params![uq_number],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     if count == 0 {
         // Créer la config par défaut
-        let is_owner = uq_number == "UQ-996697110";
-        let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 0, 3, 3) } else { (0, 0, 1, 5) };
+        let is_owner = uq_number == "UQ-00000001";
+        let (unlock, triple, pin_step, max_fails) =
+            if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
         let now = chrono::Utc::now().timestamp();
 
         conn.execute(
@@ -164,7 +162,10 @@ pub fn ensure_config_exists(uq_number: &str) -> Result<(), String> {
             params![uq_number, is_owner as i64, unlock, triple, pin_step, max_fails, now],
         ).map_err(|e| e.to_string())?;
 
-        eprintln!("✅ user_login_config créé automatiquement pour {}", uq_number);
+        eprintln!(
+            "✅ user_login_config créé automatiquement pour {}",
+            uq_number
+        );
     }
 
     Ok(())
@@ -174,7 +175,10 @@ pub fn ensure_config_exists(uq_number: &str) -> Result<(), String> {
 // VALIDER LE UQ (step1)
 // ====================
 
-pub fn validate_uq_step1(uq_number: &str, allow_circle_member: bool) -> Result<LoginConfig, String> {
+pub fn validate_uq_step1(
+    uq_number: &str,
+    allow_circle_member: bool,
+) -> Result<LoginConfig, String> {
     // 1. Verifier que le compte existe
     if !account_exists(uq_number) {
         return Err("Compte introuvable".to_string());
@@ -182,22 +186,30 @@ pub fn validate_uq_step1(uq_number: &str, allow_circle_member: bool) -> Result<L
 
     // 1.5 BLOQUER si le compte est membre d'un cercle (sauf bascule owner)
     // Un membre de cercle ne peut PAS se connecter seul depuis l'exterieur.
-    // Il doit passer par le compte owner (UQ-996697110) via X-Switch-From.
+    // Il doit passer par le compte owner (UQ-00000001) via X-Switch-From.
     if !allow_circle_member {
         if let Ok(conn) = Connection::open("uq_index.db") {
-            let is_member: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM circle_members WHERE member_uq = ?1 AND is_active = 1",
-                rusqlite::params![uq_number],
-                |row| row.get(0),
-            ).unwrap_or(0);
+            let is_member: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM circle_members WHERE member_uq = ?1 AND is_active = 1",
+                    rusqlite::params![uq_number],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
 
             if is_member > 0 {
-                eprintln!("[CIRCLE] Connexion externe bloquee pour {} (membre d'un cercle)", uq_number);
+                eprintln!(
+                    "[CIRCLE] Connexion externe bloquee pour {} (membre d'un cercle)",
+                    uq_number
+                );
                 return Err("Ce compte est lie a un proprietaire. Utilisez le compte proprietaire pour y acceder.".to_string());
             }
         }
     } else {
-        eprintln!("[CIRCLE] Bascule autorisee pour {} (X-Switch-From owner)", uq_number);
+        eprintln!(
+            "[CIRCLE] Bascule autorisee pour {} (X-Switch-From owner)",
+            uq_number
+        );
     }
 
     // 2. Verifier la config
@@ -217,8 +229,11 @@ pub fn validate_uq_step1(uq_number: &str, allow_circle_member: bool) -> Result<L
 // ====================
 
 pub fn get_attempts_ok(uq_number: &str) -> i64 {
-    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
-    let owner_db = "data/users/uq_996697110.db";
+    let db_path = format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    );
+    let owner_db = "data/users/uq_00000001.db";
 
     if let Ok(conn) = Connection::open(owner_db) {
         return conn.query_row(
@@ -231,7 +246,7 @@ pub fn get_attempts_ok(uq_number: &str) -> i64 {
 }
 
 pub fn increment_attempts_ok(uq_number: &str) -> i64 {
-    let owner_db = "data/users/uq_996697110.db";
+    let owner_db = "data/users/uq_00000001.db";
     let now = chrono::Utc::now().timestamp();
 
     if let Ok(conn) = Connection::open(owner_db) {
@@ -251,7 +266,7 @@ pub fn increment_attempts_ok(uq_number: &str) -> i64 {
 }
 
 pub fn reset_attempts_ok(uq_number: &str) {
-    let owner_db = "data/users/uq_996697110.db";
+    let owner_db = "data/users/uq_00000001.db";
     if let Ok(conn) = Connection::open(owner_db) {
         let _ = conn.execute(
             "UPDATE security_login_cooldown_uq SET attempts_ok = 0 WHERE uq_number = ?1",
@@ -268,9 +283,9 @@ pub fn calculate_next_step(config: &LoginConfig, attempts_done: i64) -> i64 {
     if config.is_owner {
         // Owner : 3 tentatives avant le step 3543
         if attempts_done < 3 {
-            2  // Redemander email+password
+            2 // Redemander email+password
         } else {
-            3  // Passer au code 3543
+            3 // Passer au code 3543
         }
     } else {
         // User : direct au 2FA
@@ -292,13 +307,20 @@ pub fn validate_step2(
     // 1. Vérifier le couple email + password saisis
     let idx = crate::uq_index::UqIndex::shared("uq_index.db");
     let account = idx.get_account(uq_number).ok_or("Compte introuvable")?;
-    let email_compte = account.get("uq_email").and_then(|v| v.as_str()).unwrap_or("");
+    let email_compte = account
+        .get("uq_email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     let email_saisi = email_saisi.trim();
-    let correspond = !email_compte.is_empty()
-        && email_saisi.to_lowercase() == email_compte.to_lowercase();
+    let correspond =
+        !email_compte.is_empty() && email_saisi.to_lowercase() == email_compte.to_lowercase();
 
-    if !correspond || idx.verify_credentials(uq_number, email_compte, password).is_none() {
+    if !correspond
+        || idx
+            .verify_credentials(uq_number, email_compte, password)
+            .is_none()
+    {
         // Échec : incrémenter le cooldown. Message unique : ne pas dire lequel
         // des deux champs est faux réduit l'oracle offert à qui devine un UQ.
         let _ = increment_failure(uq_number);
@@ -336,10 +358,10 @@ pub fn validate_step2(
         }
     }
 
-    // 3. Credentials OK — propager le vrai flag owner (owner -> etape code)
+    // 3. User : passer directement au 2FA
     Ok(LoginStep2Result {
         status: "step_required".to_string(),
-        is_owner: config.is_owner,
+        is_owner: false,
         next_step: 3,
         tfa_token: generate_tfa_token(),
         attempts_done: 0,
@@ -353,7 +375,7 @@ pub fn validate_step2(
 // ====================
 
 pub fn increment_failure(uq_number: &str) -> i64 {
-    let owner_db = "data/users/uq_996697110.db";
+    let owner_db = "data/users/uq_00000001.db";
     let now = chrono::Utc::now().timestamp();
 
     if let Ok(conn) = Connection::open(owner_db) {
@@ -420,7 +442,7 @@ pub fn increment_failure(uq_number: &str) -> i64 {
 // ====================
 
 pub fn is_in_cooldown(uq_number: &str) -> Option<i64> {
-    let owner_db = "data/users/uq_996697110.db";
+    let owner_db = "data/users/uq_00000001.db";
     let now = chrono::Utc::now().timestamp();
 
     if let Ok(conn) = Connection::open(owner_db) {
@@ -444,7 +466,7 @@ pub fn is_in_cooldown(uq_number: &str) -> Option<i64> {
 // ====================
 
 pub fn reset_cooldown(uq_number: &str) {
-    let owner_db = "data/users/uq_996697110.db";
+    let owner_db = "data/users/uq_00000001.db";
     if let Ok(conn) = Connection::open(owner_db) {
         let _ = conn.execute(
             "UPDATE security_login_cooldown_uq SET failure_count = 0, cooldown_level = 0, cooldown_until = 0 WHERE uq_number = ?1",
@@ -484,7 +506,7 @@ mod tests {
 
     #[test]
     fn test_default_owner_config() {
-        let cfg = LoginConfig::default_owner("UQ-996697110");
+        let cfg = LoginConfig::default_owner("UQ-00000001");
         assert!(cfg.is_owner);
         assert!(cfg.requires_unlock_code);
         assert!(cfg.requires_triple_attempt);
@@ -501,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_next_step_owner() {
-        let cfg = LoginConfig::default_owner("UQ-996697110");
+        let cfg = LoginConfig::default_owner("UQ-00000001");
         assert_eq!(calculate_next_step(&cfg, 0), 2);
         assert_eq!(calculate_next_step(&cfg, 1), 2);
         assert_eq!(calculate_next_step(&cfg, 2), 2);

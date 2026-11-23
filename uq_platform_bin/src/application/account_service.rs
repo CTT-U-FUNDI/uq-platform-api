@@ -2,11 +2,11 @@
 // ACCOUNT SERVICE — Création et migration des comptes
 // ====================
 
-use rusqlite::{Connection, params};
-use serde::{Deserialize, Serialize};
-use crate::domain::validation::{self, AccountInput};
 use crate::db;
+use crate::domain::validation::{self, AccountInput};
 use crate::uq_index::UqIndex;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 
 // ====================
 // INPUT / OUTPUT
@@ -90,7 +90,11 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         return Err(v.message());
     }
 
-    let pays = input.pays.clone().unwrap_or_else(|| "RDC".to_string()).to_uppercase();
+    let pays = input
+        .pays
+        .clone()
+        .unwrap_or_else(|| "RDC".to_string())
+        .to_uppercase();
     let adresse = input.adresse.clone().unwrap_or_default();
     let telephone = input.telephone.clone().unwrap_or_default();
 
@@ -98,7 +102,7 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
     let index = UqIndex::shared("uq_index.db");
     let position = index.next_position();
 
-    use uq_blockchain::uq_address::{generate_uq_number, generate_uq_email, generate_uq_pseudo};
+    use uq_blockchain::uq_address::{generate_uq_email, generate_uq_number, generate_uq_pseudo};
 
     // Le numéro UQ = code pays GSM + suffixe aléatoire crypto.
     // Chaque appel génère une valeur différente : la boucle de collision
@@ -151,7 +155,11 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         if promo_attempts > 1000 {
             return Err("Impossible de générer un code promo unique".to_string());
         }
-        code_promo = format!("UQ-{}-{}", input.prenom.to_uppercase(), position + promo_attempts);
+        code_promo = format!(
+            "UQ-{}-{}",
+            input.prenom.to_uppercase(),
+            position + promo_attempts
+        );
     }
 
     // ===== 4. CRÉATION DB + MIGRATIONS =====
@@ -160,14 +168,16 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
 
     std::fs::create_dir_all("data/users").map_err(|e| e.to_string())?;
 
-    db::init_with_migrations(&db_path)
-        .map_err(|e| format!("Erreur init DB: {}", e))?;
+    db::init_with_migrations(&db_path).map_err(|e| format!("Erreur init DB: {}", e))?;
 
     // ===== 5. GÉNÉRATION CLÉS WALLET =====
     let placeholder_public_key: [u8; 32] = [0u8; 32];
 
     // ===== 6. INSERTION uq_index =====
-    let salt = format!("uq_{}_salt", generated_number.to_lowercase().replace("-", "_"));
+    let salt = format!(
+        "uq_{}_salt",
+        generated_number.to_lowercase().replace("-", "_")
+    );
     let hash_password = UqIndex::hash_password(&input.password, &salt);
     let hash_identity = UqIndex::hash_identity(&input.nom, &input.prenom, &pays, position);
 
@@ -182,17 +192,19 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
     eprintln!("   - pseudo     : {}", pseudo);
     eprintln!("   - code_promo : {}", code_promo);
 
-    index.insert_account(
-        &generated_number,
-        &email,
-        &pseudo,
-        &hash_identity,
-        &hash_password,
-        &salt,
-        &placeholder_public_key,
-        is_owner,
-        &db_path,
-    ).map_err(|e| format!("Erreur index: {}", e))?;
+    index
+        .insert_account(
+            &generated_number,
+            &email,
+            &pseudo,
+            &hash_identity,
+            &hash_password,
+            &salt,
+            &placeholder_public_key,
+            is_owner,
+            &db_path,
+        )
+        .map_err(|e| format!("Erreur index: {}", e))?;
 
     // ===== 6.7 ENRICHISSEMENT PROFIL =====
     if let Err(e) = index.update_profile_fields(
@@ -228,11 +240,15 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         input.phone_verified && !recovery_phone.is_empty(),
         input.email_verified && !recovery_email.is_empty(),
     ) {
-        eprintln!("[ATTENTION] Contacts de recuperation non enregistres : {}", e);
+        eprintln!(
+            "[ATTENTION] Contacts de recuperation non enregistres : {}",
+            e
+        );
     }
 
     // ===== 6.6 INSÉRER LE CODE PROMO DANS code_promos =====
-    if let Err(e) = index.insert_code_promo(&code_promo, &generated_number, &input.prenom, position) {
+    if let Err(e) = index.insert_code_promo(&code_promo, &generated_number, &input.prenom, position)
+    {
         eprintln!("⚠️  Erreur insertion code_promo: {}", e);
     } else {
         eprintln!("✅ Code promo inséré: {}", code_promo);
@@ -314,7 +330,8 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         "INSERT OR REPLACE INTO balance (id, bubbles, points, frozen_points, updated_at)
          VALUES (1, 0, 0, 0, ?1)",
         params![now],
-    ).ok();
+    )
+    .ok();
 
     // 7.6 my_borb_units
     for unit in ["BORB", "borb", "mborb", "nborb", "pborb", "fborb"].iter() {
@@ -322,7 +339,8 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
             "INSERT OR IGNORE INTO my_borb_units (unit, balance, created_at)
              VALUES (?1, 0, ?2)",
             params![unit, now],
-        ).ok();
+        )
+        .ok();
     }
 
     // 7.65 multi_wallets : creer les 6 devises par defaut
@@ -341,7 +359,8 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
                 "INSERT OR IGNORE INTO multi_wallets (uq_number, currency, balance, updated_at)
                  VALUES (?1, ?2, ?3, ?4)",
                 params![&generated_number, currency, balance, now],
-            ).ok();
+            )
+            .ok();
         }
         eprintln!("💰 6 wallets crees pour {}", generated_number);
     }
@@ -376,7 +395,8 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         "INSERT OR REPLACE INTO pin_status (id, pin_enabled, created_at)
          VALUES (1, 0, ?1)",
         params![now],
-    ).ok();
+    )
+    .ok();
 
     // 7.9 security_login_cooldown_uq
     conn.execute(
@@ -411,10 +431,16 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
                     "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('parrain_uq', ?1, ?2)",
                     params![p, now],
                 );
-                eprintln!("🤝 Parrainage enregistre : {} parraine {} (code {})", p, generated_number, code);
+                eprintln!(
+                    "🤝 Parrainage enregistre : {} parraine {} (code {})",
+                    p, generated_number, code
+                );
             }
             None => {
-                eprintln!("⚠️  Code promo parrain inconnu « {} » pour {}", code, generated_number);
+                eprintln!(
+                    "⚠️  Code promo parrain inconnu « {} » pour {}",
+                    code, generated_number
+                );
             }
         }
     }
@@ -425,13 +451,16 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
     // Sans cadenas créé avec des identifiants exacts, pas de compte :
     // c'est ce lien qui interdit les comptes fantômes et le BORB non tracé.
     for (champ, nom) in [
-        (&input.nom, "nom"), (&input.prenom, "prenom"),
-        (&input.date_naissance, "date_naissance"), (&input.lieu_naissance, "lieu_naissance"),
+        (&input.nom, "nom"),
+        (&input.prenom, "prenom"),
+        (&input.date_naissance, "date_naissance"),
+        (&input.lieu_naissance, "lieu_naissance"),
         (&pays, "pays"),
     ] {
         if champ.trim().is_empty() {
             return Err(format!(
-                "CADENAS_REQUIS: identifiant manquant ({}) — creation refusee", nom
+                "CADENAS_REQUIS: identifiant manquant ({}) — creation refusee",
+                nom
             ));
         }
     }
@@ -443,13 +472,22 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         date_naissance: input.date_naissance.clone(),
         lieu_naissance: input.lieu_naissance.clone(),
         pays: pays.clone(),
-        adresse: if adresse.is_empty() { None } else { Some(adresse.clone()) },
-        telephone: if telephone.is_empty() { None } else { Some(telephone.clone()) },
+        adresse: if adresse.is_empty() {
+            None
+        } else {
+            Some(adresse.clone())
+        },
+        telephone: if telephone.is_empty() {
+            None
+        } else {
+            Some(telephone.clone())
+        },
         created_at: now,
     };
 
-    let cadenas_hash = crate::kyc::cadenas::poser_cadenas_creation(&generated_number, &infos_cadenas)
-        .map_err(|e| format!("Creation refusee — cadenas structurel impossible: {}", e))?;
+    let cadenas_hash =
+        crate::kyc::cadenas::poser_cadenas_creation(&generated_number, &infos_cadenas)
+            .map_err(|e| format!("Creation refusee — cadenas structurel impossible: {}", e))?;
 
     // ===== 9. PORTEFEUILLE GLOBAL =====
     // ✅ CORRECTION : tous les champs de Portefeuille sont initialisés
@@ -471,7 +509,10 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
         let _ = crate::persistence::save_global_orb(&orb);
     }
 
-    eprintln!("✅ Compte créé: {} (position {})", generated_number, position);
+    eprintln!(
+        "✅ Compte créé: {} (position {})",
+        generated_number, position
+    );
 
     // ===== 9.5 PROVISIONNEMENT WALLET BORB =====
     // Chaque compte UQ a son wallet BORB : on provisionne le compte shell
@@ -527,10 +568,14 @@ pub fn create_account(input: CreateAccountInput, is_owner: bool) -> Result<Accou
 /// POST {BORB_NODE_URL}/compte/provisionner avec le token admin.
 /// Silencieux en cas d'échec : la création UQ ne dépend pas du nœud.
 fn provisionner_wallet_borb(uq_number: &str) {
-    let base = std::env::var("BORB_NODE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
+    let base =
+        std::env::var("BORB_NODE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
     let token = std::env::var("BORB_ADMIN_TOKEN").unwrap_or_default();
     if token.is_empty() {
-        eprintln!("⚠️  BORB_ADMIN_TOKEN absent — wallet BORB non provisionné pour {}", uq_number);
+        eprintln!(
+            "⚠️  BORB_ADMIN_TOKEN absent — wallet BORB non provisionné pour {}",
+            uq_number
+        );
         return;
     }
 
@@ -564,12 +609,19 @@ fn provisionner_wallet_borb(uq_number: &str) {
                     if reponse.contains("compte_provisionne") {
                         eprintln!("💰 Wallet BORB provisionné pour {}", uq_number);
                     } else {
-                        eprintln!("⚠️  Provisionnement BORB refusé pour {} : {}", uq_number, reponse.lines().last().unwrap_or(""));
+                        eprintln!(
+                            "⚠️  Provisionnement BORB refusé pour {} : {}",
+                            uq_number,
+                            reponse.lines().last().unwrap_or("")
+                        );
                     }
                 }
             }
         }
-        Err(e) => eprintln!("⚠️  Nœud BORB injoignable ({}:{}) — {} non provisionné : {}", hote, port, uq_number, e),
+        Err(e) => eprintln!(
+            "⚠️  Nœud BORB injoignable ({}:{}) — {} non provisionné : {}",
+            hote, port, uq_number, e
+        ),
     }
 }
 
@@ -578,7 +630,10 @@ fn provisionner_wallet_borb(uq_number: &str) {
 // ====================
 
 pub fn migrate_existing_account(uq_number: &str) -> Result<(), String> {
-    let db_path = format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase());
+    let db_path = format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    );
 
     if !std::path::Path::new(&db_path).exists() {
         return Err(format!("DB introuvable: {}", db_path));
@@ -589,16 +644,19 @@ pub fn migrate_existing_account(uq_number: &str) -> Result<(), String> {
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().timestamp();
 
-    let is_owner = uq_number == "UQ-996697110";
+    let is_owner = uq_number == "UQ-00000001";
 
-    let existing = conn.query_row(
-        "SELECT COUNT(*) FROM user_login_config WHERE uq_number = ?1",
-        params![uq_number],
-        |row| row.get::<_, i64>(0),
-    ).unwrap_or(0);
+    let existing = conn
+        .query_row(
+            "SELECT COUNT(*) FROM user_login_config WHERE uq_number = ?1",
+            params![uq_number],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0);
 
     if existing == 0 {
-        let (unlock, triple, pin_step, max_fails) = if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
+        let (unlock, triple, pin_step, max_fails) =
+            if is_owner { (1, 1, 3, 3) } else { (0, 0, 1, 5) };
         conn.execute(
             "INSERT INTO user_login_config 
              (uq_number, is_owner, requires_unlock_code, requires_triple_attempt, pin_required_step, max_fails_before_iphone, created_at)
@@ -608,7 +666,11 @@ pub fn migrate_existing_account(uq_number: &str) -> Result<(), String> {
         eprintln!("   ✅ user_login_config créé pour {}", uq_number);
     }
 
-    let priv_count = conn.query_row("SELECT COUNT(*) FROM privileges", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    let priv_count = conn
+        .query_row("SELECT COUNT(*) FROM privileges", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap_or(0);
     if priv_count == 0 {
         let privileges: Vec<(&str, &str)> = if is_owner {
             vec![
@@ -645,24 +707,38 @@ pub fn migrate_existing_account(uq_number: &str) -> Result<(), String> {
         eprintln!("   ✅ privileges créés pour {}", uq_number);
     }
 
-    let wallet_count = conn.query_row("SELECT COUNT(*) FROM wallet", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    let wallet_count = conn
+        .query_row("SELECT COUNT(*) FROM wallet", [], |r| r.get::<_, i64>(0))
+        .unwrap_or(0);
     if wallet_count == 0 {
-        let points: i64 = conn.query_row("SELECT COALESCE(points, 0) FROM balance WHERE id = 1", [], |r| r.get(0)).unwrap_or(0);
+        let points: i64 = conn
+            .query_row(
+                "SELECT COALESCE(points, 0) FROM balance WHERE id = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
         conn.execute(
             "INSERT INTO wallet (id, balance_borb, balance_points, balance_frozen, last_updated)
              VALUES (1, ?1, ?2, 0, ?3)",
             params![points as f64 / 100.0, points, now],
-        ).ok();
+        )
+        .ok();
         eprintln!("   ✅ wallet créé pour {} ({} points)", uq_number, points);
     }
 
-    let profile_count = conn.query_row("SELECT COUNT(*) FROM my_profile", [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+    let profile_count = conn
+        .query_row("SELECT COUNT(*) FROM my_profile", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap_or(0);
     if profile_count == 0 {
         conn.execute(
             "INSERT OR REPLACE INTO my_profile (id, kyc_status, created_at)
              VALUES (1, 'pending', ?1)",
             params![now],
-        ).ok();
+        )
+        .ok();
     }
 
     eprintln!("✅ Compte migré: {}", uq_number);
@@ -680,8 +756,13 @@ pub fn migrate_all_existing_accounts() -> Result<Vec<String>, String> {
     let mut migrated = Vec::new();
 
     for account in accounts {
-        let uq = account.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
-        if uq.is_empty() { continue; }
+        let uq = account
+            .get("uq_number")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if uq.is_empty() {
+            continue;
+        }
 
         match migrate_existing_account(uq) {
             Ok(_) => migrated.push(uq.to_string()),

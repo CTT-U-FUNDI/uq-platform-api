@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // AI DETECTOR — Detection des images generees par une IA
 // ============================================================
 //
@@ -83,14 +83,35 @@ const GENERATEURS: &[(&str, &[&str])] = &[
     ("Midjourney", &["midjourney", "mid_journey"]),
     (
         "Stable Diffusion",
-        &["stable diffusion", "stable-diffusion", "stablediffusion", "sd-xl", "sdxl", "sd-webui", "automatic1111"],
+        &[
+            "stable diffusion",
+            "stable-diffusion",
+            "stablediffusion",
+            "sd-xl",
+            "sdxl",
+            "sd-webui",
+            "automatic1111",
+        ],
     ),
     ("ComfyUI", &["comfyui", "comfy-ui", "comfy_frontend"]),
     ("NovelAI", &["novelai"]),
     ("Adobe Firefly", &["firefly", "adobe firefly"]),
     ("Ideogram", &["ideogram"]),
-    ("FLUX (Black Forest Labs)", &["flux.1", "flux-1", "fluxdev", "flux1", "black forest labs", "bfl.ai"]),
-    ("Google Imagen", &["imagen 2", "imagen3", "imagen 3", "google imagen"]),
+    (
+        "FLUX (Black Forest Labs)",
+        &[
+            "flux.1",
+            "flux-1",
+            "fluxdev",
+            "flux1",
+            "black forest labs",
+            "bfl.ai",
+        ],
+    ),
+    (
+        "Google Imagen",
+        &["imagen 2", "imagen3", "imagen 3", "google imagen"],
+    ),
     ("Microsoft CogView/MAI", &["cogview", "mai-image"]),
     ("Recraft", &["recraft"]),
     ("Leonardo AI", &["leonardo.ai", "leonardo ai"]),
@@ -161,9 +182,7 @@ fn contient_signature(texte: &str, variante: &str) -> bool {
 pub fn detect_ai_metadonnees(meta: &MetadonneesImage) -> DetectionResult {
     let champs = meta.champs_fabrication();
     if champs.is_empty() {
-        return DetectionResult::inconnu(
-            "aucune metadonnee de fabrication dans le fichier",
-        );
+        return DetectionResult::inconnu("aucune metadonnee de fabrication dans le fichier");
     }
     let mut signaux = Vec::new();
     let mut confiance = 0.0f32;
@@ -201,8 +220,7 @@ pub fn detect_ai_metadonnees(meta: &MetadonneesImage) -> DetectionResult {
     // provenance merite d'etre montree au validateur.
     if meta.c2pa_present {
         signaux.push(
-            "credentials de contenu (C2PA) presents : origine declaree par le fichier"
-                .to_string(),
+            "credentials de contenu (C2PA) presents : origine declaree par le fichier".to_string(),
         );
     }
 
@@ -286,11 +304,7 @@ mod tests {
 
     #[test]
     fn logiciel_generateur_detecte() {
-        let meta = meta_avec(vec![(
-            "Software",
-            "ComfyUI 0.3.10",
-            FamilleChamp::Logiciel,
-        )]);
+        let meta = meta_avec(vec![("Software", "ComfyUI 0.3.10", FamilleChamp::Logiciel)]);
         let resultat = detect_ai_metadonnees(&meta);
         assert!(resultat.is_ai_generated);
         assert!(resultat.confidence >= 0.9);
@@ -349,9 +363,6 @@ mod tests {
 
     #[test]
     fn octets_hors_image_en_error() {
-        assert_eq!(
-            detect_ai_octets(b"bonjour").verdict,
-            "error"
-        );
+        assert_eq!(detect_ai_octets(b"bonjour").verdict, "error");
     }
 }

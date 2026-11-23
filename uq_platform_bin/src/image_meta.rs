@@ -449,7 +449,9 @@ fn marcher_ifd(bloc: &BlocTiff<'_>, off: u32, meta: &mut MetadonneesImage, profo
     if profondeur > MAX_IFD || off as usize + 2 > bloc.octets.len() {
         return;
     }
-    let Some(nombre) = bloc.u16(off as usize) else { return };
+    let Some(nombre) = bloc.u16(off as usize) else {
+        return;
+    };
     let nombre = nombre.min(512) as usize;
     let mut curseur = off as usize + 2;
     for _ in 0..nombre {
@@ -457,8 +459,12 @@ fn marcher_ifd(bloc: &BlocTiff<'_>, off: u32, meta: &mut MetadonneesImage, profo
             return;
         }
         let Some(tag) = bloc.u16(curseur) else { return };
-        let Some(type_) = bloc.u16(curseur + 2) else { return };
-        let Some(compte) = bloc.u32(curseur + 4) else { return };
+        let Some(type_) = bloc.u16(curseur + 2) else {
+            return;
+        };
+        let Some(compte) = bloc.u32(curseur + 4) else {
+            return;
+        };
         let unitaire = taille_type(type_);
         if unitaire == 0 {
             curseur += 12;
@@ -746,7 +752,7 @@ mod tests {
         chunk.extend_from_slice(b"tEXt");
         chunk.extend_from_slice(corps);
         chunk.extend_from_slice(&[0u8; 4]); // CRC non verifie par le parseur
-        // insertion avant IEND
+                                            // insertion avant IEND
         let pos = octets.len() - 12;
         octets.splice(pos..pos, chunk);
         let meta = extraire(&octets).expect("png lu");
@@ -772,14 +778,8 @@ mod tests {
             r#"<x:xmpmeta><xmp:CreatorTool="DALL-E 3"/><tiff:Software><tiff:Software>ComfyUI</tiff:Software></tiff:Software></x:xmpmeta>"#,
             &mut meta,
         );
-        assert!(meta
-            .champs
-            .iter()
-            .any(|champ| champ.valeur == "DALL-E 3"));
-        assert!(meta
-            .champs
-            .iter()
-            .any(|champ| champ.valeur == "ComfyUI"));
+        assert!(meta.champs.iter().any(|champ| champ.valeur == "DALL-E 3"));
+        assert!(meta.champs.iter().any(|champ| champ.valeur == "ComfyUI"));
     }
 
     #[test]
@@ -808,9 +808,6 @@ mod tests {
         octets.splice(pos..pos, chunk);
         let meta = extraire(&octets).expect("png avec exif");
         assert!(meta.exif_present);
-        assert_eq!(
-            meta.valeur("DateTimeOriginal"),
-            Some("2026:11:03 14:05:00")
-        );
+        assert_eq!(meta.valeur("DateTimeOriginal"), Some("2026:11:03 14:05:00"));
     }
 }

@@ -13,7 +13,9 @@
 
 use rusqlite::Connection;
 
-use crate::api_handlers::{chemin_base_compte, tracer_ecritures_coffre, ContexteAppel, EcritureCoffre};
+use crate::api_handlers::{
+    chemin_base_compte, tracer_ecritures_coffre, ContexteAppel, EcritureCoffre,
+};
 
 /// Clé `settings` : le robinet de présence des vitrines du compte.
 pub const VITRINE: &str = "robinet_vitrine";
@@ -67,8 +69,8 @@ pub fn autoriser(uq: &str, cle: &str, valeur: bool) -> Result<(), String> {
     if !compte_existe(uq) {
         return Err("Compte inaccessible".to_string());
     }
-    let conn =
-        Connection::open(chemin_base_compte(uq)).map_err(|e| format!("Compte inaccessible: {}", e))?;
+    let conn = Connection::open(chemin_base_compte(uq))
+        .map_err(|e| format!("Compte inaccessible: {}", e))?;
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
         rusqlite::params![
@@ -107,9 +109,12 @@ pub struct Prelevement<'a> {
 pub fn prelever(p: &Prelevement) -> Result<(), String> {
     let chemin = chemin_base_compte(p.uq);
     let mut conn =
-        Connection::open(crate::uq_index::uq_index_path()).map_err(|e| format!("Index inaccessible: {}", e))?;
+        Connection::open("uq_index.db").map_err(|e| format!("Index inaccessible: {}", e))?;
     if conn
-        .execute("ATTACH DATABASE ?1 AS user_account", rusqlite::params![chemin])
+        .execute(
+            "ATTACH DATABASE ?1 AS user_account",
+            rusqlite::params![chemin],
+        )
         .is_err()
     {
         return Err("Compte inaccessible".to_string());

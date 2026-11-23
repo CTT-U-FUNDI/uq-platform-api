@@ -54,7 +54,9 @@ impl MailStore {
              CREATE INDEX IF NOT EXISTS idx_mail_to ON mail_messages(to_addr);",
         )
         .map_err(|e| e.to_string())?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Dépose un message entrant (depuis Postfix via /api/mail/in).
@@ -165,7 +167,9 @@ impl MailStore {
 
     /// Marque comme lu.
     pub fn marquer_lu(&self, uq: &str, id: i64) -> bool {
-        let Ok(conn) = self.conn.lock() else { return false };
+        let Ok(conn) = self.conn.lock() else {
+            return false;
+        };
         conn.execute(
             "UPDATE mail_messages SET is_read=1 WHERE id=?1 AND uq_number=?2",
             params![id, uq],
@@ -212,7 +216,15 @@ pub fn shared() -> &'static MailStore {
 pub fn detecter_otp(sujet: &str, corps: &str) -> Option<String> {
     let texte = format!("{}\n{}", sujet, corps);
     // Patterns : "code: 123456", "OTP 123456", "123456 est votre code"
-    let keywords = ["code", "otp", "vérification", "verification", "mot de passe", "password", "pin"];
+    let keywords = [
+        "code",
+        "otp",
+        "vérification",
+        "verification",
+        "mot de passe",
+        "password",
+        "pin",
+    ];
     let bas = texte.to_lowercase();
     let a_un_mot_cle = keywords.iter().any(|k| bas.contains(k));
 
@@ -223,7 +235,9 @@ pub fn detecter_otp(sujet: &str, corps: &str) -> Option<String> {
     while i < bytes.len() {
         if bytes[i].is_ascii_digit() {
             let start = i;
-            while i < bytes.len() && bytes[i].is_ascii_digit() { i += 1; }
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
             let len = i - start;
             if (4..=8).contains(&len) {
                 let s = &texte[start..i];
@@ -232,15 +246,21 @@ pub fn detecter_otp(sujet: &str, corps: &str) -> Option<String> {
                     candidats.push(s.to_string());
                 }
             }
-        } else { i += 1; }
+        } else {
+            i += 1;
+        }
     }
 
-    if candidats.is_empty() { return None; }
+    if candidats.is_empty() {
+        return None;
+    }
     // Si un mot-clé OTP est présent, plus confiant
     if a_un_mot_cle {
         return candidats.first().cloned();
     }
     // Sinon seulement si un seul candidat (peu de faux positifs)
-    if candidats.len() == 1 { return candidats.pop(); }
+    if candidats.len() == 1 {
+        return candidats.pop();
+    }
     None
 }

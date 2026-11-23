@@ -1,0 +1,544 @@
+﻿use actix_web::{web, HttpResponse};
+use serde_json::json;
+use crate::api_handlers::*;
+use crate::user_handlers;
+use crate::player_routes;
+use crate::publication_routes;
+use crate::mini_routes;
+use crate::guardian_routes;
+
+pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+    cfg
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â REÃƒâ€¡US PNG Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        .route("/api/transactions/{uq}/{id}/receipt.png", web::get().to(crate::receipt::routes::get_receipt_png))
+        .route("/api/verify/receipt/{hash}", web::get().to(crate::receipt::routes::verify_receipt_json))
+        .route("/verify/{hash}", web::get().to(crate::receipt::routes::verify_receipt_html))
+        .route("/", web::get().to(index))
+        .route("/api/logout", web::post().to(api_logout))
+        .route("/api/player/status", web::get().to(api_player_status))
+        .route("/api/studio/suggest", web::get().to(api_studio_suggest))
+        .route("/api/studio/types", web::get().to(api_studio_types))
+        .route("/api/me", web::get().to(api_me))
+                // ═══════════════════════════════════════════════════════
+        // KYC AUTO (Tesseract)
+        // ═══════════════════════════════════════════════════════
+        .route("/api/kyc/status", web::get().to(crate::kyc_auto::kyc_status))
+        .route("/api/kyc/doc/analyze", web::post().to(crate::kyc_auto::kyc_doc_analyze))
+        .route("/api/kyc/face/compare", web::post().to(crate::kyc_auto::kyc_face_compare))
+        .route("/api/kyc/liveness", web::post().to(crate::kyc_auto::kyc_liveness))
+        .route("/api/kyc/auto/validate", web::post().to(crate::kyc_auto::kyc_auto_validate))
+        .route("/api/health", web::get().to(health))
+        .route("/api/stats", web::get().to(stats))
+        .route("/api/price/gold", web::get().to(price_gold))
+        .route("/api/price/usd", web::get().to(price_usd))
+        .route("/api/price/btc", web::get().to(price_btc))
+        .route("/api/price/all", web::get().to(price_all))
+        .route("/api/price/history/btc", web::get().to(price_history_btc))
+        .route("/api/price/history/gold", web::get().to(price_history_gold))
+        .route("/api/price/history/all", web::get().to(price_history_all))
+        .route("/api/fixorb/history/{id}", web::get().to(fixorb_history))
+        .route("/api/blockchain/info", web::get().to(blockchain_info))
+        .route("/api/blockchain/supply", web::get().to(total_supply))
+        .route("/api/account/create", web::post().to(account_create))
+        .route("/api/account/infos/{uq}", web::get().to(account_infos))
+
+        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        // ðŸŒ QR DE RÃ‰CEPTION + ORACLE DE CHANGE (Phase 1 â€” Coffre)
+        // âš ï¸ Ã€ garder AVANT /api/account/{id} (route dynamique, plus bas).
+        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        .route("/api/account/{uq}/qr.png", web::get().to(crate::public_routes::account_qr_png))
+        .route("/api/account/{uq}/public", web::get().to(crate::public_routes::account_public_identity))
+        .route("/api/oracle/fiat", web::get().to(crate::public_routes::oracle_fiat_tous))
+        .route("/api/oracle/fiat/{currency}", web::get().to(crate::public_routes::oracle_fiat_devise))
+        .route("/api/core/verify-identity", web::post().to(verify_identity))
+        .route("/api/account/verification/submit", web::post().to(verification_submit))
+        .route("/api/account/verification/{id}", web::get().to(verification_status))
+        .route("/api/account/verify", web::post().to(account_verify))
+        .route("/api/secure/step1", web::post().to(crate::secure_handlers::secure_step1))
+        .route("/api/secure/step2", web::post().to(crate::secure_handlers::secure_step2))
+        .route("/api/secure/step-login-pin", web::post().to(crate::secure_handlers::secure_step_login_pin))
+        .route("/api/secure/finalize-owner", web::post().to(crate::secure_handlers::secure_finalize_owner))
+        .route("/api/secure/finalize-user", web::post().to(crate::secure_handlers::secure_finalize_user))
+        .route("/api/secure/forgot-password", web::post().to(crate::secure_handlers::secure_forgot_password))
+        .route("/api/auth/verify-account", web::post().to(verify_account_exists))
+        .route("/api/account/me", web::get().to(account_me))
+        .route("/api/dev/regen-keys", web::post().to(dev_regen_keys))
+        .route("/api/bubble/create", web::post().to(bubble_create))
+        .route("/api/bubble/transfer", web::post().to(bubble_transfer))
+        .route("/api/bubble/freeze", web::post().to(bubble_freeze))
+        .route("/api/bubble/unfreeze", web::post().to(bubble_unfreeze))
+        .route("/api/bubble/burn", web::post().to(bubble_burn))
+        .route("/api/bubble/lend", web::post().to(bubble_lend))
+        .route("/api/cases/stats", web::get().to(cases_stats))
+        .route("/api/cases/treasury", web::get().guard(crate::owner_guard::owner_guard()).to(case_treasury))
+        .route("/api/cases/fees", web::get().guard(crate::owner_guard::owner_guard()).to(case_fees))
+        .route("/api/cases/rewards", web::get().guard(crate::owner_guard::owner_guard()).to(case_rewards))
+        .route("/api/cases/savings", web::get().guard(crate::owner_guard::owner_guard()).to(case_savings))
+        .route("/api/cases/credit", web::get().guard(crate::owner_guard::owner_guard()).to(case_credit))
+        .route("/api/cases/shield", web::get().guard(crate::owner_guard::owner_guard()).to(case_shield))
+        .route("/api/ubi/info", web::get().to(ubi_info))
+        .route("/api/ubi/claim", web::post().to(ubi_claim))
+        .route("/api/exchange/order", web::post().to(exchange_order))
+        .route("/api/exchange/confirm", web::post().to(exchange_confirm))
+        .route("/api/exchange/complete", web::post().to(exchange_complete))
+        .route("/api/exchange/cancel", web::post().to(exchange_cancel))
+        .route("/api/exchange/sms", web::post().to(exchange_sms))
+        .route("/api/lending/offer", web::post().to(lending_offer))
+        .route("/api/lending/borrow", web::post().to(lending_borrow))
+        .route("/api/lending/repay", web::post().to(lending_repay))
+        .route("/api/lending/liquidate", web::post().to(lending_liquidate))
+        .route("/api/insurance/contribute", web::post().to(insurance_contribute))
+        .route("/api/insurance/claim", web::post().to(insurance_claim))
+        .route("/api/insurance/vote", web::post().to(insurance_vote))
+        .route("/api/stablecoin/mint", web::post().to(stablecoin_mint))
+        .route("/api/stablecoin/burn", web::post().to(stablecoin_burn))
+        .route("/api/stablecoin/ratio", web::get().to(stablecoin_ratio))
+        .route("/api/oracle/price", web::post().guard(crate::owner_guard::owner_guard()).to(oracle_report))
+        .route("/api/oracle/current", web::get().guard(crate::owner_guard::owner_guard()).to(oracle_current))
+        .route("/api/oracle/median", web::get().guard(crate::owner_guard::owner_guard()).to(oracle_median))
+        .route("/api/oracle/validators", web::get().guard(crate::owner_guard::owner_guard()).to(oracle_validators))
+        .route("/api/governance/proposal", web::post().to(governance_create))
+        .route("/api/governance/vote", web::post().to(governance_vote))
+        .route("/api/governance/execute", web::post().to(governance_execute))
+        .route("/api/governance/stats", web::get().to(governance_stats))
+        .route("/api/fraud/report", web::post().guard(crate::owner_guard::owner_guard()).to(fraud_report))
+        .route("/api/fraud/blacklist", web::post().guard(crate::owner_guard::owner_guard()).to(fraud_blacklist))
+        .route("/api/fraud/unblacklist", web::post().guard(crate::owner_guard::owner_guard()).to(fraud_unblacklist))
+        .route("/api/reputation/endorse", web::post().to(reputation_endorse))
+        .route("/api/identity/create", web::post().to(identity_create))
+        .route("/api/identity/kyc", web::post().to(identity_kyc))
+        .route("/api/identity/certificate", web::post().to(identity_certificate))
+        .route("/api/escrow/create", web::post().to(escrow_create))
+        .route("/api/escrow/release", web::post().to(escrow_release))
+        .route("/api/escrow/refund", web::post().to(escrow_refund))
+        .route("/api/freeze/contract", web::post().to(freeze_create))
+        .route("/api/freeze/complete", web::post().to(freeze_complete))
+        .route("/api/freeze/early", web::post().to(freeze_early))
+        .route("/api/shield/key-lost", web::post().to(shield_key_lost))
+        .route("/api/shield/aid", web::post().to(shield_aid))
+        .route("/api/shield/approve", web::post().to(shield_approve))
+        .route("/api/micro-credit/request", web::post().to(micro_credit_request))
+        .route("/api/micro-credit/voucher", web::post().to(micro_credit_voucher))
+        .route("/api/micro-credit/fund", web::post().to(micro_credit_fund))
+        .route("/api/marketplace/publish", web::post().to(marketplace_publish))
+        .route("/api/marketplace/buy", web::post().to(marketplace_buy))
+        .route("/api/marketplace/complete", web::post().to(marketplace_complete))
+        .route("/api/offline/create", web::post().to(offline_create))
+        .route("/api/offline/verify", web::post().to(offline_verify))
+        .route("/api/offline/apply", web::post().to(offline_apply))
+        .route("/api/mailbox/send", web::post().to(mailbox_send))
+        .route("/api/mailbox/delete", web::post().to(mailbox_delete))
+        .route("/api/mailbox/stats", web::get().to(mailbox_stats))
+        .route("/api/validator/list", web::get().guard(crate::owner_guard::owner_guard()).to(validator_list))
+        .route("/api/validator/validate", web::post().guard(crate::owner_guard::owner_guard()).to(validator_validate))
+        .route("/api/arbitration/dispute", web::post().guard(crate::owner_guard::owner_guard()).to(arbitration_dispute))
+        .route("/api/arbitration/vote", web::post().guard(crate::owner_guard::owner_guard()).to(arbitration_vote))
+        .route("/api/arbitration/status", web::get().guard(crate::owner_guard::owner_guard()).to(arbitration_status))
+        .route("/api/network/peers", web::get().to(network_peers))
+        .route("/api/network/status", web::get().to(network_status))
+        .route("/api/network/threats", web::get().to(network_threats))
+        .route("/api/d2d/connect", web::post().to(d2d_connect))
+        .route("/api/d2d/disconnect", web::post().to(d2d_disconnect))
+        .route("/api/d2d/scan", web::get().to(d2d_scan))
+        .route("/api/d2d/peers", web::get().to(d2d_peers))
+        .route("/api/mesh/relay", web::post().to(mesh_relay))
+        .route("/api/mesh/routing", web::get().to(mesh_routing))
+        .route("/api/mesh/route", web::get().to(mesh_route))
+        .route("/api/mesh/sellers", web::get().to(mesh_sellers))
+        .route("/api/frequency/hop", web::post().to(frequency_hop_now))
+        .route("/api/frequency/status", web::get().to(frequency_status))
+        .route("/api/phantom/create", web::post().to(phantom_create_channel))
+        .route("/api/phantom/channels", web::get().to(phantom_channels))
+        .route("/api/emergency/sos", web::post().to(emergency_sos))
+        .route("/api/emergency/beacon", web::get().to(emergency_beacon))
+        .route("/api/internet/sell", web::post().to(internet_sell))
+        .route("/api/transport/status", web::get().to(transport_status))
+        .route("/api/autopilot/status", web::get().to(autopilot_status))
+        .route("/api/security/status", web::get().to(security_status))
+        .route("/api/security/root", web::get().to(security_root_check))
+        .route("/api/security/emulator", web::get().to(security_emulator_check))
+        .route("/api/security/biometric", web::get().to(security_biometric_sync))
+        .route("/api/security/memory", web::get().to(security_memory_guard))
+        .route("/api/security/storage", web::get().to(security_secure_storage))
+        .route("/api/security/side-channel", web::get().to(security_side_channel))
+        .route("/api/security/ipc", web::get().to(security_trusted_ipc))
+        .route("/api/security/vtee", web::post().to(security_vtee_generate))
+        .route("/api/2fa/verify", web::post().to(twofa_verify))
+        .route("/api/2fa/enroll", web::post().to(twofa_enroll))
+        .route("/api/vtee/enclave", web::post().to(vtee_enclave))
+        .route("/api/vtee/attest", web::post().to(vtee_attest))
+        .route("/api/keys/derive", web::post().to(keys_derive))
+        .route("/api/secure/store", web::post().to(secure_store))
+        .route("/api/secure/retrieve", web::get().to(secure_retrieve))
+        .route("/api/chat/status", web::get().to(chat_status))
+        .route("/api/chat/send", web::post().to(chat_send))
+        .route("/api/chat/conversation", web::post().to(chat_conversation))
+        .route("/api/chat/encrypt", web::post().to(chat_encrypt))
+        .route("/api/data/market", web::get().to(data_market))
+        .route("/api/data/stats", web::get().to(data_stats))
+        .route("/api/data/publish", web::post().to(data_publish))
+        .route("/api/data/purchase", web::post().to(data_purchase))
+        .route("/api/data/tunnel", web::post().to(data_tunnel))
+        .route("/api/data/price", web::post().to(data_price))
+        .route("/api/shop/create", web::post().to(user_handlers::shop_create))
+        .route("/api/search", web::get().to(user_handlers::search))
+        .route("/api/location/update", web::post().to(user_handlers::location_update))
+        .route("/api/shops", web::get().to(shops_list))
+        .route("/api/shops/list", web::get().to(user_handlers::shop_list))
+        .route("/api/shop/product/add", web::post().to(user_handlers::product_add))
+        .route("/api/shop/product/buy", web::post().to(user_handlers::product_buy))
+        .route("/api/search/nearby", web::get().to(user_handlers::search_nearby))
+        .route("/api/location/distance", web::post().to(user_handlers::location_distance))
+        .route("/api/vault/status", web::get().to(vault_status))
+        .route("/api/vault/guardians", web::get().to(vault_guardians))
+        .route("/api/vault/recovery/status", web::get().to(vault_recovery_status))
+        .route("/api/vault/authenticity", web::get().to(vault_authenticity))
+        .route("/api/vault/compromised", web::get().to(vault_compromised))
+        .route("/api/vault/p2p/usage", web::get().to(vault_p2p_usage))
+        .route("/api/vault/split", web::post().to(vault_split))
+        .route("/api/vault/combine", web::post().to(vault_combine))
+        .route("/api/vault/guardian/replace", web::post().to(vault_guardian_replace))
+
+        // Lecteur UQ (player)
+        .route("/api/player/start", web::post().to(player_routes::player_start))
+        .route("/api/player/tick", web::post().to(player_routes::player_tick))
+        .route("/api/player/stop", web::post().to(player_routes::player_stop))
+        .route("/api/player/stats", web::get().to(player_routes::player_stats))
+        .route("/api/vault/proof", web::post().to(vault_proof))
+        .route("/api/vault/proof/verify", web::post().to(vault_proof_verify))
+        .route("/api/vault/recovery/start", web::post().to(vault_recovery_start))
+        .route("/api/vault/session", web::post().to(vault_session))
+        .route("/api/vault/p2p/store", web::post().to(vault_p2p_store))
+        .route("/api/validator/approvals", web::get().guard(crate::owner_guard::owner_guard()).to(validator_approvals))
+        .route("/api/sellers", web::get().to(sellers_list))
+        .route("/api/mini/peers", web::get().to(mini_peers))
+        .route("/api/dao/stats", web::get().to(dao_stats))
+        .route("/api/publish", web::post().to(publish_item))
+        .route("/api/verify/youtube", web::post().to(verify_youtube))
+        .route("/api/verify/spotify", web::post().to(verify_spotify))
+        .route("/api/verify/instagram", web::post().to(verify_instagram))
+        .route("/api/verify/tiktok", web::post().to(verify_tiktok))
+        .route("/api/biometric/template", web::post().to(biometric_template))
+        .route("/api/biometric/verify", web::post().to(biometric_verify))
+        .route("/api/biometric/liveness", web::post().to(biometric_liveness))
+        .route("/api/biometric/spoofing", web::post().to(biometric_spoofing))
+        .route("/api/owner/demande/current", web::get().to(owner_demande_current))
+        .route("/api/owner/demande/recalculate", web::post().to(owner_demande_recalculate))
+        .route("/api/owner/force-price", web::post().to(owner_force_price))
+        .route("/api/owner/force-demande", web::post().to(owner_force_demande))
+        .route("/api/fixorb/subunits/status", web::get().to(fixorb_subunits_status))
+        .route("/api/fixorb/subunits/check-unlock", web::post().to(fixorb_subunits_check_unlock))
+        .route("/api/fxb/stats", web::get().to(fixorb_tracer_stats))
+        .route("/api/fxb/origin/{trace_key}", web::get().to(fixorb_get_origin))
+        .route("/api/fxb/origins/{recipient_uq}", web::get().to(fixorb_list_origins))
+        .route("/api/fixorb/units", web::get().to(fixorb_units_info))
+        .route("/api/fixorb/supply", web::get().to(fixorb_supply))
+        .route("/api/fixorb/convert", web::post().guard(crate::owner_guard::owner_guard()).to(fixorb_convert))
+        .route("/api/fixorb/send", web::post().guard(crate::owner_guard::owner_guard()).to(fixorb_send))
+        // Ã¢Å¡Â Ã¯Â¸Â /api/fixorb/receive/{id} est dÃƒÂ©clarÃƒÂ© PLUS BAS avec owner_guard :
+        //    ne pas le rÃƒÂ©enregistrer ici sans guard (la 1re route gagne).
+        .route("/api/fixorb/transactions/{id}", web::get().to(fixorb_transactions))  // sÃƒÂ©curisÃƒÂ© dans le handler
+        .route("/api/p2p/start", web::post().to(p2p_start))
+        .route("/api/p2p/send", web::post().to(p2p_send))
+        .route("/api/p2p/broadcast", web::post().to(p2p_broadcast))
+        .route("/api/p2p/peers", web::get().to(p2p_peers))
+        .route("/api/savings/contract", web::post().to(savings_contract))
+        .route("/api/savings/yield", web::get().to(savings_yield))
+        .route("/api/guardian/login", web::post().to(guardian_routes::guardian_login))
+        .route("/api/guardian/unlock", web::post().to(guardian_routes::guardian_unlock))
+        .route("/api/guardian/commands", web::get().to(guardian_routes::guardian_commands))
+        .route("/api/guardian/execute", web::post().to(guardian_routes::guardian_execute))
+        .route("/api/guardian/status", web::get().to(guardian_routes::guardian_status))
+        .route("/api/guardian/logout", web::post().to(guardian_routes::guardian_logout))
+        .route("/api/distribution/stats", web::get().guard(crate::owner_guard::owner_guard()).to(distribution_stats))
+        .route("/api/distribution/treasury", web::get().guard(crate::owner_guard::owner_guard()).to(distribution_treasury_status))
+        .route("/api/distribution/delis", web::get().guard(crate::owner_guard::owner_guard()).to(distribution_delis_status))
+        .route("/api/distribution/sell-crypto", web::post().guard(crate::owner_guard::owner_guard()).to(distribution_sell_crypto))
+        .route("/api/distribution/sell-p2p", web::post().guard(crate::owner_guard::owner_guard()).to(distribution_sell_p2p))
+        .route("/api/distribution/recharge", web::post().guard(crate::owner_guard::owner_guard()).to(distribution_auto_recharge))
+        .route("/api/distribution/claim", web::post().guard(crate::owner_guard::owner_guard()).to(distribution_claim))
+        .route("/api/distribution/ubi", web::post().guard(crate::owner_guard::owner_guard()).to(distribution_ubi_distribute))
+                // Journal individuel
+        .route("/api/journal/export/{account_id}", web::get().to(journal_export))
+        .route("/api/journal/summary/{account_id}", web::get().to(journal_summary))
+
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // Ã°Å¸â€ºâ€™ ZANDO Ã¢â‚¬â€ ROUTES
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ ZANDO Ãƒâ€°LÃƒâ€°MENTS (6 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/zando/item/create", web::post().to(zando_item_create))
+        .route("/api/zando/items", web::get().to(zando_items_list))
+        .route("/api/zando/items/{shop_id}", web::get().to(zando_items_get))
+        .route("/api/zando/item/{id}", web::get().to(zando_item_get))
+        .route("/api/zando/item/{id}/update", web::post().to(zando_item_update))
+        .route("/api/zando/item/{id}/delete", web::post().to(zando_item_delete))
+        .route("/api/zando/item/{id}/publish", web::post().to(zando_item_publish))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ ZANDO AGENTS (3 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/zando/agent/become", web::post().to(zando_agent_become))
+        .route("/api/zando/agents/{item_id}", web::get().to(zando_agents_get))
+        .route("/api/zando/agent/sale", web::post().to(zando_agent_sale))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ ZANDO CONTACTS (5 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/zando/contacts/request", web::post().to(zando_contact_request))
+        .route("/api/zando/contacts/{id}/accept", web::post().to(zando_contact_accept))
+        .route("/api/zando/contacts/{id}/refuse", web::post().to(zando_contact_refuse))
+        .route("/api/zando/contacts/share", web::post().to(zando_contact_share))
+        .route("/api/zando/contacts/shared/{user_id}", web::get().to(zando_contacts_shared))
+        
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ ZANDO DRAFTS (3 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/zando/drafts", web::post().to(zando_draft_save))
+        .route("/api/zando/drafts/{id}", web::get().to(zando_draft_get))
+        .route("/api/zando/drafts/{id}", web::delete().to(zando_draft_delete))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ CUSTOM TYPES (5 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/zando/custom-type/create", web::post().to(custom_type_create))
+        .route("/api/zando/custom-types", web::get().to(custom_types_list))
+        .route("/api/zando/custom-types/owner/{owner_id}", web::get().to(custom_types_by_owner))
+        .route("/api/zando/custom-type/{id}", web::get().to(custom_type_get))
+        .route("/api/zando/custom-type/{id}", web::delete().to(custom_type_delete))
+        .route("/api/uq/generate", web::post().to(uq_generate_address))
+
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ CONTACTS (5 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/contact/request", web::post().to(contact_request_create))
+        .route("/api/contact/request/{id}/accept", web::post().to(contact_request_accept))
+        .route("/api/contact/request/{id}/refuse", web::post().to(contact_request_refuse))
+        .route("/api/contact/share", web::post().to(contact_share))
+        .route("/api/contact/shared/{user_id}", web::get().to(contact_shared_get))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ DRAFTS (2 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/draft/save", web::post().to(draft_save))
+        .route("/api/draft/{id}/delete", web::post().to(draft_delete))
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // Ã°Å¸â€â€” ROUTES ORPHELINES Ã¢â‚¬â€ Handlers existants non connectÃƒÂ©s
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ COMPTE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/account/{id}", web::get().guard(crate::owner_guard::owner_guard()).to(account_get))
+                .route("/api/account/{id}/balance", web::get().guard(crate::owner_guard::owner_guard()).to(account_balance))
+                .route("/api/account/preferences/{id}", web::get().guard(crate::owner_guard::owner_guard()).to(account_preferences_get))
+        .route("/api/uq/pseudos", web::get().to(uq_search_pseudos))
+                .route("/api/account/preferences", web::post().guard(crate::owner_guard::owner_guard()).to(account_preferences_set))
+        .route("/api/account/pin/verify", web::post().to(account_pin_verify_v2))
+        .route("/api/account/pin/set", web::post().to(account_pin_set_v2))
+        .route("/api/account/pin/set-v2", web::post().to(account_pin_set_v2))
+        .route("/api/account/pin/status", web::post().to(account_pin_status_v2))
+        .route("/api/account/pin/verify-password", web::post().to(account_pin_verify_password))
+        .route("/api/account/password/change", web::post().to(account_password_change))
+        .route("/api/account/pseudo/set", web::post().to(account_pseudo_set))
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â WEBAUTHN ROUTES Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        .route("/api/webauthn/register/begin", web::post().to(webauthn_register_begin))
+        .route("/api/webauthn/register/complete", web::post().to(webauthn_register_complete))
+        .route("/api/webauthn/login/begin", web::post().to(webauthn_login_begin))
+        .route("/api/webauthn/login/complete", web::post().to(webauthn_login_complete))
+        .route("/api/webauthn/transaction/begin", web::post().to(webauthn_transaction_begin))
+        .route("/api/webauthn/transaction/complete", web::post().to(webauthn_transaction_complete))
+        .route("/api/webauthn/list", web::post().to(webauthn_list))
+        .route("/api/webauthn/remove", web::post().to(webauthn_remove))
+        .route("/api/account/pin/remove", web::post().to(account_pin_remove_v2))
+        .route("/api/account/pin/remove-v2", web::post().to(account_pin_remove_v2))
+
+        .route("/api/account/devices/{id}", web::get().to(account_devices_list))
+        .route("/api/account/devices/revoke", web::post().to(account_devices_revoke))
+        .route("/api/account/avatar/set", web::post().to(account_avatar_set))
+        .route("/api/account/avatar/get", web::post().to(account_avatar_get))
+        .route("/api/account/font-size/set", web::post().to(account_font_size_set))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ BULLE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/bubble/{id}", web::get().to(bubble_get))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ UBI Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/ubi/check/{id}", web::get().to(ubi_check))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ IDENTITÃƒâ€° Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/identity/{id}", web::get().to(identity_get))
+        .route("/api/identity/{id}/verify", web::post().to(identity_verify))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ GOUVERNANCE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/governance/proposals", web::get().to(governance_list))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ FRÃƒâ€°QUENCE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/frequency/hop", web::post().to(frequency_hop))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ CHAT Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/chat/inbox/{user_id}", web::get().to(chat_inbox))
+        .route("/api/chat/messages/{id}", web::get().to(chat_messages))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ BLACKKEY Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/blackkey/sign", web::post().to(blackkey_sign))
+        .route("/api/blackkey/decrypt", web::post().to(blackkey_decrypt))
+        .route("/api/blackkey/mutate", web::post().to(blackkey_mutate))
+        .route("/api/blackkey/integrity", web::get().to(blackkey_integrity))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ FIXORB Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/fixorb/balance/{id}", web::get().guard(crate::owner_guard::owner_guard()).to(fixorb_balance))
+                .route("/api/fixorb/receive/{id}", web::get().guard(crate::owner_guard::owner_guard()).to(fixorb_receive))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ FRAUDE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/fraud/history/{id}", web::get().guard(crate::owner_guard::owner_guard()).to(fraud_history))
+        .route("/api/fraud/score/{id}", web::get().guard(crate::owner_guard::owner_guard()).to(fraud_score))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ MAILBOX Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/mailbox/{id}", web::get().to(mailbox_get))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ RÃƒâ€°PUTATION Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/reputation/{id}", web::get().to(reputation_get))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ INDEX Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/serve", web::get().to(serve_index))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ BOUTIQUE (user_handlers) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/shop/{id}", web::get().to(crate::user_handlers::shop_get))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ CONNEXION (user_handlers) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/connect/sell", web::post().to(crate::user_handlers::connect_sell))
+        .route("/api/connect/buy", web::post().to(crate::user_handlers::connect_buy))
+        .route("/api/connect/sellers", web::get().to(crate::user_handlers::connect_sellers))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ PARRAINAGE (user_handlers) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/referral/create", web::post().to(crate::user_handlers::referral_create))
+        .route("/api/referral/stats/{id}", web::get().to(crate::user_handlers::referral_stats))
+        .route("/api/referral/claim", web::post().to(crate::user_handlers::referral_claim))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ NOTIFICATIONS (user_handlers) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/notifications/{id}", web::get().to(crate::user_handlers::notifications_list))
+        .route("/api/notifications/read", web::post().to(crate::user_handlers::notifications_read))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ DASHBOARD (user_handlers) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/dashboard/{id}", web::get().to(crate::user_handlers::dashboard))
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // NOUVELLES ROUTES Ã¢â‚¬â€ TREASURY + COUNTER + CASES + INVOICES
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ TREASURY (10 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/treasury/status", web::get().to(crate::treasury_handlers::treasury_status))
+        .route("/api/treasury/sales", web::get().to(crate::treasury_handlers::treasury_sales))
+        .route("/api/treasury/revenue", web::get().to(crate::treasury_handlers::treasury_revenue))
+        .route("/api/treasury/system/profiles", web::get().to(crate::treasury_handlers::treasury_system_profiles))
+        .route("/api/treasury/system/messages", web::get().to(crate::treasury_handlers::treasury_system_messages))
+        .route("/api/treasury/dev/ads", web::get().to(crate::treasury_handlers::treasury_dev_ads))
+        .route("/api/treasury/dev/ads/create", web::post().to(crate::treasury_handlers::treasury_dev_ads_create))
+        .route("/api/treasury/dev/ads/delete", web::post().to(crate::treasury_handlers::treasury_dev_ads_delete))
+        .route("/api/treasury/wallets", web::get().to(crate::treasury_handlers::treasury_wallets))
+        .route("/api/treasury/wallets/add", web::post().to(crate::treasury_handlers::treasury_wallets_add))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ COUNTER (4 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/counter/status", web::get().to(crate::counter_handlers::counter_status))
+        .route("/api/counter/calculate", web::post().to(crate::counter_handlers::counter_calculate))
+        .route("/api/counter/transactions", web::get().to(crate::counter_handlers::counter_transactions))
+        .route("/api/counter/rights", web::get().to(crate::counter_handlers::counter_rights))
+        .route("/api/counter/units", web::get().to(crate::counter_handlers::counter_units))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ 7 CASES (4 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/cases/seven", web::get().to(crate::cases_handlers::cases_seven))
+        .route("/api/cases/bridges", web::get().to(crate::cases_handlers::cases_bridges))
+        .route("/api/cases/anomalies", web::get().to(crate::cases_handlers::cases_anomalies))
+        .route("/api/cases/optimizations", web::get().to(crate::cases_handlers::cases_optimizations))
+
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ INVOICES (4 routes) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        .route("/api/invoices", web::get().to(crate::invoice_handlers::invoices_list))
+        .route("/api/invoices/{id}", web::get().to(crate::invoice_handlers::invoice_get))
+        .route("/api/invoices/{id}/pdf", web::get().to(crate::invoice_handlers::invoice_pdf))
+        .route("/api/invoices/by-user/{uq}", web::get().to(crate::invoice_handlers::invoices_by_user))
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â COEUR BLOCKORB Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        .route("/api/core/send", web::post().to(crate::core_handlers::core_send))
+        .route("/api/core/balance/{user}", web::get().to(crate::core_handlers::core_balance))
+        .route("/api/core/block-orb", web::get().to(crate::core_handlers::core_block_orb))
+        .route("/api/core/prix", web::get().to(crate::core_handlers::core_prix))
+        .route("/api/core/cases", web::get().to(crate::core_handlers::core_cases))
+        .route("/api/core/invariant", web::get().to(crate::core_handlers::core_invariant))
+        // RÃƒÂ©conciliation BlockOrb Ã¢â€ â€ soldes SQLite (owner = global, user = son compte)
+        .route("/api/core/reconcile", web::post().to(crate::core_handlers::core_reconcile))
+        .route("/api/core/migrate-accounts", web::post().to(crate::core_handlers::core_migrate_accounts))
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â UBI Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        .route("/api/core/ubi/claim", web::post().to(crate::core_handlers::core_ubi_claim))
+        .route("/api/core/ubi/info", web::get().to(crate::core_handlers::core_ubi_info))
+        .route("/api/core/init", web::post().to(crate::core_handlers::core_init))
+        .route("/api/core/cadeaux/{user}", web::get().to(crate::core_handlers::core_cadeaux))
+        .route("/api/core/parrainage", web::post().to(crate::core_handlers::core_parrainage))
+        .route("/api/core/verify-identity", web::post().to(crate::core_handlers::core_verify_identity))
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â KYC Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        .route("/api/kyc/queue", web::get().to(crate::core_handlers::core_kyc_queue))
+        .route("/api/kyc/validate", web::post().to(crate::core_handlers::core_kyc_validate))
+        .route("/api/kyc/statut/{user}", web::get().to(crate::core_handlers::core_kyc_statut))
+        // ═══ 🌊 OCEAN + TRÉSOR 1M (Phase 1-2) ═══
+        // ═══ 🌐 APIs EXTERNES (crypto / fiat / bourse) ═══
+        .route("/api/external/status", web::get().to(crate::external_routes::external_status))
+        .route("/api/external/crypto/price/{symbol}", web::get().to(crate::external_routes::crypto_price))
+        .route("/api/external/crypto/klines/{symbol}", web::get().to(crate::external_routes::crypto_klines))
+        .route("/api/external/fiat/rates", web::get().to(crate::external_routes::fiat_rates))
+        .route("/api/external/stock/quote/{symbol}", web::get().to(crate::external_routes::stock_quote))
+        .route("/api/owner/kyc/auto-validate", web::post().to(crate::history_routes::owner_kyc_auto_validate))
+        .route("/api/ocean/status", web::get().to(crate::ocean_routes::ocean_status))
+        .route("/api/ocean/invariant", web::get().to(crate::ocean_routes::ocean_invariant))
+        .route("/api/ocean/history", web::get().to(crate::ocean_routes::ocean_history))
+        .route("/api/ocean/recharge/{uq}", web::post().to(crate::ocean_routes::ocean_recharge))
+        // ═══ 🔄 LES 6 CASES — auto-régulation + marché ═══
+        .route("/api/cases/status", web::get().to(crate::cases_routes::cases_status))
+        .route("/api/cases/health", web::get().to(crate::cases_routes::cases_health))
+        .route("/api/cases/flow", web::get().to(crate::cases_routes::cases_flow))
+        .route("/api/cases/market", web::get().to(crate::cases_routes::cases_market))
+        .route("/api/cases/invariant", web::get().to(crate::cases_routes::cases_invariant))
+        .route("/api/cases/history", web::get().to(crate::cases_routes::cases_history))
+        .route("/api/cases/auto-regulate", web::post().to(crate::cases_routes::cases_auto_regulate))
+        .route("/api/treasury/1m/status", web::get().to(crate::ocean_routes::tresor_1m_status))
+        .route("/api/treasury/1m/recharge", web::post().to(crate::ocean_routes::tresor_1m_recharge))
+
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // Ã°Å¸â€œÅ“ HISTORIQUES LOCAUX + Ã°Å¸Â¤Â RÃƒâ€°CUPÃƒâ€°RATION PAR VOISINS
+        // (spÃƒÂ©cification Ã‚Â« BlockOrb ÃƒÂ  taille fixe + historiques locaux Ã‚Â»)
+        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+
+        // Supervision du BlockOrb ÃƒÂ  taille fixe
+        .route("/api/history/blockorb/size", web::get().to(crate::history_routes::blockorb_size))
+
+        // Ãƒâ€°tape 1 Ã¢â‚¬â€ publier une demande de rÃƒÂ©cupÃƒÂ©ration
+        .route("/api/history/request-recovery", web::post().to(crate::history_routes::history_request_recovery))
+        // Ãƒâ€°tape 2 Ã¢â‚¬â€ un voisin cherche et fournit ses fragments
+        .route("/api/history/pending-requests", web::get().to(crate::history_routes::history_pending_requests))
+        .route("/api/history/provide-fragment", web::post().to(crate::history_routes::history_provide_fragment))
+        // Ãƒâ€°tape 3 Ã¢â‚¬â€ reconstitution chez le demandeur
+        .route("/api/history/reconstruct", web::post().to(crate::history_routes::history_reconstruct))
+        .route("/api/history/recovery/{request_id}", web::get().to(crate::history_routes::history_recovery_status))
+        // Ãƒâ€°tape 4 Ã¢â‚¬â€ validation par les voisins (3+)
+        .route("/api/history/validate-recovery", web::post().to(crate::history_routes::history_validate_recovery))
+
+        // Auto-suppression > 1 an
+        .route("/api/history/cleanup-old", web::post().to(crate::history_routes::history_cleanup_old))
+
+        // Ã¢Å¡Â Ã¯Â¸ ORDRE CRITIQUE : les routes LITTERALES ci-dessus DOIVENT rester
+        //    avant les routes dynamiques ci-dessous, sinon
+        //    Ã‚Â« pending-requests Ã‚Â» serait interprete comme un UQ number
+        //    (Actix retient la premiere route qui matche).
+        .route("/api/history/{uq}", web::get().to(crate::history_routes::history_status))
+        .route("/api/history/{uq}/verify", web::post().to(crate::history_routes::history_verify))
+        .route("/api/history/{uq}/chain", web::get().to(crate::history_routes::history_chain))
+        ;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -21,9 +21,10 @@ pub async fn live(query: web::Query<HashMap<String, String>>) -> HttpResponse {
     let snapshot = match super::taux_ou_indisponible().await {
         Ok(s) => s,
         Err((code, statut, message)) => {
-            return HttpResponse::build(actix_web::http::StatusCode::from_u16(code).unwrap_or(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-            ))
+            return HttpResponse::build(
+                actix_web::http::StatusCode::from_u16(code)
+                    .unwrap_or(actix_web::http::StatusCode::SERVICE_UNAVAILABLE),
+            )
             .json(json!({"status": "error", "code": statut, "message": message}));
         }
     };
@@ -208,7 +209,13 @@ pub fn fraicheur(
     let observe_a = info.map(|i| i.observe_a).unwrap_or(horodatage_snapshot);
     let mut champs = serde_json::Map::new();
     champs.insert("observe_a".to_string(), json!(observe_a));
-    champs.insert("age_secs".to_string(), json!((maintenant - observe_a).max(0)));
-    champs.insert("badge".to_string(), json!(badge_de_fraiche(info, maintenant)));
+    champs.insert(
+        "age_secs".to_string(),
+        json!((maintenant - observe_a).max(0)),
+    );
+    champs.insert(
+        "badge".to_string(),
+        json!(badge_de_fraiche(info, maintenant)),
+    );
     champs
 }

@@ -110,13 +110,12 @@ fn secondes(s: u64) -> Duration {
 // ====================
 
 /// Objet `{ code: taux }` où le taux est déjà « unités par USD ».
-fn lire_brut_pour_usd(
-    v: &Value,
-    chemin: &[&str],
-) -> Result<HashMap<String, f64>, ErreurCollecte> {
+fn lire_brut_pour_usd(v: &Value, chemin: &[&str]) -> Result<HashMap<String, f64>, ErreurCollecte> {
     let mut nœud = v;
     for cle in chemin {
-        nœud = nœud.get(*cle).ok_or_else(|| ErreurCollecte::Format("chemin absent".into()))?;
+        nœud = nœud
+            .get(*cle)
+            .ok_or_else(|| ErreurCollecte::Format("chemin absent".into()))?;
     }
     let obj = nœud
         .as_object()
@@ -137,8 +136,7 @@ fn lire_brut_pour_usd(
 
 /// Objet `{ code: prix_en_usd }` → unités par USD.
 fn prix_en_usd_vers_unites(brut: HashMap<String, f64>) -> HashMap<String, f64> {
-    brut
-        .into_iter()
+    brut.into_iter()
         .filter(|(_, p)| *p > 0.0)
         .map(|(c, p)| (c, 1.0 / p))
         .collect()
@@ -208,7 +206,10 @@ fn lire_bcc(v: &Value, _paire: &str) -> Result<HashMap<String, f64>, ErreurColle
 /// veille n'est pas un taux en direct, et l'injecter dans la médiane
 /// falsifierait l'agrégat.
 fn lire_biquote(v: &Value, _paire: &str) -> Result<HashMap<String, f64>, ErreurCollecte> {
-    let age_declare = v.get("quoteAgeSeconds").and_then(Value::as_f64).unwrap_or(0.0);
+    let age_declare = v
+        .get("quoteAgeSeconds")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0);
     if v.get("stale").and_then(Value::as_bool).unwrap_or(false) || age_declare > 900.0 {
         return Err(ErreurCollecte::Format(format!(
             "citation agee de {} s (stale)",
@@ -280,7 +281,11 @@ fn lire_coin_gecko(v: &Value, _paire: &str) -> Result<HashMap<String, f64>, Erre
         .ok_or_else(|| ErreurCollecte::Format("racine non objet".into()))?;
     let mut out = HashMap::new();
     for (id, code) in EQUIVALENCES_COINGECKO {
-        if let Some(p) = obj.get(*id).and_then(|e| e.get("usd")).and_then(Value::as_f64) {
+        if let Some(p) = obj
+            .get(*id)
+            .and_then(|e| e.get("usd"))
+            .and_then(Value::as_f64)
+        {
             if p > 0.0 {
                 out.insert((*code).to_string(), 1.0 / p);
             }
@@ -346,7 +351,11 @@ fn lire_coin_cap(v: &Value, _paire: &str) -> Result<HashMap<String, f64>, Erreur
         .ok_or_else(|| ErreurCollecte::Format("data absent".into()))?;
     let mut out = HashMap::new();
     for (code, entree) in obj {
-        if let Some(p) = entree.get("price").and_then(Value::as_str).and_then(|s| s.parse::<f64>().ok()) {
+        if let Some(p) = entree
+            .get("price")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse::<f64>().ok())
+        {
             if p > 0.0 {
                 out.insert(code.to_uppercase(), 1.0 / p);
             }

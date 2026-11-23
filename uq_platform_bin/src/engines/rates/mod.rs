@@ -82,7 +82,10 @@ fn souvenir_long(maintenant: i64) -> Vec<historique::ObservationPensee> {
     }
     let points = historique::dernieres_observations();
     if let Ok(mut g) = SOUVENIR.write() {
-        *g = Souvenir { horodatage: maintenant, points: points.clone() };
+        *g = Souvenir {
+            horodatage: maintenant,
+            points: points.clone(),
+        };
     }
     points
 }
@@ -119,7 +122,10 @@ fn precedentes() -> HashMap<String, HashMap<String, f64>> {
 /// cohérence. Toute source ayant répondu est fusionnée, y compris celles
 /// écartées par l'agrégat : sinon un blacklistage ne serait jamais persisté.
 fn sante_precedente() -> HashMap<String, sante::SanteSource> {
-    etat::sante().into_iter().map(|s| (s.nom.to_string(), s)).collect()
+    etat::sante()
+        .into_iter()
+        .map(|s| (s.nom.to_string(), s))
+        .collect()
 }
 
 /// Collecte toutes les sources actives EN PARALLÈLE. Chaque source est
@@ -128,15 +134,17 @@ fn sante_precedente() -> HashMap<String, sante::SanteSource> {
 ///
 /// La santé n'est marquée « succès » que pour les sources réellement
 /// interrogées : une source en rythme lent n'est pas en panne.
-pub async fn collecter_tout() -> (Vec<ReponseSource>, Vec<(&'static str, sources::ErreurCollecte)>) {
+pub async fn collecter_tout() -> (
+    Vec<ReponseSource>,
+    Vec<(&'static str, sources::ErreurCollecte)>,
+) {
     let maintenant = chrono::Utc::now().timestamp();
     let mut handles = Vec::new();
 
     for def in sources::sources() {
         if !sources::source_active(def) {
-            let mut maj = etat::lire_sante_source(def.nom).unwrap_or_else(|| {
-                sante::SanteSource::nouvelle(def.nom, def.categorie.cle())
-            });
+            let mut maj = etat::lire_sante_source(def.nom)
+                .unwrap_or_else(|| sante::SanteSource::nouvelle(def.nom, def.categorie.cle()));
             maj.marquer_absence_de_cle();
             etat::enregistrer_sante(def.nom, maj);
             continue;
@@ -169,17 +177,15 @@ pub async fn collecter_tout() -> (Vec<ReponseSource>, Vec<(&'static str, sources
         let marqueur = |sante: sante::SanteSource| etat::enregistrer_sante(nom, sante);
         match h.await {
             Ok(Ok(reponse)) => {
-                let mut maj = etat::lire_sante_source(nom).unwrap_or_else(|| {
-                    sante::SanteSource::nouvelle(nom, def.categorie.cle())
-                });
+                let mut maj = etat::lire_sante_source(nom)
+                    .unwrap_or_else(|| sante::SanteSource::nouvelle(nom, def.categorie.cle()));
                 maj.marquer_succes(reponse.latence_ms, maintenant);
                 marqueur(maj);
                 reussies.push(reponse);
             }
             Ok(Err(erreur)) => {
-                let mut maj = etat::lire_sante_source(nom).unwrap_or_else(|| {
-                    sante::SanteSource::nouvelle(nom, def.categorie.cle())
-                });
+                let mut maj = etat::lire_sante_source(nom)
+                    .unwrap_or_else(|| sante::SanteSource::nouvelle(nom, def.categorie.cle()));
                 maj.marquer_echec(&formater_erreur(&erreur), maintenant);
                 marqueur(maj);
                 if erreur.cle() != "sans_cle" {
@@ -187,9 +193,8 @@ pub async fn collecter_tout() -> (Vec<ReponseSource>, Vec<(&'static str, sources
                 }
             }
             Err(_) => {
-                let mut maj = etat::lire_sante_source(nom).unwrap_or_else(|| {
-                    sante::SanteSource::nouvelle(nom, def.categorie.cle())
-                });
+                let mut maj = etat::lire_sante_source(nom)
+                    .unwrap_or_else(|| sante::SanteSource::nouvelle(nom, def.categorie.cle()));
                 maj.marquer_echec("tâche de collecte perdue", maintenant);
                 marqueur(maj);
                 echecs.push((nom, sources::ErreurCollecte::Reseau("tâche perdue".into())));
@@ -244,7 +249,10 @@ pub async fn un_cycle() -> SnapshotTaux {
     let (mut snapshot, sante_cycle, anomalies) =
         agregation::agreger(reponses, &avant, &sante_avant, maintenant);
 
-    if echecs.iter().any(|(_, e)| matches!(e, sources::ErreurCollecte::Http(_))) {
+    if echecs
+        .iter()
+        .any(|(_, e)| matches!(e, sources::ErreurCollecte::Http(_)))
+    {
         let mut annexe = anomalies.clone();
         for (nom, erreur) in &echecs {
             annexe.push(json!({
@@ -262,9 +270,11 @@ pub async fn un_cycle() -> SnapshotTaux {
     // Auto-réparation : si le cycle n'a rien OBSERVÉ, on ressert le dernier
     // taux réellement vu (mémoire, puis disque), daté et étiqueté stale.
     if sans_observation(&snapshot) {
-        if let Some(rassis) =
-            dernier_observe_depuis(etat::lire_snapshot(), historique::charger_snapshot(), maintenant)
-        {
+        if let Some(rassis) = dernier_observe_depuis(
+            etat::lire_snapshot(),
+            historique::charger_snapshot(),
+            maintenant,
+        ) {
             snapshot = rassis;
         }
     } else {
@@ -297,10 +307,12 @@ pub async fn un_cycle() -> SnapshotTaux {
         // Cycle partiel : les devises des sources en rythme lent (ou en panne
         // ce tick) restent servies avec leur date d'observation réelle.
         let connu = etat::lire_snapshot().or_else(|| {
-            historique::charger_snapshot().and_then(|v| serde_json::from_value::<SnapshotTaux>(v).ok())
+            historique::charger_snapshot()
+                .and_then(|v| serde_json::from_value::<SnapshotTaux>(v).ok())
         });
         if let Some(connu) = connu {
-            snapshot.devises_rejouees = agregation::rejouer_connu(&mut snapshot, &connu, maintenant);
+            snapshot.devises_rejouees =
+                agregation::rejouer_connu(&mut snapshot, &connu, maintenant);
         }
     }
 
@@ -310,7 +322,8 @@ pub async fn un_cycle() -> SnapshotTaux {
     // les ressert, datées de leur vraie observation. C'est ce qui garantit au
     // membre hors-ligne de continuer à voir LE dernier taux capté, devise par
     // devise, jusqu'à la reconnexion.
-    let resservies = agregation::rejouer_du_passe(&mut snapshot, &souvenir_long(maintenant), maintenant);
+    let resservies =
+        agregation::rejouer_du_passe(&mut snapshot, &souvenir_long(maintenant), maintenant);
     if resservies > 0 {
         snapshot.devises_rejouees = snapshot.devises_rejouees.saturating_add(resservies);
     }
@@ -456,7 +469,10 @@ mod tests {
         let _ = std::fs::create_dir_all(&dossier);
         std::env::set_var(
             "UQ_ENGINES_DB",
-            dossier.join("verif_reseau.db").to_string_lossy().to_string(),
+            dossier
+                .join("verif_reseau.db")
+                .to_string_lossy()
+                .to_string(),
         );
 
         let snapshot = un_cycle().await;
@@ -481,7 +497,12 @@ mod tests {
         for s in etat::sante() {
             println!(
                 "  {:<16} {:?}  latence {} ms  echecs {}  dernier succes {}  {}",
-                s.nom, s.etat, s.latence_moyenne_ms, s.echecs_consecutifs, s.dernier_succes, s.detail
+                s.nom,
+                s.etat,
+                s.latence_moyenne_ms,
+                s.echecs_consecutifs,
+                s.dernier_succes,
+                s.detail
             );
         }
         println!("--- anomalies ---");
@@ -507,7 +528,10 @@ mod tests {
         // Ce qu'on exige : une étiquette qui désigne une source réellement
         // interrogée. Ce qu'on refuse : un repli, un cache, une valeur en dur.
         assert!(
-            !matches!(cdf.source.as_str(), "stale" | "aucune" | "fallback" | "definition"),
+            !matches!(
+                cdf.source.as_str(),
+                "stale" | "aucune" | "fallback" | "definition"
+            ),
             "le CDF ne doit pas venir d'un repli inventé (étiquette : {})",
             cdf.source
         );
@@ -613,12 +637,16 @@ mod tests {
         historique::enregistrer_snapshot_dans(&chemin, &json, capture);
         let relu = historique::charger_snapshot_dans(&chemin).expect("snapshot relu du disque");
 
-        let rassis = dernier_observe_depuis(None, Some(relu), maintenant).expect("le disque a la valeur");
+        let rassis =
+            dernier_observe_depuis(None, Some(relu), maintenant).expect("le disque a la valeur");
 
         assert_eq!(rassis.informations["CDF"].valeur, 2261.56);
         assert_eq!(rassis.informations["EUR"].valeur, 0.9231);
         assert_eq!(rassis.source, "stale");
-        assert_eq!(rassis.horodatage, capture, "l'âge affiché reste l'heure de capture");
+        assert_eq!(
+            rassis.horodatage, capture,
+            "l'âge affiché reste l'heure de capture"
+        );
         assert_eq!(rassis.age_secs, 4000);
 
         supprimer_base(&chemin);
@@ -636,8 +664,11 @@ mod tests {
     /// définition n'est pas un cycle ayant observé le marché.
     #[test]
     fn usd_seul_n_est_pas_une_observation() {
-        let mut definition =
-            snapshot_test(&[("USD", 1.0)], "definition", chrono::Utc::now().timestamp());
+        let mut definition = snapshot_test(
+            &[("USD", 1.0)],
+            "definition",
+            chrono::Utc::now().timestamp(),
+        );
         // Ce que produit un cycle où aucune source n'a répondu : la définition
         // USD, et zéro contribution.
         definition.nb_sources = 0;
@@ -645,7 +676,8 @@ mod tests {
         assert!(sans_observation(&definition));
 
         let maintenant = chrono::Utc::now().timestamp();
-        let un_peu_de_marche = snapshot_test(&[("USD", 1.0), ("CDF", 2309.26)], "er-api", maintenant);
+        let un_peu_de_marche =
+            snapshot_test(&[("USD", 1.0), ("CDF", 2309.26)], "er-api", maintenant);
         assert!(!sans_observation(&un_peu_de_marche));
     }
 
@@ -683,7 +715,13 @@ mod tests {
             apres_coupure.age_secs
         );
         for (devise, info) in apres_coupure.informations.iter() {
-            println!("  {:<5} = {:>12.4}  [{}]  provient de {}", devise, info.valeur, info.source, info.origines.join(","));
+            println!(
+                "  {:<5} = {:>12.4}  [{}]  provient de {}",
+                devise,
+                info.valeur,
+                info.source,
+                info.origines.join(",")
+            );
         }
 
         assert_eq!(
@@ -708,7 +746,10 @@ mod tests {
             .await
             .expect("hors-ligne, la dernière capture vaut mieux qu'une erreur");
         assert_eq!(sert.informations["CDF"].valeur, 2309.26);
-        println!(">>> routes OK hors-ligne : CDF {} [{}]", sert.informations["CDF"].valeur, sert.source);
+        println!(
+            ">>> routes OK hors-ligne : CDF {} [{}]",
+            sert.informations["CDF"].valeur, sert.source
+        );
 
         std::env::remove_var("HTTPS_PROXY");
         std::env::remove_var("HTTP_PROXY");

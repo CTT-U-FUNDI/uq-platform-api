@@ -1,4 +1,4 @@
-﻿// ====================
+// ====================
 // 📦 PERSISTENCE — Charger/Sauvegarder BlockOrb
 // ====================
 //
@@ -13,12 +13,12 @@
 //
 // ====================
 
-use serde::{Serialize, Deserialize};
 use crate::block_orb::BlockOrb;
 use crate::regulateur::RegulateurState;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 const DATA_DIR: &str = "data";
@@ -141,8 +141,15 @@ fn rattache_comptes_manquants(orb: &mut BlockOrb) -> usize {
         }
 
         let cadenas = crate::kyc::cadenas::cadenas_porte_par(&uq);
-        if !cadenas.as_deref().map(crate::block_orb::cadenas_credible).unwrap_or(false) {
-            eprintln!("  👻 {} : aucun cadenas structurel en base — wallet non cree", uq);
+        if !cadenas
+            .as_deref()
+            .map(crate::block_orb::cadenas_credible)
+            .unwrap_or(false)
+        {
+            eprintln!(
+                "  👻 {} : aucun cadenas structurel en base — wallet non cree",
+                uq
+            );
             continue;
         }
 
@@ -155,10 +162,17 @@ fn rattache_comptes_manquants(orb: &mut BlockOrb) -> usize {
             .unwrap_or(0)
             .max(0);
 
-        match orb.creer_compte(&uq, (points as u128) * femto_par_point, cadenas.as_deref().unwrap()) {
+        match orb.creer_compte(
+            &uq,
+            (points as u128) * femto_par_point,
+            cadenas.as_deref().unwrap(),
+        ) {
             Ok(()) => {
                 rattaches += 1;
-                eprintln!("  🔗 {} rattaché au BlockOrb ({} pts, cadenas posé)", uq, points);
+                eprintln!(
+                    "  🔗 {} rattaché au BlockOrb ({} pts, cadenas posé)",
+                    uq, points
+                );
             }
             Err(e) => eprintln!("  ⚠️  {} : rattache refuse — {}", uq, e),
         }
@@ -251,11 +265,9 @@ pub fn load_global_orb() -> BlockOrb {
                 // Lire balance.points
                 match rusqlite::Connection::open(&db_path) {
                     Ok(conn) => {
-                        match conn.query_row(
-                            "SELECT points FROM balance WHERE id = 1",
-                            [],
-                            |r| r.get::<_, i64>(0),
-                        ) {
+                        match conn.query_row("SELECT points FROM balance WHERE id = 1", [], |r| {
+                            r.get::<_, i64>(0)
+                        }) {
                             Ok(points) => {
                                 let solde = (points.max(0) as u128) * femto_par_point;
 
@@ -285,10 +297,7 @@ pub fn load_global_orb() -> BlockOrb {
                                 total_femto += solde;
 
                                 if points > 0 {
-                                    eprintln!(
-                                        "  📥 {} : {} points → {} femto",
-                                        uq, points, solde
-                                    );
+                                    eprintln!("  📥 {} : {} points → {} femto", uq, points, solde);
                                 }
                             }
                             Err(e) => {
@@ -498,7 +507,11 @@ pub fn register_borb(borb_id: &str, owner_uq: &str, from_uq: &str, amount: u128,
     let entry = BorbEntry {
         borb_id: borb_id.to_string(),
         owner_uq: owner_uq.to_string(),
-        from_uq: if from_uq.is_empty() { None } else { Some(from_uq.to_string()) },
+        from_uq: if from_uq.is_empty() {
+            None
+        } else {
+            Some(from_uq.to_string())
+        },
         amount,
         created_at: now,
         last_seen_at: now,
@@ -518,7 +531,10 @@ pub fn verify_borb(borb_id: &str) -> bool {
 }
 
 pub fn count_borb_by_owner(owner_uq: &str) -> usize {
-    load_registry().values().filter(|e| e.owner_uq == owner_uq).count()
+    load_registry()
+        .values()
+        .filter(|e| e.owner_uq == owner_uq)
+        .count()
 }
 
 pub fn sum_borb_by_owner(owner_uq: &str) -> u128 {
@@ -654,7 +670,10 @@ pub fn mirroir_frais(sender: &str, fee_points: u128) -> Result<(), String> {
         if let Some(p) = orb.comptes.get_mut(sender) {
             p.solde = frais;
         }
-        eprintln!("🪞 Réconcilié {} : +{} femto prélevés sur le Trésor", sender, manque);
+        eprintln!(
+            "🪞 Réconcilié {} : +{} femto prélevés sur le Trésor",
+            sender, manque
+        );
     }
 
     if let Some(p) = orb.comptes.get_mut(sender) {

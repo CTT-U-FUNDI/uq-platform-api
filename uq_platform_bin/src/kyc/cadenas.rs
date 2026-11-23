@@ -1,10 +1,10 @@
-﻿// ====================
+// ====================
 // 🔐 CADENAS — Systeme anti-piratage
 // ====================
 
-use serde::{Serialize, Deserialize};
-use sha2::{Sha256, Digest};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct InfosCompte {
@@ -30,8 +30,12 @@ pub fn calculer_hash_creation(infos: &InfosCompte) -> String {
     hasher.update(infos.date_naissance.as_bytes());
     hasher.update(infos.lieu_naissance.as_bytes());
     hasher.update(infos.pays.as_bytes());
-    if let Some(a) = &infos.adresse { hasher.update(a.as_bytes()); }
-    if let Some(t) = &infos.telephone { hasher.update(t.as_bytes()); }
+    if let Some(a) = &infos.adresse {
+        hasher.update(a.as_bytes());
+    }
+    if let Some(t) = &infos.telephone {
+        hasher.update(t.as_bytes());
+    }
     hasher.update(infos.created_at.to_le_bytes());
     hasher.update(secret.as_bytes());
 
@@ -40,7 +44,8 @@ pub fn calculer_hash_creation(infos: &InfosCompte) -> String {
 
 pub fn transformer_hash(hash: &str) -> String {
     let base = if hash.len() >= 16 { &hash[..16] } else { hash };
-    let groupes: Vec<String> = base.as_bytes()
+    let groupes: Vec<String> = base
+        .as_bytes()
         .chunks(4)
         .map(|c| String::from_utf8_lossy(c).to_uppercase())
         .collect();
@@ -55,7 +60,10 @@ pub fn calculer_cadenas(infos: &InfosCompte) -> String {
 /// Meme chemin que les handlers : `data/users/{uq}.db` depuis le repertoire
 /// courant (les DB ne sont pas dans le dossier de l'executable).
 fn chemin_db(uq_number: &str) -> String {
-    format!("data/users/{}.db", uq_number.replace("-", "_").to_lowercase())
+    format!(
+        "data/users/{}.db",
+        uq_number.replace("-", "_").to_lowercase()
+    )
 }
 
 /// Pose le cadenas a la creation du compte
@@ -84,7 +92,8 @@ pub fn poser_cadenas_creation(uq_number: &str, infos: &InfosCompte) -> Result<St
             &infos.telephone,
             infos.created_at,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let (mut orb, _garde_orb) = crate::persistence::orb_charge_verrouille();
     if let Some(p) = orb.comptes.get_mut(uq_number) {
@@ -106,18 +115,21 @@ pub fn charger_infos_compte(uq_number: &str) -> Result<InfosCompte, String> {
                 adresse, telephone, created_at
          FROM cadenas_verification WHERE id = 1",
         [],
-        |row| Ok(InfosCompte {
-            uq_number: row.get(0)?,
-            nom: row.get(1)?,
-            prenom: row.get(2)?,
-            date_naissance: row.get(3)?,
-            lieu_naissance: row.get(4)?,
-            pays: row.get(5)?,
-            adresse: row.get(6)?,
-            telephone: row.get(7)?,
-            created_at: row.get(8)?,
-        }),
-    ).map_err(|_| format!("Cadenas introuvable pour {}", uq_number))
+        |row| {
+            Ok(InfosCompte {
+                uq_number: row.get(0)?,
+                nom: row.get(1)?,
+                prenom: row.get(2)?,
+                date_naissance: row.get(3)?,
+                lieu_naissance: row.get(4)?,
+                pays: row.get(5)?,
+                adresse: row.get(6)?,
+                telephone: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        },
+    )
+    .map_err(|_| format!("Cadenas introuvable pour {}", uq_number))
 }
 
 /// Cadenas structurel RÉEL : la DB du compte porte des identifiants
@@ -135,7 +147,8 @@ pub fn cadenas_structurel_reel(uq_number: &str) -> Result<String, String> {
     ] {
         if champ.trim().is_empty() {
             return Err(format!(
-                "CADENAS_STRUCT: identifiants incomplets pour {}", uq_number
+                "CADENAS_STRUCT: identifiants incomplets pour {}",
+                uq_number
             ));
         }
     }
@@ -160,7 +173,6 @@ pub fn porte_cadenas_structurel(uq_number: &str) -> Result<(), String> {
     }
 }
 
-
 // ===== / =====
 /// VERIFIE SI UN UQ EST LIE A UN AUTRE (owner avec 2 profils)
 /// Uniquement pour UQ-732337351 (Profil 2 du owner)
@@ -176,7 +188,10 @@ pub fn uq_principal_si_lie(uq_number: &str) -> Option<String> {
         .ok()
     });
     if let Some(principal) = trouve {
-        eprintln!("[CADENAS-LIE] {} est lie a {} via circle_members", uq_number, principal);
+        eprintln!(
+            "[CADENAS-LIE] {} est lie a {} via circle_members",
+            uq_number, principal
+        );
         return Some(principal);
     }
 
@@ -197,12 +212,15 @@ pub fn uq_principal_si_lie(uq_number: &str) -> Option<String> {
 pub fn verifier_cadenas_lie(uq_lie: &str) -> Result<(), String> {
     let principal = uq_principal_si_lie(uq_lie)
         .ok_or_else(|| format!("UQ {} n'est pas lie a un principal", uq_lie))?;
-    
+
     // Verifier le cadenas du principal (owner)
     verifier_cadenas(&principal)?;
-    
+
     // Le cadenas du principal est valide -> le UQ lie est valide
-    eprintln!("[CADENAS-LIE] {} valide via principal {}", uq_lie, principal);
+    eprintln!(
+        "[CADENAS-LIE] {} valide via principal {}",
+        uq_lie, principal
+    );
     Ok(())
 }
 
@@ -214,14 +232,15 @@ pub fn verifier_cadenas(uq_number: &str) -> Result<(), String> {
     // LIRE LE CADENAS DEPUIS LA DB DU COMPTE (pas le JSON)
     // ====================
     let db_path = chemin_db(uq_number);
-    let conn = Connection::open(&db_path)
-        .map_err(|e| format!("DB introuvable: {}", e))?;
+    let conn = Connection::open(&db_path).map_err(|e| format!("DB introuvable: {}", e))?;
 
-    let cadenas_stocke: String = conn.query_row(
-        "SELECT hash_transforme FROM cadenas_verification WHERE id = 1",
-        [],
-        |row| row.get(0),
-    ).map_err(|_| format!("Cadenas introuvable pour {}", uq_number))?;
+    let cadenas_stocke: String = conn
+        .query_row(
+            "SELECT hash_transforme FROM cadenas_verification WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| format!("Cadenas introuvable pour {}", uq_number))?;
 
     if cadenas_actuel != cadenas_stocke {
         return Err(format!(
@@ -269,7 +288,7 @@ pub fn est_deverrouille(uq_number: &str) -> bool {
             }
         }
     }
-    
+
     // 2. Si c'est un UQ lie (Profil 2), verifier le cadenas du principal
     if let Some(principal) = uq_principal_si_lie(uq_number) {
         let owner_db = chemin_db(&principal);
@@ -286,7 +305,7 @@ pub fn est_deverrouille(uq_number: &str) -> bool {
             }
         }
     }
-    
+
     false
 }
 
@@ -315,7 +334,8 @@ pub fn geler_compte_piratage(uq_number: &str, details: &str) -> Result<(), Strin
 
 pub fn est_gele(uq_number: &str) -> bool {
     let orb = crate::persistence::load_global_orb();
-    orb.comptes.get(uq_number)
+    orb.comptes
+        .get(uq_number)
         .map(|p| p.alerte_piratage)
         .unwrap_or(false)
 }
@@ -323,7 +343,7 @@ pub fn est_gele(uq_number: &str) -> bool {
 // ====================
 // 👑 KYC OWNER AUTO-VALIDÉ (Mission 7)
 // ====================
-// Le propriétaire (UQ-996697110) n'a pas à fournir photo/vidéo :
+// Le propriétaire (UQ-00000001) n'a pas à fournir photo/vidéo :
 // son KYC est validé d'office. Sans cela, son cadenas restait
 // « verrouille = 1 » et il ne pouvait rien faire (même pas tester
 // la Règle 4).
@@ -333,7 +353,7 @@ pub fn est_gele(uq_number: &str) -> bool {
 //   date_naissance, lieu_naissance, pays, adresse, telephone,
 //   created_at, verifie_at, est_verifie, verrouille, est_actif
 
-pub const OWNER_UQ_NUMBER: &str = "UQ-996697110";
+pub const OWNER_UQ_NUMBER: &str = "UQ-00000001";
 
 pub fn valider_kyc_owner_auto() -> Result<(), String> {
     let db_path = chemin_db(OWNER_UQ_NUMBER);
@@ -374,15 +394,17 @@ pub fn valider_kyc_owner_auto() -> Result<(), String> {
 
     // Cadenas structurel canonique : hash recalculé depuis l'identité
     // réelle, écrit dans la DB ET lié dans le BlockOrb (pas de placeholder).
-    let infos = charger_infos_compte(OWNER_UQ_NUMBER)
-        .map_err(|e| format!("Identite owner: {}", e))?;
+    let infos =
+        charger_infos_compte(OWNER_UQ_NUMBER).map_err(|e| format!("Identite owner: {}", e))?;
     let hash_brut = calculer_hash_creation(&infos);
     let hash_transforme = transformer_hash(&hash_brut);
     let conn2 = Connection::open(chemin_db(OWNER_UQ_NUMBER)).map_err(|e| e.to_string())?;
-    conn2.execute(
-        "UPDATE cadenas_verification SET hash_brut = ?1, hash_transforme = ?2 WHERE id = 1",
-        rusqlite::params![hash_brut, hash_transforme],
-    ).map_err(|e| e.to_string())?;
+    conn2
+        .execute(
+            "UPDATE cadenas_verification SET hash_brut = ?1, hash_transforme = ?2 WHERE id = 1",
+            rusqlite::params![hash_brut, hash_transforme],
+        )
+        .map_err(|e| e.to_string())?;
     drop(conn2);
 
     // Le BlockOrb ne doit plus porter d'alerte sur le propriétaire
@@ -397,7 +419,7 @@ pub fn valider_kyc_owner_auto() -> Result<(), String> {
     }
     let _ = crate::persistence::save_global_orb(&orb);
 
-    eprintln!("👑 KYC owner auto-valide (UQ-996697110) — cadenas ouvert");
+    eprintln!("👑 KYC owner auto-valide (UQ-00000001) — cadenas ouvert");
     Ok(())
 }
 
@@ -422,7 +444,8 @@ pub fn resynchroniser_cadenas(uq_number: &str) -> Result<(), String> {
     conn.execute(
         "UPDATE cadenas_verification SET hash_brut = ?1, hash_transforme = ?2 WHERE id = 1",
         rusqlite::params![hash_brut, hash_transforme],
-    ).map_err(|e| format!("UPDATE: {}", e))?;
+    )
+    .map_err(|e| format!("UPDATE: {}", e))?;
     drop(conn);
 
     // Lien BlockOrb : le registre central porte le meme cadenas que la DB.
@@ -435,7 +458,9 @@ pub fn resynchroniser_cadenas(uq_number: &str) -> Result<(), String> {
     }
     crate::persistence::save_global_orb(&orb)?;
 
-    eprintln!("✅ Cadenas resynchronise (formule canonique) pour {}", uq_number);
+    eprintln!(
+        "✅ Cadenas resynchronise (formule canonique) pour {}",
+        uq_number
+    );
     Ok(())
 }
-

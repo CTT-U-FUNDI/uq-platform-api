@@ -11,7 +11,7 @@
 // Rien n'est interpolé : un jour sans mouvement n'apparaît pas dans la série.
 
 use actix_web::{web, HttpRequest, HttpResponse};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
@@ -112,8 +112,7 @@ pub fn apparier_fifo(executions: &[Execution]) -> Appariement {
 
         match cote.as_str() {
             "buy" => {
-                lots
-                    .entry(paire.clone())
+                lots.entry(paire.clone())
                     .or_insert_with(VecDeque::new)
                     .push_back((*quantite, *prix));
             }
@@ -283,9 +282,10 @@ pub async fn trading_performance(
             pnl_total += realise;
             volume_total += volume;
             trades_total += nb;
-            let date_secondes = chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", jour))
-                .map(|instant| instant.timestamp())
-                .unwrap_or(0);
+            let date_secondes =
+                chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", jour))
+                    .map(|instant| instant.timestamp())
+                    .unwrap_or(0);
             if date_secondes < depuis {
                 continue;
             }
@@ -323,7 +323,7 @@ pub async fn trading_performance(
 /// La base d'index du module trading, ouverte en lecture/écriture comme ailleurs.
 fn ouvrir_index() -> Result<Connection, String> {
     let conn =
-        Connection::open(crate::uq_index::uq_index_path()).map_err(|e| format!("Index indisponible ({})", e))?;
+        Connection::open("uq_index.db").map_err(|e| format!("Index indisponible ({})", e))?;
     let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     crate::trading_routes::ensure_tables(&conn).map_err(|e| e.to_string())?;
     Ok(conn)
@@ -442,7 +442,10 @@ pub async fn borb_balance_series(
         }
     };
     if let Err(e) = crate::db::ensure_transactions_columns(&conn) {
-        eprintln!("⚠️  Alignement schéma transactions (série {}): {}", compte, e);
+        eprintln!(
+            "⚠️  Alignement schéma transactions (série {}): {}",
+            compte, e
+        );
     }
 
     // Solde interne actuel : la référence à laquelle la courbe doit se raccorder.
@@ -726,7 +729,13 @@ pub async fn wallet_analytics(
             }
         };
         let valeurs: rusqlite::Result<(i64, i64, i64, String, String)> = (|| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
         })();
         let (cree, montant, frais, tx_type, statut) = match valeurs {
             Ok(valeurs) => valeurs,
@@ -778,9 +787,12 @@ pub async fn wallet_analytics(
         }
         transactions += 1;
 
-        let total_source = totaux_sources
-            .entry(source.code.to_string())
-            .or_insert((source.libelle.to_string(), source.sens.to_string(), 0, 0));
+        let total_source = totaux_sources.entry(source.code.to_string()).or_insert((
+            source.libelle.to_string(),
+            source.sens.to_string(),
+            0,
+            0,
+        ));
         total_source.2 += montant_source;
         total_source.3 += 1;
 
@@ -793,10 +805,7 @@ pub async fn wallet_analytics(
             valeur_jour.1 += montant_source;
         }
         valeur_jour.2 += 1;
-        *valeur_jour
-            .3
-            .entry(source.code.to_string())
-            .or_insert(0) += montant_source;
+        *valeur_jour.3.entry(source.code.to_string()).or_insert(0) += montant_source;
     }
 
     let mut sources: Vec<serde_json::Value> = totaux_sources
@@ -974,7 +983,11 @@ mod tests {
             ligne("test", 42, 0, "success", JOUR + 180),
         ]);
 
-        assert_eq!(flux.deltas.len(), 3, "les lignes non réussies sont écartées");
+        assert_eq!(
+            flux.deltas.len(),
+            3,
+            "les lignes non réussies sont écartées"
+        );
         assert_eq!(flux.lignes_rejetees, 1);
         assert_eq!(flux.types_non_classes.get("test"), Some(&1));
 

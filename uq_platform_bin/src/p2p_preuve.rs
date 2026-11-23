@@ -258,12 +258,31 @@ fn chiffres(texte: &str) -> String {
 
 fn normaliser_nom(texte: &str) -> Vec<String> {
     const ACCENTUES: &[(char, &str)] = &[
-        ('à', "a"), ('á', "a"), ('â', "a"), ('ä', "a"), ('ã', "a"), ('å', "a"),
-        ('è', "e"), ('é', "e"), ('ê', "e"), ('ë', "e"),
-        ('ì', "i"), ('í', "i"), ('î', "i"), ('ï', "i"),
-        ('ò', "o"), ('ó', "o"), ('ô', "o"), ('ö', "o"), ('õ', "o"),
-        ('ù', "u"), ('ú', "u"), ('û', "u"), ('ü', "u"),
-        ('ñ', "n"), ('ç', "c"),
+        ('à', "a"),
+        ('á', "a"),
+        ('â', "a"),
+        ('ä', "a"),
+        ('ã', "a"),
+        ('å', "a"),
+        ('è', "e"),
+        ('é', "e"),
+        ('ê', "e"),
+        ('ë', "e"),
+        ('ì', "i"),
+        ('í', "i"),
+        ('î', "i"),
+        ('ï', "i"),
+        ('ò', "o"),
+        ('ó', "o"),
+        ('ô', "o"),
+        ('ö', "o"),
+        ('õ', "o"),
+        ('ù', "u"),
+        ('ú', "u"),
+        ('û', "u"),
+        ('ü', "u"),
+        ('ñ', "n"),
+        ('ç', "c"),
     ];
     texte
         .to_lowercase()
@@ -314,8 +333,19 @@ fn numero_correspond(saisi: &str, attendu: &str) -> f64 {
 /// Les outils de retouche et d'export courants : une trace ici n'est pas une
 /// accusation d'IA, mais un reçu payé « recomposé » laisse des traces.
 const OUTILS_DE_RETOUCHE: &[&str] = &[
-    "photoshop", "gimp", "lightroom", "snapseed", "picsart", "canva", "pixlr", "luminar",
-    "affinity", "paint.net", "inpaint", "crop", "recadr",
+    "photoshop",
+    "gimp",
+    "lightroom",
+    "snapseed",
+    "picsart",
+    "canva",
+    "pixlr",
+    "luminar",
+    "affinity",
+    "paint.net",
+    "inpaint",
+    "crop",
+    "recadr",
 ];
 
 fn horodatage_de(meta: &crate::image_meta::MetadonneesImage) -> Option<i64> {
@@ -333,8 +363,13 @@ fn horodatage_de(meta: &crate::image_meta::MetadonneesImage) -> Option<i64> {
     let heure: i64 = chiffres[8..10].parse().ok()?;
     let minute: i64 = chiffres[10..12].parse().ok()?;
     // Approximation suffisante : on compare des jours, pas des secondes.
-    Some((annee - 1970) * 31_557_600 + (mois - 1) * 2_629_800 + (jour - 1) * 86_400
-        + heure * 3_600 + minute * 60)
+    Some(
+        (annee - 1970) * 31_557_600
+            + (mois - 1) * 2_629_800
+            + (jour - 1) * 86_400
+            + heure * 3_600
+            + minute * 60,
+    )
 }
 
 /// Contraste moyen d'une image réduite : un reçu ou une capture de mobile
@@ -437,7 +472,8 @@ pub fn analyser(
             "numéro conforme à celui de la commande".to_string()
         } else {
             "numéro non vérifiable (absent de la commande ou de la saisie)".to_string()
-        },    });
+        },
+    });
 
     let attendu_mots = normaliser_nom(&attendu.nom);
     let saisi_mots = normaliser_nom(&saisi.nom);
@@ -578,9 +614,7 @@ pub fn analyser(
                 (Some(_), f) if f > 0.9 => {
                     "l'horodatage du fichier est antérieur à l'ouverture de la commande".to_string()
                 }
-                (Some(_), f) if f > 0.5 => {
-                    "l'horodatage du fichier est dans le futur".to_string()
-                }
+                (Some(_), f) if f > 0.5 => "l'horodatage du fichier est dans le futur".to_string(),
                 (Some(_), _) => "horodatage compatible avec la commande".to_string(),
                 (None, _) => "pas d'horodatage lisible dans le fichier".to_string(),
             },
@@ -691,20 +725,40 @@ pub fn assurer_tables(conn: &Connection) -> Result<(), String> {
             updated_at INTEGER NOT NULL DEFAULT 0
         );
         INSERT OR IGNORE INTO p2p_proof_model (id, poids, echantillons, updated_at)
-        VALUES (1, '{}', 0, 0);",
+        VALUES (1, '{}', 0, 0);
+        CREATE TABLE IF NOT EXISTS p2p_preuve_tentatives (
+            order_id INTEGER NOT NULL,
+            uq TEXT NOT NULL,
+            stale INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (order_id, uq)
+        );",
     )
     .map_err(|e| format!("Preuves P2P : migration impossible ({})", e))?;
     ajouter_colonne(conn, "p2p_proofs", "derogue", "INTEGER NOT NULL DEFAULT 0")?;
-    ajouter_colonne(conn, "p2p_proofs", "nom_ok", "INTEGER NOT NULL DEFAULT 0")
+    ajouter_colonne(conn, "p2p_proofs", "nom_ok", "INTEGER NOT NULL DEFAULT 0")?;
+    ajouter_colonne(
+        conn,
+        "p2p_proofs",
+        "image_sha256",
+        "TEXT NOT NULL DEFAULT ''",
+    )
 }
 
 /// Les tables se créent une fois ; une colonne ajoutée depuis doit quand même
 /// apparaître sur un fichier plus ancien. `ALTER TABLE` ne sait pas tester, on
 /// lit le schéma d'abord.
-fn ajouter_colonne(conn: &Connection, table: &str, colonne: &str, type_: &str) -> Result<(), String> {
+fn ajouter_colonne(
+    conn: &Connection,
+    table: &str,
+    colonne: &str,
+    type_: &str,
+) -> Result<(), String> {
     let existe: bool = conn
         .query_row(
-            &format!("SELECT COUNT(*) FROM pragma_table_info('{}') WHERE name = ?1", table),
+            &format!(
+                "SELECT COUNT(*) FROM pragma_table_info('{}') WHERE name = ?1",
+                table
+            ),
             params![colonne],
             |row| row.get::<_, i64>(0),
         )
@@ -719,6 +773,25 @@ fn ajouter_colonne(conn: &Connection, table: &str, colonne: &str, type_: &str) -
     )
     .map(|_| ())
     .map_err(|e| format!("Preuves P2P : colonne {} impossible ({})", colonne, e))
+}
+
+/// Tentatives de capture PÉRIMÉE (> 1 min) pour une commande : max 3.
+/// Une capture ancienne rejouée ne doit pas boucler indéfiniment.
+pub fn tentatives_stale(conn: &Connection, commande: i64, uq: &str) -> i64 {
+    conn.query_row(
+        "SELECT stale FROM p2p_preuve_tentatives WHERE order_id = ?1 AND UPPER(uq) = UPPER(?2)",
+        params![commande, uq],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
+pub fn incr_tentative_stale(conn: &Connection, commande: i64, uq: &str) {
+    let _ = conn.execute(
+        "INSERT INTO p2p_preuve_tentatives (order_id, uq, stale) VALUES (?1, ?2, 1)
+         ON CONFLICT(order_id, uq) DO UPDATE SET stale = stale + 1",
+        params![commande, uq],
+    );
 }
 
 /// Une preuve ne dépasse jamais ce plafond : le même garde-fou que les
@@ -769,12 +842,32 @@ pub fn inserer_preuve(
         use base64::Engine;
         base64::engine::general_purpose::STANDARD.encode(octets)
     };
-    let data_uri = format!("data:image/{};base64,{}", crate::image_meta::format_de(octets), b64);
+    let image_sha256 = {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(octets))
+    };
+    let deja_utilisee: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM p2p_proofs WHERE image_sha256 = ?1",
+            params![image_sha256],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if deja_utilisee > 0 {
+        return Err(
+            "Cette capture a déjà été utilisée comme preuve sur une autre transaction.".to_string(),
+        );
+    }
+    let data_uri = format!(
+        "data:image/{};base64,{}",
+        crate::image_meta::format_de(octets),
+        b64
+    );
     conn.execute(
         "INSERT INTO p2p_proofs
             (order_id, role, uq, montant_declare, devise_declare, numero_declare, nom_declare,
-             image, format, conformite, verdict, veto, signaux, reasons, created_at, nom_ok)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+             image, format, conformite, verdict, veto, signaux, reasons, created_at, nom_ok, image_sha256)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
         params![
             commande,
             role,
@@ -792,6 +885,7 @@ pub fn inserer_preuve(
             raisons,
             horodatage,
             analyse.nom_ok.as_i64(),
+            image_sha256,
         ],
     )
     .map_err(|e| format!("Preuve impossible à enregistrer ({})", e))?;
@@ -877,57 +971,58 @@ pub fn image_de(conn: &Connection, identifiant: i64) -> Result<Option<String>, S
 /// dispose le moteur pour apprendre.
 pub fn marquer_issue(conn: &Connection, commande: i64, issue: &str) -> Result<usize, String> {
     let horodatage = maintenant_secondes();
-    conn
-        .execute(
-            "UPDATE p2p_proofs SET issue = ?1, issue_at = ?2
+    conn.execute(
+        "UPDATE p2p_proofs SET issue = ?1, issue_at = ?2
              WHERE order_id = ?3 AND issue = ''",
-            params![issue, horodatage, commande],
-        )
-        .map_err(|e| format!("Issue de preuve impossible ({})", e))
+        params![issue, horodatage, commande],
+    )
+    .map_err(|e| format!("Issue de preuve impossible ({})", e))
 }
 
 /// L'acheteur passe outre un verdict écarté : la trace en dit explicitement le
 /// nom. Le vendeur voit la mention, et l'issue de la commande instructera le
 /// moteur sur ce choix.
 pub fn marquer_derogue(conn: &Connection, commande: i64, uq: &str) -> Result<usize, String> {
-    conn
-        .execute(
-            "UPDATE p2p_proofs SET derogue = 1
+    conn.execute(
+        "UPDATE p2p_proofs SET derogue = 1
              WHERE id = (
                  SELECT id FROM p2p_proofs
                   WHERE order_id = ?1 AND UPPER(uq) = UPPER(?2)
                   ORDER BY id DESC LIMIT 1
              )",
-            params![commande, uq],
-        )
-        .map_err(|e| format!("Derogation de preuve impossible ({})", e))
+        params![commande, uq],
+    )
+    .map_err(|e| format!("Derogation de preuve impossible ({})", e))
 }
 
 /// La derniere preuve posee par une partie, avec son verdict : c'est le sésame
 /// qui ouvre le bouton « J'ai payé ».
-pub fn derniere_preuve_de(conn: &Connection, commande: i64, uq: &str) -> Result<Option<Value>, String> {
-    conn
-        .query_row(
-            "SELECT id, role, verdict, conformite, veto, derogue, nom_ok
+pub fn derniere_preuve_de(
+    conn: &Connection,
+    commande: i64,
+    uq: &str,
+) -> Result<Option<Value>, String> {
+    conn.query_row(
+        "SELECT id, role, verdict, conformite, veto, derogue, nom_ok
              FROM p2p_proofs
              WHERE order_id = ?1 AND UPPER(uq) = UPPER(?2)
              ORDER BY id DESC LIMIT 1",
-            params![commande, uq],
-            |row| {
-                Ok(json!({
-                    "id": row.get::<_, i64>(0)?,
-                    "role": row.get::<_, String>(1)?,
-                    "verdict": row.get::<_, String>(2)?,
-                    "conformite": row.get::<_, f64>(3)?,
-                    "veto": row.get::<_, i64>(4)? == 1,
-                    "derogue": row.get::<_, i64>(5)? == 1,
-                    "nom_ok": row.get::<_, i64>(6)?,
-                    "nom_verifie": NomRecu::de(row.get::<_, i64>(6)?).as_str(),
-                }))
-            },
-        )
-        .optional()
-        .map_err(|e| format!("Lecture de la derniere preuve impossible ({})", e))
+        params![commande, uq],
+        |row| {
+            Ok(json!({
+                "id": row.get::<_, i64>(0)?,
+                "role": row.get::<_, String>(1)?,
+                "verdict": row.get::<_, String>(2)?,
+                "conformite": row.get::<_, f64>(3)?,
+                "veto": row.get::<_, i64>(4)? == 1,
+                "derogue": row.get::<_, i64>(5)? == 1,
+                "nom_ok": row.get::<_, i64>(6)?,
+                "nom_verifie": NomRecu::de(row.get::<_, i64>(6)?).as_str(),
+            }))
+        },
+    )
+    .optional()
+    .map_err(|e| format!("Lecture de la derniere preuve impossible ({})", e))
 }
 
 /// Recalcul des pondérations à partir des cas annotés. Deux époques, pas qui
@@ -937,11 +1032,14 @@ pub fn recalibrer(conn: &Connection) -> Result<Value, String> {
         .prepare("SELECT signaux, issue FROM p2p_proofs WHERE issue IN ('completed','litige') ORDER BY id")
         .map_err(|e| format!("Apprentissage : lecture impossible ({})", e))?;
     let lignes = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(|e| format!("Apprentissage : lecture impossible ({})", e))?;
     let mut cas: Vec<(Vec<Signal>, f64)> = Vec::new();
     for ligne in lignes {
-        let (texte, issue) = ligne.map_err(|e| format!("Apprentissage : ligne illisible ({})", e))?;
+        let (texte, issue) =
+            ligne.map_err(|e| format!("Apprentissage : ligne illisible ({})", e))?;
         let valeurs: Value = match serde_json::from_str(&texte) {
             Ok(valeurs) => valeurs,
             Err(_) => continue,
@@ -951,7 +1049,11 @@ pub fn recalibrer(conn: &Connection) -> Result<Value, String> {
             for entree in tableau {
                 let nom = entree.get("nom").and_then(|v| v.as_str()).unwrap_or("");
                 let force = entree.get("force").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let detail = entree.get("detail").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let detail = entree
+                    .get("detail")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if let Some(connu) = connaitre_nom(nom) {
                     signaux.push(Signal {
                         nom: connu,
@@ -979,7 +1081,8 @@ pub fn recalibrer(conn: &Connection) -> Result<Value, String> {
             for signal in signaux {
                 let priorite = priorite_de(signal.nom);
                 let courant = poids.get(signal.nom).copied().unwrap_or(priorite);
-                let nouveau = (courant + pas * erreur * signal.force).clamp(priorite * 0.25, priorite * 4.0);
+                let nouveau =
+                    (courant + pas * erreur * signal.force).clamp(priorite * 0.25, priorite * 4.0);
                 poids.insert(signal.nom.to_string(), nouveau);
             }
         }
@@ -992,7 +1095,9 @@ pub fn recalibrer(conn: &Connection) -> Result<Value, String> {
         params![texte, cas.len() as i64, horodatage],
     )
     .map_err(|e| format!("Apprentissage : écriture impossible ({})", e))?;
-    Ok(json!({ "echantillons": cas.len(), "poids": serde_json::from_str::<Value>(&texte).unwrap_or(Value::Null) }))
+    Ok(
+        json!({ "echantillons": cas.len(), "poids": serde_json::from_str::<Value>(&texte).unwrap_or(Value::Null) }),
+    )
 }
 
 /// Les noms de signaux vivent dans le binaire ; la base n'en porte que des
@@ -1152,7 +1257,10 @@ mod tests {
         };
         let analyse = analyser(&png_brute(), &saisi, &commande(), &poids_par_defaut());
         assert_eq!(analyse.verdict, Verdict::Rejet, "{:?}", analyse.raisons());
-        assert!(!analyse.veto, "le veto reste reserve au fichier qui s accuse");
+        assert!(
+            !analyse.veto,
+            "le veto reste reserve au fichier qui s accuse"
+        );
     }
 
     #[test]
@@ -1167,7 +1275,12 @@ mod tests {
 
     #[test]
     fn image_sans_texte_est_signalee_sans_accuser() {
-        let analyse = analyser(&png_plate(), &saisie_conforme(), &commande(), &poids_par_defaut());
+        let analyse = analyser(
+            &png_plate(),
+            &saisie_conforme(),
+            &commande(),
+            &poids_par_defaut(),
+        );
         assert!(force_de(&analyse, "texte_absent") > 0.9);
         assert!(!analyse.veto);
         assert_eq!(analyse.verdict, Verdict::Doute, "{:?}", analyse.raisons());
@@ -1303,6 +1416,31 @@ mod tests {
     }
 
     #[test]
+    fn image_reutilisee_est_refusee_sur_une_autre_preuve() {
+        let conn = base();
+        let octets = png_brute();
+        let analyse = analyser(
+            &octets,
+            &saisie_conforme(),
+            &commande(),
+            &poids_par_defaut(),
+        );
+        inserer_preuve(&conn, 41, "buyer", "UQ-2", &saisie_conforme(), &octets, &analyse)
+            .expect("première preuve");
+        let doublon = inserer_preuve(
+            &conn,
+            42,
+            "buyer",
+            "UQ-3",
+            &saisie_conforme(),
+            &octets,
+            &analyse,
+        );
+        assert!(doublon.is_err());
+        assert!(doublon.err().unwrap().contains("déjà été utilisée"));
+    }
+
+    #[test]
     fn derniere_preuve_et_derogation_visent_la_bonne_partie() {
         let conn = base();
         grain(&conn, 9, &[("montant", 1.0)], "");
@@ -1311,7 +1449,9 @@ mod tests {
         // La partie qui n'a rien déposé n'a pas de sésame.
         assert!(derniere_preuve_de(&conn, 9, "UQ-2").unwrap().is_none());
 
-        let derniere = derniere_preuve_de(&conn, 9, "uq-1").unwrap().expect("preuve");
+        let derniere = derniere_preuve_de(&conn, 9, "uq-1")
+            .unwrap()
+            .expect("preuve");
         let premiere = lister_preuves(&conn, 9).unwrap()[0]["id"].as_i64().unwrap();
         assert_ne!(derniere["id"].as_i64(), Some(premiere));
         assert_eq!(derniere["verdict"].as_str(), Some("doute"));
@@ -1337,12 +1477,20 @@ mod tests {
         let analyse = analyser(&png_brute(), &saisi, &commande(), &poids_par_defaut());
         assert_eq!(analyse.nom_ok, NomRecu::Divergent);
         assert_eq!(analyse.verdict, Verdict::Rejet, "{:?}", analyse.raisons());
-        assert!(!analyse.veto, "la divergence de nom n'est pas un veto de fichier");
+        assert!(
+            !analyse.veto,
+            "la divergence de nom n'est pas un veto de fichier"
+        );
     }
 
     #[test]
     fn nom_recopie_vaut_test_de_connaissance_reussi() {
-        let analyse = analyser(&png_brute(), &saisie_conforme(), &commande(), &poids_par_defaut());
+        let analyse = analyser(
+            &png_brute(),
+            &saisie_conforme(),
+            &commande(),
+            &poids_par_defaut(),
+        );
         assert_eq!(analyse.nom_ok, NomRecu::Conforme);
         assert_eq!(force_de(&analyse, "nom"), -1.0);
     }
@@ -1368,7 +1516,12 @@ mod tests {
             nom_officiel: false,
             ..commande()
         };
-        let analyse = analyser(&png_brute(), &saisie_conforme(), &attendu, &poids_par_defaut());
+        let analyse = analyser(
+            &png_brute(),
+            &saisie_conforme(),
+            &attendu,
+            &poids_par_defaut(),
+        );
         assert_eq!(analyse.nom_ok, NomRecu::Inverifiable);
         assert_eq!(force_de(&analyse, "nom"), 0.0);
     }
@@ -1387,7 +1540,9 @@ mod tests {
         assert_eq!(liste[0]["nom_ok"].as_i64(), Some(-1));
         assert_eq!(liste[0]["nom_verifie"].as_str(), Some("divergent"));
 
-        let derniere = derniere_preuve_de(&conn, 11, "UQ-11").unwrap().expect("preuve");
+        let derniere = derniere_preuve_de(&conn, 11, "UQ-11")
+            .unwrap()
+            .expect("preuve");
         assert_eq!(derniere["nom_ok"].as_i64(), Some(-1));
         assert_eq!(derniere["nom_verifie"].as_str(), Some("divergent"));
     }
