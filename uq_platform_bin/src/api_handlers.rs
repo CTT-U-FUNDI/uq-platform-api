@@ -4219,7 +4219,14 @@ pub async fn zando_item_create(
 }
 
 /// Récupère les éléments d'une boutique
-pub async fn zando_items_list() -> HttpResponse {
+pub async fn zando_items_list(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ — USER : JWT obligatoire.
+    // Sans auth, la liste exposait media_urls (vidéos) à tout le monde :
+    // les médias partaient gratuitement dans le flux. Comme
+    // zando_item_get, la lecture exige désormais un compte authentifié.
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
     let db = Database::shared("uq_platform_db.json");
     let items = db.get_all_shop_items();
 
@@ -4849,7 +4856,14 @@ pub async fn zando_agent_become(
 }
 
 /// Récupère les agents d'un élément
-pub async fn zando_agents_get(path: web::Path<String>) -> HttpResponse {
+pub async fn zando_agents_get(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ — USER : JWT obligatoire (liste des agents non publique)
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
     let db = Database::shared("uq_platform_db.json");
     let item_id = path.into_inner();
     let agents = db.get_item_agents(&item_id);
@@ -5055,13 +5069,20 @@ pub async fn draft_delete(req: actix_web::HttpRequest, path: web::Path<String>) 
 // 📇 ZANDO — CONTACTS (5 handlers)
 // ====================
 
-pub async fn zando_contact_request(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn zando_contact_request(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ — USER : JWT obligatoire. requester_id venait du body
+    // → n'importe qui pouvait demander un contact AU NOM d'un autre
+    // (harcèlement + notifications falsifiées). L'identité vient du token.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
     let db = Database::shared("uq_platform_db.json");
 
-    let requester_id = body
-        .get("requester_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let requester_id = claims.sub.as_str();
     let target_id = body.get("target_id").and_then(|v| v.as_str()).unwrap_or("");
     let field = body
         .get("field")
