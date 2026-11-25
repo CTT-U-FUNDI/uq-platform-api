@@ -3734,6 +3734,36 @@ pub async fn p2p_proof_attach(
         Err(error) => return echec(error),
     }
 
+    // ===== DÉFI P2P (nonce + signe) =====
+    // La preuve doit montrer le code défi tiré pour CETTE commande :
+    // une capture recyclée d'une ancienne transaction ne peut pas le
+    // porter. Le code est rendu à la lecture de la commande.
+    let _ = conn.execute_batch(
+        "ALTER TABLE p2p_orders ADD COLUMN defi_code TEXT DEFAULT '';
+         ALTER TABLE p2p_orders ADD COLUMN defi_signe TEXT DEFAULT '';
+         ALTER TABLE p2p_orders ADD COLUMN defi_pose_le INTEGER DEFAULT 0;",
+    );
+    let defi = match crate::p2p_defi::en_cours(&conn, identifiant, maintenant()) {
+        Ok(d) => d,
+        Err(e) => return echec(e),
+    };
+    let defi_saisi = texte(&body, "defi_code");
+    if defi_saisi.is_empty() {
+        return refus(
+            &format!(
+                "Code défi requis : montre « {} » et le signe « {} » sur ta capture de paiement.",
+                defi.code, defi.signe
+            ),
+            "DEFI_REQUIS",
+        );
+    }
+    if !defi_saisi.eq_ignore_ascii_case(&defi.code) {
+        return refus(
+            &format!("Code défi incorrect — attendu : {}", defi.code),
+            "DEFI_INCORRECT",
+        );
+    }
+
     // ===== FRAÎCHEUR CAPTURE (< 1 min, horloge SERVEUR) =====
     // Le client extrait l'horodatage de la capture (EXIF/métadonnées)
     // et le serveur le compare à SA propre horloge — jamais celle du
