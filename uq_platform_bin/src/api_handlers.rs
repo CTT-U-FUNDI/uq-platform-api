@@ -4391,14 +4391,14 @@ pub async fn zando_item_create(
     ) {
         Ok(id) => {
             // Solo : expiration automatique à 24h (flux éphémère).
+            // IMPORTANT : expires_at est stocké en format datetime TEXT
+            // ('YYYY-MM-DD HH:MM:SS'), comme le reste de shop_items —
+            // synchroniser_elements_expires compare avec datetime('now').
             if est_solo {
                 let _ = db.conn().map(|conn| {
                     let _ = conn.execute(
-                        "UPDATE shop_items SET expires_at = ?1 WHERE id = ?2",
-                        rusqlite::params![
-                            chrono::Utc::now().timestamp() + 24 * 3600,
-                            id
-                        ],
+                        "UPDATE shop_items SET expires_at = datetime('now', '+24 hours') WHERE id = ?1",
+                        rusqlite::params![id]
                     );
                 });
             }
