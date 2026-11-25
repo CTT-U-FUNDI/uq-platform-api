@@ -392,7 +392,15 @@ pub async fn shop_list() -> HttpResponse {
     HttpResponse::Ok().json(json!({"shops": shops, "total": shops.len()}))
 }
 
-pub async fn product_add(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn product_add(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT obligatoire — n'importe qui injectait des
+    // produits dans n'importe quelle boutique anonymement.
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
     let shop_id = body.get("shop_id").and_then(|v| v.as_str()).unwrap_or("");
     let name = body
         .get("name")
@@ -417,8 +425,15 @@ pub async fn product_add(body: web::Json<serde_json::Value>) -> HttpResponse {
 }
 
 pub async fn product_buy(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok()
-        .json(json!({"status": "success", "message": "Produit acheté", "escrow_created": true}))
+    // ⚠️ PAS DE FAUX SUCCÈS : cet endpoint ne fait RIEN — pas de débit,
+    // pas d'escrow, pas de stock. On refuse explicitement au lieu de
+    // mentir au client. La vraie vente passe par le flux P2P/escrow.
+    let _ = body;
+    HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "Achat produit non implémenté — utilise le flux P2P/escrow."
+    }))
 }
 
 // ==========================================================
@@ -476,56 +491,53 @@ pub async fn search_nearby(
     HttpResponse::Ok().json(json!({"results": [], "total": 0}))
 }
 
-pub async fn location_update(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"status": "success", "location_updated": true}))
+// ⚠️ STUBS ASSUMÉS — ces handlers ne font RIEN (pas de DB, pas de débit,
+// pas de géoloc réelle). On refuse explicitement au lieu de renvoyer
+// un faux "success" qui ment au client.
+fn pas_implémente(feature: &str) -> HttpResponse {
+    HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": format!("{} non implémenté côté serveur.", feature)
+    }))
 }
 
-pub async fn location_distance(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"status": "success", "distance_km": 0.0}))
+pub async fn location_update(_body: web::Json<serde_json::Value>) -> HttpResponse {
+    pas_implémente("location_update")
+}
+
+pub async fn location_distance(_body: web::Json<serde_json::Value>) -> HttpResponse {
+    pas_implémente("location_distance")
 }
 
 // ==========================================================
 // HANDLERS CONNEXION + PARRAINAGE
 // ==========================================================
 
-pub async fn connect_sell(body: web::Json<serde_json::Value>) -> HttpResponse {
-    let seller = body
-        .get("seller")
-        .and_then(|v| v.as_str())
-        .unwrap_or("anonymous");
-    let network_type = body.get("type").and_then(|v| v.as_str()).unwrap_or("4G");
-    let price_per_mb = body
-        .get("price_per_mb")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10);
-
-    HttpResponse::Ok().json(json!({
-        "status": "success",
-        "seller": seller,
-        "network_type": network_type,
-        "price_per_mb": price_per_mb,
-        "active": true
-    }))
+pub async fn connect_sell(_body: web::Json<serde_json::Value>) -> HttpResponse {
+    pas_implémente("connect_sell")
 }
 
-pub async fn connect_buy(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"status": "success", "connection_purchased": true}))
+pub async fn connect_buy(_body: web::Json<serde_json::Value>) -> HttpResponse {
+    pas_implémente("connect_buy")
 }
 
 pub async fn connect_sellers() -> HttpResponse {
+    // Liste vide = honnête : aucun vendeur de connexion enregistré.
     HttpResponse::Ok().json(json!({"sellers": [], "total": 0}))
 }
 
-pub async fn referral_create(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"status": "success", "referral_link": "https://uq/ref/ABC123"}))
+pub async fn referral_create(_body: web::Json<serde_json::Value>) -> HttpResponse {
+    pas_implémente("referral_create")
 }
 
 pub async fn referral_stats(path: web::Path<String>) -> HttpResponse {
+    // Stats vides honnêtes — pas de parrainage implémenté.
     HttpResponse::Ok().json(json!({"user_id": path.into_inner(), "referrals": 0, "earnings": 0}))
 }
 
-pub async fn referral_claim(body: web::Json<serde_json::Value>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"status": "success", "claimed": true}))
+pub async fn referral_claim(_body: web::Json<serde_json::Value>) -> HttpResponse {
+    pas_implémente("referral_claim")
 }
 
 // ==========================================================
