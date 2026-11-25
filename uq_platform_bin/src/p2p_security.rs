@@ -1274,9 +1274,10 @@ pub async fn arbitrate_order(
                 "Arbitrage réservé à l'owner et aux vendeurs réputés (KYC + 20 verts + 20 ventes).",
             );
         }
-        // ===== GRANDS MONTANTS : OWNER UNIQUEMENT =====
-        // Au-dessus de 200 BORB (~200 USD), seul l'owner tranche —
-        // un litige à gros montant engage la plateforme entière.
+        // ===== GRANDS MONTANTS : ARBITRE SENIOR =====
+        // Au-dessus de 200 BORB (~200 USD), il faut un arbitre
+        // EXPÉRIMENTÉ : >= 50 verts + >= 50 ventes (vs 20/20 standard).
+        // Pas de restriction à l'owner — la compétence fait foi.
         let points_cmd: i64 = conn_check
             .query_row(
                 "SELECT COALESCE(escrow_points,0) FROM p2p_orders WHERE id = ?1",
@@ -1284,12 +1285,15 @@ pub async fn arbitrate_order(
                 |row| row.get(0),
             )
             .unwrap_or(0);
-        if points_cmd as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64 > 200.0
-            && !est_owner
-        {
-            return forbidden(
-                "Litige > 200 USD : arbitrage réservé à l'owner uniquement.",
-            );
+        let gros_montant =
+            points_cmd as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64 > 200.0;
+        if gros_montant && !est_owner {
+            let senior_ok = kyc == 1 && vert >= 50 && ventes >= 50 && rouge == 0 && noir == 0;
+            if !senior_ok {
+                return forbidden(
+                    "Litige > 200 USD : arbitrage réservé aux arbitres seniors (KYC + 50 verts + 50 ventes).",
+                );
+            }
         }
     }
     let decision = text(&body, "decision").to_lowercase();
