@@ -36,6 +36,7 @@ mod block_orb;
 mod blockchain_lib;
 mod borb_tracer;
 mod capsule_routes;
+mod capture;
 mod cases_handlers;
 mod cases_loop;
 mod cases_routes;

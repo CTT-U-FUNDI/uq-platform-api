@@ -1806,6 +1806,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             "/api/positions/ma-position",
             web::get().to(crate::positions::position_moi),
         )
+        .route(
+            "/api/p2p/capture-session",
+            web::post().to(crate::capture::capture_session_create),
+        )
+        .route(
+            "/api/p2p/capture-session/submit",
+            web::post().to(crate::capture::capture_session_submit),
+        )
         // Une voix par compte et par fiche : le compteur d'avis se lit, il ne
         // se fabrique pas.
         .route(
