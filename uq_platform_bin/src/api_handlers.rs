@@ -2183,7 +2183,8 @@ pub async fn ubi_info() -> HttpResponse {
         "cooldown_hours": UBI_COOLDOWN_SECS / 3600,
         "enveloppe_ubi_femto": orb.ubi_enveloppe.to_string(),
         "enveloppe_ubi_borb": orb.ubi_enveloppe as f64 / crate::montant::FEMTO_PAR_BORB as f64,
-        "message": "UBI journalier preleve sur l'enveloppe UBI du BlockOrb"
+        "desactive": true,
+        "message": "UBI DESACTIVE — les claims sont fermes. Utilise les codes promo."
     }))
 }
 
