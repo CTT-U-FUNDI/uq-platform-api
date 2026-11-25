@@ -1039,9 +1039,17 @@ pub async fn verify_cross_code(
     match updated {
         Ok(1) => {
             let _ = conn.execute(
-                "UPDATE p2p_orders SET cross_code_status = 'verified', updated_at = ?2
+                // Le code croisé prouve l'intention de payer : on ouvre
+                // une fenêtre de 5 min pour la PREUVE FINALE (photo/
+                // extraction). Passé ce délai, la commande part en
+                // litige au prochain appel — l'acheteur ne peut pas
+                // laisser le vendeur en attente indéfiniment.
+                "UPDATE p2p_orders
+                 SET cross_code_status = 'verified',
+                     payment_deadline = ?2,
+                     updated_at = ?2
                  WHERE id = ?1",
-                params![order_id, now()],
+                params![order_id, now() + 300],
             );
             audit(
                 &conn,

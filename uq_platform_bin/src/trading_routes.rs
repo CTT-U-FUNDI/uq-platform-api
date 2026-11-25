@@ -3734,6 +3734,32 @@ pub async fn p2p_proof_attach(
         Err(error) => return echec(error),
     }
 
+    // ===== DÉLAI PREUVE FINALE =====
+    // Une fois le code croisé validé, l'acheteur a 5 minutes pour
+    // envoyer la photo/extraction de confirmation. Passé ce délai,
+    // la preuve est refusée — la commande partira en litige.
+    let deadline: Option<i64> = conn
+        .query_row(
+            "SELECT payment_deadline FROM p2p_orders WHERE id = ?1",
+            params![identifiant],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .unwrap_or(None);
+    if let Some(dl) = deadline {
+        if dl > 0 && maintenant() > dl && commande.statut == "paid" {
+            // Marque pour litige : le statut reste paid mais un flag
+            // indique le dépassement — l'arbitrage tranchera.
+            let _ = conn.execute(
+                "UPDATE p2p_orders SET litige = 'timeout_preuve' WHERE id = ?1",
+                params![identifiant],
+            );
+            return refus(
+                "Délai de preuve dépassé (5 min après code croisé). La commande passe en litige — ouvre un litige si tu as bien payé.",
+                "PREUVE_TROP_TARD",
+            );
+        }
+    }
+
     // ===== DÉFI P2P (nonce + signe) =====
     // La preuve doit montrer le code défi tiré pour CETTE commande :
     // une capture recyclée d'une ancienne transaction ne peut pas le
@@ -3741,7 +3767,9 @@ pub async fn p2p_proof_attach(
     let _ = conn.execute_batch(
         "ALTER TABLE p2p_orders ADD COLUMN defi_code TEXT DEFAULT '';
          ALTER TABLE p2p_orders ADD COLUMN defi_signe TEXT DEFAULT '';
-         ALTER TABLE p2p_orders ADD COLUMN defi_pose_le INTEGER DEFAULT 0;",
+         ALTER TABLE p2p_orders ADD COLUMN defi_pose_le INTEGER DEFAULT 0;
+         ALTER TABLE p2p_orders ADD COLUMN payment_deadline INTEGER DEFAULT 0;
+         ALTER TABLE p2p_orders ADD COLUMN litige TEXT DEFAULT '';",
     );
     let defi = match crate::p2p_defi::en_cours(&conn, identifiant, maintenant()) {
         Ok(d) => d,
