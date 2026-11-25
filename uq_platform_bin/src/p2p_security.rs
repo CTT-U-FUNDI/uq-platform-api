@@ -1212,13 +1212,48 @@ pub async fn arbitrate_order(
     path: web::Path<i64>,
     body: web::Json<Value>,
 ) -> HttpResponse {
-    if let Err(response) = crate::auth_guard::exiger_owner(&req) {
-        return response;
-    }
     let claims = match crate::auth_guard::exiger_auth(&req) {
         Ok(claims) => claims,
         Err(response) => return response,
     };
+    // ===== ARBITRES : owner OU vendeur réputé =====
+    // Un vendeur peut trancher les litiges s'il a :
+    //   - KYC vérifié
+    //   - >= 20 actions "vert" (réputation)
+    //   - >= 20 commandes vendues terminées
+    //   - pas de signalement "rouge"/"noir" non résolu
+    let est_owner = crate::auth_guard::est_owner(&claims);
+    if !est_owner {
+        let conn_check = match open_index() {
+            Ok(c) => c,
+            Err(e) => return failure(e),
+        };
+        let (kyc, vert, ventes, rouge, noir): (i64, i64, i64, i64, i64) = conn_check
+            .query_row(
+                "SELECT COALESCE(uq_index.kyc_verified,0),
+                        COALESCE(rep.vert,0),
+                        (SELECT COUNT(*) FROM p2p_orders
+                          WHERE seller = ?1 AND status = 'completed'),
+                        COALESCE(rep.rouge,0),
+                        COALESCE(rep.noir,0)
+                 FROM uq_index
+                 LEFT JOIN reputation rep ON rep.uq = uq_index.uq_number
+                 WHERE uq_index.uq_number = ?1",
+                params![claims.sub],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap_or((0, 0, 0, 0, 0));
+        let arbitre_ok = kyc == 1
+            && vert >= 20
+            && ventes >= 20
+            && rouge == 0
+            && noir == 0;
+        if !arbitre_ok {
+            return forbidden(
+                "Arbitrage réservé à l'owner et aux vendeurs réputés (KYC + 20 verts + 20 ventes).",
+            );
+        }
+    }
     let order_id = path.into_inner();
     let decision = text(&body, "decision").to_lowercase();
     if !matches!(decision.as_str(), "release" | "refund") {
