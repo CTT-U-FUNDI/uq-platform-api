@@ -1762,6 +1762,34 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             "/api/connexion/nearby",
             web::get().to(crate::connexion::connexion_nearby),
         )
+        .route(
+            "/api/connexion/acheter",
+            web::post().to(crate::demandes_handlers::connexion_acheter),
+        )
+        .route(
+            "/api/connexion/achats",
+            web::get().to(crate::demandes_handlers::connexion_achats),
+        )
+        .route(
+            "/api/demandes",
+            web::post().to(crate::demandes_handlers::demande_create),
+        )
+        .route(
+            "/api/demandes",
+            web::get().to(crate::demandes_handlers::demande_liste),
+        )
+        .route(
+            "/api/liens-externe/soumettre",
+            web::post().to(crate::demandes_handlers::lien_externe_soumettre),
+        )
+        .route(
+            "/api/liens-externe/verifier",
+            web::post().to(crate::demandes_handlers::lien_externe_verifier),
+        )
+        .route(
+            "/api/liens-externe/mes-liens",
+            web::get().to(crate::demandes_handlers::lien_externe_mes),
+        )
         // Une voix par compte et par fiche : le compteur d'avis se lit, il ne
         // se fabrique pas.
         .route(

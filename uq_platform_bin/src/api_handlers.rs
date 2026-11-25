@@ -5255,7 +5255,20 @@ pub async fn zando_item_create(
 }
 
 /// Récupère les éléments d'une boutique
-pub async fn zando_items_list(req: actix_web::HttpRequest) -> HttpResponse {
+/// Distance haversine en km entre deux points GPS.
+fn distance_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    const R: f64 = 6371.0;
+    let dlat = (lat2 - lat1).to_radians();
+    let dlon = (lon2 - lon1).to_radians();
+    let a = (dlat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
+    2.0 * R * a.sqrt().asin()
+}
+
+pub async fn zando_items_list(
+    req: actix_web::HttpRequest,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
     // 🔐 SÉCURITÉ — USER : JWT obligatoire.
     // Sans auth, la liste exposait media_urls (vidéos) à tout le monde :
     // les médias partaient gratuitement dans le flux. Comme
@@ -5264,7 +5277,56 @@ pub async fn zando_items_list(req: actix_web::HttpRequest) -> HttpResponse {
         return r;
     }
     let db = Database::shared("uq_platform_db.json");
-    let items = db.get_all_shop_items();
+    let mut items = db.get_all_shop_items();
+
+    // ===== TRI PAR DISTANCE (si l'utilisateur partage sa position) =====
+    // ?lat=&lon= → les éléments géolocalisés les plus proches d'abord.
+    // Si le rayon est vide, le reste du flux suit (on ne manque aucun
+    // contenu) — tri stable : distance croissante puis récence.
+    let lat_user: Option<f64> = query.get("lat").and_then(|v| v.parse().ok());
+    let lon_user: Option<f64> = query.get("lon").and_then(|v| v.parse().ok());
+    if let (Some(la), Some(lo)) = (lat_user, lon_user) {
+        // Rayon de pertinence : 50 km — en dessous, tri strict par distance ;
+        // au-delà ou sans GPS, le contenu reste accessible (tri par récence).
+        const RAYON_KM: f64 = 50.0;
+        items.sort_by(|a, b| {
+            let da = a
+                .get("latitude")
+                .and_then(|v| v.as_f64())
+                .zip(a.get("longitude").and_then(|v| v.as_f64()))
+                .map(|(x, y)| distance_km(la, lo, x, y));
+            let db_ = b
+                .get("latitude")
+                .and_then(|v| v.as_f64())
+                .zip(b.get("longitude").and_then(|v| v.as_f64()))
+                .map(|(x, y)| distance_km(la, lo, x, y));
+            match (da, db_) {
+                (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        });
+        // Marque la distance dans chaque item pour l'UI.
+        for it in items.iter_mut() {
+            if let (Some(la2), Some(lo2)) = (
+                it.get("latitude").and_then(|v| v.as_f64()),
+                it.get("longitude").and_then(|v| v.as_f64()),
+            ) {
+                let d = distance_km(la, lo, la2, lo2);
+                if let Some(obj) = it.as_object_mut() {
+                    obj.insert(
+                        "distance_km".to_string(),
+                        serde_json::json!(if d <= RAYON_KM {
+                            (d * 10.0).round() / 10.0
+                        } else {
+                            -1.0 // hors rayon : présent mais non priorisé
+                        }),
+                    );
+                }
+            }
+        }
+    }
 
     HttpResponse::Ok().json(json!({
         "status": "success",

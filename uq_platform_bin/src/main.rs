@@ -7,6 +7,7 @@ mod chat_reports;
 mod chat_reseau;
 mod command_registry;
 mod db;
+mod demandes_handlers;
 mod domain;
 mod frais_plateforme;
 mod firestore_sync;
