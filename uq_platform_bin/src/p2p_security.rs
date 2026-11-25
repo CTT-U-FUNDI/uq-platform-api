@@ -974,6 +974,61 @@ pub async fn verify_cross_code(
             "PAIEMENT_NON_ANONCE",
         );
     }
+
+    // ===== PREUVE SMS DU TRANSFERT =====
+    // L'acheteur peut joindre le TEXTE du SMS de confirmation mobile
+    // money (mode bas débit — pas de photo). Conditions strictes :
+    //  - le message doit être TRÈS récent (< 10 min, horloge serveur)
+    //  - il doit contenir le NOM du vendeur (celui affiché avant le
+    //    transfert — le nom enregistré, pas un pseudo)
+    //  - le code croisé reste exigé en plus (double preuve)
+    // On ne stocke que le HASH du SMS — jamais le texte brut.
+    let mut sms_verdict = "absent";
+    if let Some(sms) = body.get("sms_preuve") {
+        let texte_sms = sms.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        let sms_ts = sms.get("ts").and_then(|v| v.as_i64()).unwrap_or(0);
+        let age = now() - sms_ts;
+        if texte_sms.is_empty() || sms_ts <= 0 {
+            sms_verdict = "incomplet";
+        } else if age < 0 || age > 600 {
+            sms_verdict = "perime";
+        } else {
+            // Nom du vendeur : le nom officiel enregistré (celui que
+            // l'opérateur affiche), comparé en normalisant casse/espaces.
+            let nom_vendeur = crate::uq_public_alias::nom_enregistre(&participant.1)
+                .unwrap_or_else(|| crate::uq_public_alias::get_public_display(&participant.1));
+            let normalise = |s: &str| {
+                s.chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .flat_map(char::to_uppercase)
+                    .collect::<String>()
+            };
+            let sms_norm = normalise(texte_sms);
+            let nom_norm = normalise(&nom_vendeur);
+            // Le nom peut être en plusieurs mots : on vérifie que TOUS
+            // les mots significatifs du nom apparaissent dans le SMS.
+            let mots: Vec<&str> = nom_norm
+                .split_whitespace()
+                .filter(|m| m.len() >= 3)
+                .collect();
+            let nom_present = !mots.is_empty()
+                && mots.iter().all(|m| sms_norm.contains(m));
+            sms_verdict = if nom_present { "valide" } else { "nom_absent" };
+        }
+    }
+    if sms_verdict == "perime" {
+        return refused(
+            "Le SMS de transfert doit avoir moins de 10 minutes — reprends la preuve fraîche.",
+            "SMS_PERIME",
+        );
+    }
+    if sms_verdict == "nom_absent" {
+        return refused(
+            "Le SMS doit contenir le nom du vendeur destinataire du transfert.",
+            "NOM_VENDEUR_ABSENT",
+        );
+    }
+
     let updated = conn.execute(
         "UPDATE p2p_cross_codes
          SET status = 'verified', verified_at = ?3
@@ -994,13 +1049,14 @@ pub async fn verify_cross_code(
                 &uq,
                 "cross_code_verified",
                 "success",
-                json!({}),
+                json!({ "sms_preuve": sms_verdict }),
             )
             .ok();
             HttpResponse::Ok().json(json!({
                 "status": "success",
                 "order_id": order_id,
                 "cross_code_status": "verified",
+                "sms_preuve": sms_verdict,
                 "message": "Code validé. Le vendeur doit encore confirmer la réception avec son PIN."
             }))
         }
