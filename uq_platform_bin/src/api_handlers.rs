@@ -1254,13 +1254,17 @@ pub async fn account_balance(path: web::Path<String>) -> HttpResponse {
 // BULLES (7)
 // ==========================================================
 pub async fn bubble_create(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<GlobalState>>,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let owner = body
-        .get("owner")
-        .and_then(|v| v.as_str())
-        .unwrap_or("UQ-00000001");
+    // 🔐 SÉCURITÉ : JWT obligatoire — `owner` venait du body,
+    // n'importe qui créait une bulle au nom de n'importe quel UQ.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    let owner = claims.sub.as_str();
     let amount = body
         .get("amount_micro")
         .and_then(|v| v.as_u64())
