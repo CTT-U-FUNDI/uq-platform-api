@@ -1069,13 +1069,43 @@ pub async fn verify_cross_code(
             }))
         }
         Ok(_) => {
+            // 🔐 Anti-force-brute : chaque échec incrémente le compteur
+            // de la commande. À 5 échecs, TOUS les codes sont révoqués
+            // et le vendeur doit en régénérer — un voleur qui teste des
+            // codes ne peut pas aller plus loin.
+            let essais: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(code_attempts,0) FROM p2p_orders WHERE id = ?1",
+                    params![order_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            let _ = conn.execute_batch(
+                "ALTER TABLE p2p_orders ADD COLUMN code_attempts INTEGER DEFAULT 0;",
+            );
+            let nouveau = essais + 1;
+            let _ = conn.execute(
+                "UPDATE p2p_orders SET code_attempts = ?2 WHERE id = ?1",
+                params![order_id, nouveau],
+            );
+            if nouveau >= 5 {
+                let _ = conn.execute(
+                    "UPDATE p2p_cross_codes SET status = 'revoked'
+                     WHERE order_id = ?1 AND status IN ('pending','active')",
+                    params![order_id],
+                );
+                let _ = conn.execute(
+                    "UPDATE p2p_orders SET cross_code_status = 'locked', updated_at = ?2 WHERE id = ?1",
+                    params![order_id, now()],
+                );
+            }
             audit(
                 &conn,
                 order_id,
                 &uq,
                 "cross_code_verified",
                 "invalid",
-                json!({}),
+                json!({ "essai": nouveau }),
             )
             .ok();
             refused("Code incorrect, expiré ou déjà utilisé.", "CODE_INVALIDE")
