@@ -329,6 +329,9 @@ pub async fn lien_externe_soumettre(
         else if url.contains("youtube.com") || url.contains("youtu.be") { "youtube" }
         else if url.contains("instagram.com") { "instagram" }
         else if url.contains("facebook.com") || url.contains("fb.watch") { "facebook" }
+        else if url.contains("spotify.com") { "spotify" }
+        else if url.contains("soundcloud.com") { "soundcloud" }
+        else if url.contains("music.youtube.com") { "youtube_music" }
         else { "autre" };
 
     let db = Database::shared("uq_platform_db.json");
