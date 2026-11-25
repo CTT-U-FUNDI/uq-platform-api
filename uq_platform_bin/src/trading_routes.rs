@@ -2442,7 +2442,16 @@ fn signal_taux(ecart: Option<f64>) -> Value {
 // de l'oracle. Appelée à chaque liste d'offres : garantit l'existence
 // des moyens de réception et des offres, et MET À JOUR le taux —
 // l'offre owner affiche toujours le prix live, jamais un prix figé.
-const UQ_OWNER_P2P: &str = "UQ-00000001";
+// UQ owner de l'offre permanente : configurable par env (OWNER_UQ ou
+// OWNER_NUMBER) — le compte owner peut changer de numéro, le code ne
+// doit jamais coder le numéro en dur.
+fn uq_owner_p2p() -> String {
+    std::env::var("OWNER_UQ")
+        .ok()
+        .or_else(|| std::env::var("OWNER_NUMBER").ok())
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "UQ-00000001".to_string())
+}
 const OWNER_NOM_P2P: &str = "Bulonza Nsarhaza Eliezer";
 const OWNER_MPTEL: &str = "827279672"; // M-Pesa
 const OWNER_AIRTEL: &str = "996697110"; // Airtel Money
@@ -2452,6 +2461,7 @@ const OWNER_P2P_MAX_CDF: f64 = 1_000_000.0;
 
 async fn assurer_offre_owner(conn: &rusqlite::Connection) {
     use rusqlite::params;
+    let uq_owner = uq_owner_p2p();
     let _ = crate::p2p_security::ensure_tables(conn);
     let ts = maintenant();
 
@@ -2462,7 +2472,7 @@ async fn assurer_offre_owner(conn: &rusqlite::Connection) {
             .query_row(
                 "SELECT COUNT(*) FROM p2p_receiving_methods
                  WHERE UPPER(uq) = UPPER(?1) AND provider = ?2 AND account_identifier = ?3",
-                params![UQ_OWNER_P2P, provider, numero],
+                params![uq_owner.as_str(), provider, numero],
                 |r| r.get(0),
             )
             .unwrap_or(0);
@@ -2476,7 +2486,7 @@ async fn assurer_offre_owner(conn: &rusqlite::Connection) {
                  VALUES (?1, 'MOBILE_MONEY', ?2, 'CDF', ?3, ?4, ?5,
                          'verified', ?6, 1, 0, ?6, ?6)",
                 params![
-                    UQ_OWNER_P2P,
+                    uq_owner.as_str(),
                     provider,
                     numero,
                     &numero[numero.len().saturating_sub(4)..],
@@ -2519,7 +2529,7 @@ async fn assurer_offre_owner(conn: &rusqlite::Connection) {
                 "SELECT id FROM p2p_offers
                  WHERE UPPER(uq) = UPPER(?1) AND side = 'sell' AND UPPER(currency) = ?2
                    AND status = 'open' LIMIT 1",
-                params![UQ_OWNER_P2P, devise],
+                params![uq_owner.as_str(), devise],
                 |r| r.get(0),
             )
             .unwrap_or(0);
@@ -2538,7 +2548,7 @@ async fn assurer_offre_owner(conn: &rusqlite::Connection) {
                   receiving_method_id)
                  VALUES (?1, 'sell', ?2, ?3, ?4, ?5, ?6, '', '', '',
                          'open', ?7, 'DEVISE', 0)",
-                params![UQ_OWNER_P2P, devise, rate, BASE_TAUX_P2P, min, max, ts],
+                params![uq_owner.as_str(), devise, rate, BASE_TAUX_P2P, min, max, ts],
             );
         }
     }
