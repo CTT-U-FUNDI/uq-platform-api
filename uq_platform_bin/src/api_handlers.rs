@@ -4368,6 +4368,14 @@ pub async fn zando_item_create(
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as u32;
 
+    // ===== VENTE SOLO (sans KYC, gratuite, 24h) =====
+    // Un vendeur solo publie un petit service/produit : pas de KYC
+    // requis, pas de BORB, pas d'escrow, pas de monétisation UQ/wifi.
+    // Le contenu reste dans le flux 24h puis expire automatiquement.
+    // Interactions autorisées : commentaires, likes, vente du contenu
+    // NON vérifié. Le contenu vérifié (KYC) reste réservé.
+    let est_solo = item_type == "solo";
+
     match db.create_shop_item(
         &claims.sub,
         item_type,
@@ -4375,13 +4383,25 @@ pub async fn zando_item_create(
         title,
         subtitle,
         description,
-        price_borb,
-        price_usd,
+        if est_solo { 0 } else { price_borb },
+        if est_solo { 0.0 } else { price_usd },
         category,
         commission_enabled,
         commission_rate,
     ) {
         Ok(id) => {
+            // Solo : expiration automatique à 24h (flux éphémère).
+            if est_solo {
+                let _ = db.conn().map(|conn| {
+                    let _ = conn.execute(
+                        "UPDATE shop_items SET expires_at = ?1 WHERE id = ?2",
+                        rusqlite::params![
+                            chrono::Utc::now().timestamp() + 24 * 3600,
+                            id
+                        ],
+                    );
+                });
+            }
             // Position et type marketplace (optionnels, envoyés par le Studio).
             let latitude = body.get("latitude").and_then(|v| v.as_f64());
             let longitude = body.get("longitude").and_then(|v| v.as_f64());
