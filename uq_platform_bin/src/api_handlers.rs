@@ -3946,9 +3946,19 @@ pub async fn distribution_auto_recharge(req: actix_web::HttpRequest) -> HttpResp
     HttpResponse::Ok().json(json!({"status":"success","recharged":recharged}))
 }
 
-pub async fn distribution_claim(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn distribution_claim(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     use crate::borb_distribution::BorbDistribution;
     use rusqlite::Connection;
+
+    // 🔐 SÉCURITÉ : OWNER uniquement — cette route puise dans la
+    // trésorerie (profile1 -> profile2). Avant : n'importe qui pouvait
+    // déclencher une distribution en fournissant uq_profil2 dans le body.
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
 
     // 1. Recuperer le UQ du profil 2 (depuis le body)
     let uq_profil2 = body
@@ -6238,8 +6248,24 @@ pub async fn borb_units_info() -> HttpResponse {
     }))
 }
 
-pub async fn borb_convert(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn borb_convert(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT obligatoire — `account` venait du body,
+    // n'importe qui convertissait les unités de n'importe quel compte.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
     let account_id = body.get("account").and_then(|v| v.as_str()).unwrap_or("");
+    if !account_id.is_empty() && !claims.sub.eq_ignore_ascii_case(account_id) {
+        return HttpResponse::Forbidden().json(json!({
+            "status": "error",
+            "code": "ACCOUNT_MISMATCH",
+            "message": "Tu ne peux convertir que ton propre compte"
+        }));
+    }
     let from_unit = body.get("from").and_then(|v| v.as_str()).unwrap_or("BORB");
     let to_unit = body.get("to").and_then(|v| v.as_str()).unwrap_or("borb");
     let amount = body.get("amount").and_then(|v| v.as_i64()).unwrap_or(0);
