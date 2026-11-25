@@ -824,20 +824,17 @@ pub async fn account_create(
         email_verified: false,
     };
 
-    // Email de récupération OBLIGATOIRE : sans lui, un utilisateur qui
-    // oublie son UQ ne peut plus rien récupérer. C'est le SEUL email
-    // réel demandé — le mail @zando.uq est généré par le backend.
-    let recovery_ok = input
-        .recovery_email
-        .as_deref()
-        .map(|v| crate::verify_routes::email_valide_pub(v))
-        .unwrap_or(false);
-    if !recovery_ok {
-        return HttpResponse::BadRequest().json(json!({
-            "status": "error",
-            "code": "RECOVERY_EMAIL_REQUIS",
-            "message": "Un email de récupération valide (Google) est obligatoire — c'est lui qui permettra de retrouver ton numéro UQ."
-        }));
+    // Email de récupération OPTIONNEL à la création — l'utilisateur peut
+    // l'ajouter plus tard via /api/account/recovery/update (paramètres).
+    // S'il est fourni, il doit être valide.
+    if let Some(v) = input.recovery_email.as_deref() {
+        if !crate::verify_routes::email_valide_pub(v) {
+            return HttpResponse::BadRequest().json(json!({
+                "status": "error",
+                "code": "RECOVERY_EMAIL_INVALIDE",
+                "message": "L'email de récupération fourni n'est pas valide."
+            }));
+        }
     }
 
     // Un code promo de parrain saisi doit exister : on ne cree pas de lien
