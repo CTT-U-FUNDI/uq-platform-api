@@ -107,9 +107,9 @@ impl UqIndex {
             "ALTER TABLE uq_index ADD COLUMN recovery_phone TEXT DEFAULT ''",
             "ALTER TABLE uq_index ADD COLUMN phone_verified INTEGER DEFAULT 0",
             "ALTER TABLE uq_index ADD COLUMN email_verified INTEGER DEFAULT 0",
-            // KYC : on ne stocke QUE le hash de la vérification (preuve),
-            // jamais les données/documents bruts. kyc_level = niveau de
-            // restriction débloqué (0 = non vérifié).
+            // KYC : vérifié UNE FOIS POUR TOUT — on ne stocke que le hash
+            // de la vérification (preuve), jamais les données brutes.
+            // kyc_level : 1 = vérifié (toutes restrictions levées), 0 = non.
             "ALTER TABLE uq_index ADD COLUMN kyc_hash TEXT DEFAULT ''",
             "ALTER TABLE uq_index ADD COLUMN kyc_level INTEGER DEFAULT 0",
         ];
