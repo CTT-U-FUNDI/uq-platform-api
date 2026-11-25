@@ -1234,6 +1234,71 @@ pub fn name_challenge_passed(conn: &Connection, order_id: i64) -> Result<bool, S
     .map_err(|e| e.to_string())
 }
 
+/// POST /api/p2p/receiving-methods/revoke {uq, method_id}
+/// Révoque un moyen de réception (numéro perdu, SIM désactivée…).
+/// Le moyen passe enabled=0 + verification_status='revoked' — il
+/// n'est plus proposé aux acheteurs mais l'historique est conservé.
+pub async fn receiving_method_revoke(req: HttpRequest, body: web::Json<Value>) -> HttpResponse {
+    let uq = text(&body, "uq");
+    if uq.is_empty() {
+        return refused("Compte requis", "UQ_REQUIS");
+    }
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    if !claims.sub.eq_ignore_ascii_case(&uq) {
+        return forbidden("Tu ne peux révoquer que tes propres moyens de réception.");
+    }
+    let method_id = body.get("method_id").and_then(Value::as_i64).unwrap_or(0);
+    if method_id <= 0 {
+        return refused("method_id requis", "METHOD_ID_REQUIS");
+    }
+
+    let conn = match open_index() {
+        Ok(conn) => conn,
+        Err(error) => return failure(error),
+    };
+    // Vérifie que le moyen appartient bien au compte avant de révoquer.
+    let proprietaire: Option<String> = conn
+        .query_row(
+            "SELECT uq FROM p2p_receiving_methods WHERE id = ?1",
+            params![method_id],
+            |row| row.get(0),
+        )
+        .ok();
+    match proprietaire {
+        Some(u) if u.eq_ignore_ascii_case(&uq) => {}
+        _ => return HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Moyen de réception introuvable"
+        })),
+    }
+
+    let timestamp = now();
+    if let Err(error) = conn.execute(
+        "UPDATE p2p_receiving_methods
+         SET enabled = 0, verification_status = 'revoked', is_default = 0, updated_at = ?2
+         WHERE id = ?1",
+        params![method_id, timestamp],
+    ) {
+        return failure(error.to_string());
+    }
+    audit(
+        &conn,
+        0,
+        &uq,
+        "receiving_method_revoked",
+        "revoked",
+        json!({ "method_id": method_id }),
+    )
+    .ok();
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "message": "Moyen de réception révoqué — il ne sera plus proposé aux acheteurs."
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

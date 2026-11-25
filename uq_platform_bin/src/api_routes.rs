@@ -627,6 +627,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::post().to(crate::p2p_security::receiving_method_verify),
         )
         .route(
+            "/api/p2p/receiving-methods/revoke",
+            web::post().to(crate::p2p_security::receiving_method_revoke),
+        )
+        .route(
             "/api/p2p/market/orders/{id}/name-challenge",
             web::post().to(crate::p2p_security::blind_name_challenge),
         )
