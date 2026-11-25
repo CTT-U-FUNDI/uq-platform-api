@@ -1029,6 +1029,26 @@ pub async fn verify_cross_code(
         );
     }
 
+    // ===== MONTANT > 50 : SMS OBLIGATOIRE =====
+    // Les petites transactions passent sans SMS ; au-delà de 50 BORB
+    // (~USD), la preuve texte opérateur devient exigée — le risque
+    // augmente avec le montant, l'exigence aussi.
+    let points_cmd: i64 = conn
+        .query_row(
+            "SELECT COALESCE(escrow_points,0) FROM p2p_orders WHERE id = ?1",
+            params![order_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if points_cmd as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64 > 50.0
+        && sms_verdict == "absent"
+    {
+        return refused(
+            "Montant > 50 USD : la preuve SMS du transfert est obligatoire (texte du message opérateur).",
+            "SMS_REQUIS",
+        );
+    }
+
     let updated = conn.execute(
         "UPDATE p2p_cross_codes
          SET status = 'verified', verified_at = ?3
@@ -1216,6 +1236,7 @@ pub async fn arbitrate_order(
         Ok(claims) => claims,
         Err(response) => return response,
     };
+    let order_id = path.into_inner();
     // ===== ARBITRES : owner OU vendeur réputé =====
     // Un vendeur peut trancher les litiges s'il a :
     //   - KYC vérifié
@@ -1253,8 +1274,24 @@ pub async fn arbitrate_order(
                 "Arbitrage réservé à l'owner et aux vendeurs réputés (KYC + 20 verts + 20 ventes).",
             );
         }
+        // ===== GRANDS MONTANTS : OWNER UNIQUEMENT =====
+        // Au-dessus de 200 BORB (~200 USD), seul l'owner tranche —
+        // un litige à gros montant engage la plateforme entière.
+        let points_cmd: i64 = conn_check
+            .query_row(
+                "SELECT COALESCE(escrow_points,0) FROM p2p_orders WHERE id = ?1",
+                params![order_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if points_cmd as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64 > 200.0
+            && !est_owner
+        {
+            return forbidden(
+                "Litige > 200 USD : arbitrage réservé à l'owner uniquement.",
+            );
+        }
     }
-    let order_id = path.into_inner();
     let decision = text(&body, "decision").to_lowercase();
     if !matches!(decision.as_str(), "release" | "refund") {
         return refused("Décision invalide: release ou refund.", "DECISION_INVALIDE");
