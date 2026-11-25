@@ -1857,6 +1857,28 @@ impl UqIndex {
         None
     }
 
+    /// Retrouve un compte par son email de RÉCUPÉRATION (pas le mail UQ).
+    /// Sert à la récupération du numéro UQ oublié.
+    pub fn find_uq_by_recovery_email(&self, email: &str) -> Option<Value> {
+        let conn = self.conn.lock().ok()?;
+        let normalized = email.trim().to_lowercase();
+        let mut stmt = conn
+            .prepare(
+                "SELECT uq_number, uq_email, uq_pseudo FROM uq_index
+             WHERE LOWER(recovery_email) = ?1 LIMIT 1",
+            )
+            .ok()?;
+        let mut rows = stmt.query(rusqlite::params![normalized]).ok()?;
+        if let Some(row) = rows.next().ok()? {
+            return Some(serde_json::json!({
+                "uq_number": row.get::<_, String>(0).ok()?,
+                "email": row.get::<_, String>(1).ok()?,
+                "pseudo": row.get::<_, String>(2).ok()?,
+            }));
+        }
+        None
+    }
+
     /// Liste tous les comptes de l'index
     pub fn list_all(&self) -> Vec<Value> {
         let conn = self.conn.lock().unwrap();

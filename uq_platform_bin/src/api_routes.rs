@@ -376,6 +376,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::get().to(verification_status),
         )
         .route("/api/account/verify", web::post().to(account_verify))
+        .route("/api/account/recover-uq", web::post().to(account_recover_uq))
         .route(
             "/api/secure/step1",
             web::post().to(crate::secure_handlers::secure_step1),

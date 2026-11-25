@@ -824,6 +824,22 @@ pub async fn account_create(
         email_verified: false,
     };
 
+    // Email de récupération OBLIGATOIRE : sans lui, un utilisateur qui
+    // oublie son UQ ne peut plus rien récupérer. C'est le SEUL email
+    // réel demandé — le mail @zando.uq est généré par le backend.
+    let recovery_ok = input
+        .recovery_email
+        .as_deref()
+        .map(|v| crate::verify_routes::email_valide_pub(v))
+        .unwrap_or(false);
+    if !recovery_ok {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "code": "RECOVERY_EMAIL_REQUIS",
+            "message": "Un email de récupération valide (Google) est obligatoire — c'est lui qui permettra de retrouver ton numéro UQ."
+        }));
+    }
+
     // Un code promo de parrain saisi doit exister : on ne cree pas de lien
     // fantome et on ne laisse pas l'utilisateur croire qu'il est fille.
     if let Some(code) = input.code_promo_parrain.clone() {
@@ -1212,6 +1228,74 @@ pub async fn admin_promo_codes_creer(
         "doublons": doublons,
         "montant_usd": montant,
     }))
+}
+
+/// POST /api/account/recover-uq — retrouve le UQ oublié.
+/// L'utilisateur saisit son email de récupération (ou son pseudo) ;
+/// s'il correspond à un compte, on renvoie son UQ + pseudo.
+/// Réponse volontairement uniforme pour éviter l'énumération.
+pub async fn account_recover_uq(body: web::Json<serde_json::Value>) -> HttpResponse {
+    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let email = body
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    let pseudo = body
+        .get("pseudo")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+
+    if email.is_empty() && pseudo.is_empty() {
+        return HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "email ou pseudo requis"
+        }));
+    }
+
+    // Recherche par email de récupération OU par pseudo.
+    let uq = if !email.is_empty() {
+        index
+            .get_account_by_email(&email)
+            .or_else(|| {
+                // L'email de récupération n'est pas l'email du compte :
+                // on cherche dans la colonne recovery_email.
+                index
+                    .find_uq_by_recovery_email(&email)
+            })
+            .and_then(|a| {
+                a.get("uq_number")
+                    .or_else(|| a.get("uq"))
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+            })
+    } else {
+        index
+            .get_account_by_pseudo(pseudo)
+            .and_then(|a| {
+                a.get("uq_number")
+                    .or_else(|| a.get("uq"))
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+            })
+    };
+
+    match uq {
+        Some(numero) => {
+            // On renvoie aussi le pseudo + mail UQ pour faciliter la reconnexion.
+            let compte = index.get_account(&numero).unwrap_or_default();
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "uq_number": numero,
+                "pseudo": compte.get("pseudo").cloned().unwrap_or(serde_json::Value::Null),
+                "email_uq": compte.get("email").cloned().unwrap_or(serde_json::Value::Null),
+            }))
+        }
+        None => HttpResponse::Ok().json(json!({
+            "status": "not_found",
+            "message": "Aucun compte ne correspond à ces informations. Vérifie l'email ou le pseudo saisi à la création."
+        })),
+    }
 }
 
 pub async fn account_verify(req: actix_web::HttpRequest) -> HttpResponse {
