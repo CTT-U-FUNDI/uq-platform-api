@@ -79,6 +79,28 @@ impl KycDossier {
         }
     }
 
+    /// Anonymise le dossier après décision : purge TOUTES les données
+    /// personnelles (nom, document, photos, vidéo, vivacité). Il ne
+    /// reste que le UQ, le statut, les dates et la décision — la
+    /// preuve de vérification vit dans l'index sous forme de hash.
+    pub fn anonymiser(&mut self) {
+        self.nom.clear();
+        self.prenom.clear();
+        self.date_naissance.clear();
+        self.pays.clear();
+        self.adresse.clear();
+        self.telephone.clear();
+        self.document_number.clear();
+        self.photo_identite_path = None;
+        self.video_selfie_path = None;
+        self.selfie_path = None;
+        self.vivacite = None;
+        self.ai_metrics = Default::default();
+        self.ai_suggestion = None;
+        self.ai_confidence = None;
+        self.cases_cochees.clear();
+    }
+
     pub fn age(&self) -> Option<u32> {
         // Calculer l'age a partir de date_naissance
         if self.date_naissance.is_empty() {

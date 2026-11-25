@@ -8,6 +8,7 @@
 
 use crate::kyc::dossier::{KycDossier, KycStatus};
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KycQueue {
@@ -61,7 +62,9 @@ impl KycQueue {
             .collect()
     }
 
-    /// Valide un dossier
+    /// Valide un dossier : enregistre le HASH de vérification dans
+    /// l'index (preuve + niveau débloqué) puis ANONYMISE le dossier —
+    /// les données KYC brutes (nom, document, photos) ne persistent pas.
     pub fn valider(&mut self, uq_number: &str, par: &str) -> Result<(), String> {
         let dossier = self
             .dossiers
@@ -69,16 +72,38 @@ impl KycQueue {
             .find(|d| d.uq_number == uq_number)
             .ok_or("Dossier introuvable")?;
 
+        // Hash SHA-256 des champs d'identité = preuve de vérification.
+        // C'est TOUT ce qui est conservé — jamais les données brutes.
+        let brut = format!(
+            "{}|{}|{}|{}|{}",
+            dossier.uq_number,
+            dossier.document_number,
+            dossier.date_naissance,
+            dossier.nom,
+            dossier.prenom
+        );
+        let hash = format!(
+            "{:x}",
+            sha2::Sha256::digest(brut.as_bytes())
+        );
+
         dossier.statut = KycStatus::Verifie;
         dossier.decision_at = Some(chrono::Utc::now().timestamp());
         dossier.decision_par = Some(par.to_string());
         // Bonus promo réservé à l'inscription : le $1 n'est crédité
         // qu'ici, une fois le compte réellement vérifié.
         crate::api_handlers::promo_sur_kyc_verifie(uq_number);
+
+        // Persiste le hash + niveau dans l'index (débloque restrictions).
+        let index = crate::uq_index::UqIndex::shared("uq_index.db");
+        let _ = index.set_kyc_verification(uq_number, &hash, 1);
+
+        // Anonymise : purge les données personnelles du dossier JSON.
+        dossier.anonymiser();
         Ok(())
     }
 
-    /// Refuse un dossier
+    /// Refuse un dossier : marque le refus dans l'index et anonymise.
     pub fn refuser(&mut self, uq_number: &str, raison: &str, par: &str) -> Result<(), String> {
         let dossier = self
             .dossiers
@@ -90,6 +115,13 @@ impl KycQueue {
         dossier.decision_at = Some(chrono::Utc::now().timestamp());
         dossier.decision_par = Some(par.to_string());
         dossier.raison_refus = Some(raison.to_string());
+
+        // Refus : pas de hash de vérification, juste la trace du refus.
+        let index = crate::uq_index::UqIndex::shared("uq_index.db");
+        let _ = index.set_kyc_refuse(uq_number);
+
+        // Anonymise aussi les refusés — les données ne persistent pas.
+        dossier.anonymiser();
         Ok(())
     }
 

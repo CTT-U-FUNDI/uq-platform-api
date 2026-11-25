@@ -107,6 +107,11 @@ impl UqIndex {
             "ALTER TABLE uq_index ADD COLUMN recovery_phone TEXT DEFAULT ''",
             "ALTER TABLE uq_index ADD COLUMN phone_verified INTEGER DEFAULT 0",
             "ALTER TABLE uq_index ADD COLUMN email_verified INTEGER DEFAULT 0",
+            // KYC : on ne stocke QUE le hash de la vérification (preuve),
+            // jamais les données/documents bruts. kyc_level = niveau de
+            // restriction débloqué (0 = non vérifié).
+            "ALTER TABLE uq_index ADD COLUMN kyc_hash TEXT DEFAULT ''",
+            "ALTER TABLE uq_index ADD COLUMN kyc_level INTEGER DEFAULT 0",
         ];
         for sql in migrations_profil.iter() {
             let _ = conn.execute(sql, []);
@@ -577,6 +582,36 @@ impl UqIndex {
             }))
         })
         .ok()
+    }
+
+    /// Enregistre la vérification KYC : hash de preuve + niveau débloqué.
+    /// On ne stocke JAMAIS les données/documents bruts — seulement le
+    /// hash SHA-256 qui prouve que la vérification a eu lieu.
+    pub fn set_kyc_verification(
+        &self,
+        uq_number: &str,
+        kyc_hash: &str,
+        kyc_level: i64,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE uq_index SET kyc_verified = 1, kyc_hash = ?1, kyc_level = ?2 WHERE uq_number = ?3",
+            params![kyc_hash, kyc_level, uq_number],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Marque un KYC refusé : purge le hash (pas de preuve de vérification)
+    /// mais garde la trace du refus pour éviter les resoumissions immédiates.
+    pub fn set_kyc_refuse(&self, uq_number: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE uq_index SET kyc_verified = 0, kyc_hash = '', kyc_level = 0 WHERE uq_number = ?1",
+            params![uq_number],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Clé publique Ed25519 du compte (pour vérif signature d'autorisation).
