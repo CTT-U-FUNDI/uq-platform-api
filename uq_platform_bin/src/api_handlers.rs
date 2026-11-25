@@ -3283,7 +3283,7 @@ pub async fn vault_p2p_store() -> HttpResponse {
 pub async fn validator_approvals() -> HttpResponse {
     let db = Database::shared("uq_platform_db.json");
     let stats = db.get_stats();
-    HttpResponse::Ok().json(json!({"status":"success","approvals":10,"stats":stats}))
+    HttpResponse::Ok().json(json!({"status":"success","approvals":[],"note":"pas de systeme de validation implemente","stats":stats}))
 }
 
 // ==========================================================
@@ -4144,7 +4144,7 @@ pub async fn arbitration_dispute() -> HttpResponse {
 pub async fn arbitration_status() -> HttpResponse {
     let db = Database::shared("uq_platform_db.json");
     let stats = db.get_stats();
-    HttpResponse::Ok().json(json!({"status":"success","disputes":stats["messages"]}))
+    HttpResponse::Ok().json(json!({"status":"success","disputes":[],"note":"pas d arbitre implemente"}))
 }
 pub async fn arbitration_vote() -> HttpResponse {
     // STUB ASSUME : fonctionnalite non implementee — on refuse
@@ -4193,7 +4193,7 @@ pub async fn fraud_report() -> HttpResponse {
 pub async fn fraud_score() -> HttpResponse {
     let db = Database::shared("uq_platform_db.json");
     let dashboard = db.get_dashboard("fraud_check");
-    HttpResponse::Ok().json(json!({"status":"success","risk_score":0,"dashboard":dashboard}))
+    HttpResponse::Ok().json(json!({"status":"success","risk_score":null,"note":"score de fraude non implemente","dashboard":dashboard}))
 }
 pub async fn fraud_unblacklist() -> HttpResponse {
     // STUB ASSUME : fonctionnalite non implementee — on refuse
