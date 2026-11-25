@@ -1241,12 +1241,47 @@ pub async fn account_verify(req: actix_web::HttpRequest) -> HttpResponse {
         "uq": claims.sub,
     }))
 }
-pub async fn account_get(path: web::Path<String>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"account_id":path.into_inner()}))
-}
-pub async fn account_balance(path: web::Path<String>) -> HttpResponse {
+pub async fn account_get(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT obligatoire — le UQ venait du path,
+    // n'importe qui lisait le compte de n'importe qui.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    let cible = path.into_inner();
+    if !claims.sub.eq_ignore_ascii_case(&cible) {
+        return HttpResponse::Forbidden().json(json!({
+            "status": "error",
+            "code": "ACCOUNT_MISMATCH",
+            "message": "Tu ne peux lire que ton propre compte"
+        }));
+    }
     let db = Database::shared("uq_platform_db.json");
-    let balance = db.get_balance(&path.into_inner());
+    HttpResponse::Ok().json(json!({"account_id": cible}))
+}
+pub async fn account_balance(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT obligatoire — solde de n'importe quel compte
+    // était lisible anonymement.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    let cible = path.into_inner();
+    if !claims.sub.eq_ignore_ascii_case(&cible) {
+        return HttpResponse::Forbidden().json(json!({
+            "status": "error",
+            "code": "ACCOUNT_MISMATCH",
+            "message": "Tu ne peux lire que ton propre solde"
+        }));
+    }
+    let db = Database::shared("uq_platform_db.json");
+    let balance = db.get_balance(&cible);
     HttpResponse::Ok().json(json!({"balance_borb":balance.0,"balance_fixo":balance.1}))
 }
 
@@ -6771,9 +6806,18 @@ pub async fn allocate_wallets(body: web::Json<serde_json::Value>) -> HttpRespons
 
 /// POST /api/account/preferences/currency
 /// Change les preferences de devise
-pub async fn set_currency_preferences(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn set_currency_preferences(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
     use rusqlite::Connection;
-    let uq = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
+    // 🔐 SÉCURITÉ : JWT obligatoire — uq_number venait du body,
+    // n'importe qui modifiait les préférences de n'importe quel compte.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    let uq = claims.sub.as_str();
     let display = body.get("display_currency").and_then(|v| v.as_str());
     let receive = body.get("receive_currency").and_then(|v| v.as_str());
 
