@@ -1798,6 +1798,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             "/api/liens-externe/mes-liens",
             web::get().to(crate::demandes_handlers::lien_externe_mes),
         )
+        .route(
+            "/api/positions/sync",
+            web::post().to(crate::positions::positions_sync),
+        )
+        .route(
+            "/api/positions/ma-position",
+            web::get().to(crate::positions::position_moi),
+        )
         // Une voix par compte et par fiche : le compteur d'avis se lit, il ne
         // se fabrique pas.
         .route(

@@ -70,6 +70,7 @@ mod ocean;
 mod ocean_routes;
 mod oracle_extensions;
 mod p2p_escrow;
+mod positions;
 mod p2p_defi;
 mod p2p_history;
 mod persistence;
