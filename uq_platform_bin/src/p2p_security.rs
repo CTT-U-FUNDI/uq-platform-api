@@ -424,6 +424,30 @@ pub async fn receiving_method_create(req: HttpRequest, body: web::Json<Value>) -
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let timestamp = now();
+
+    // 🔐 RÈGLE : max 2 numéros mobile money PAR OPÉRATEUR et par compte.
+    // Au-delà, l'utilisateur doit justifier avec le nom complet de la
+    // carte SIM (holder_name, déjà exigé ci-dessus et hashé).
+    if method_type == "MOBILE_MONEY" && !provider.is_empty() {
+        let compteur: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM p2p_receiving_methods
+                 WHERE UPPER(uq) = UPPER(?1)
+                   AND method_type = 'MOBILE_MONEY'
+                   AND UPPER(provider) = UPPER(?2)
+                   AND enabled = 1",
+                params![uq, provider],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if compteur >= 2 {
+            return refused(
+                "Maximum 2 numéros par opérateur. Pour un 3ème, fournis le nom complet de la carte SIM dans holder_name — il doit correspondre au titulaire.",
+                "LIMITE_OPERATEUR",
+            );
+        }
+    }
+
     if is_default {
         if let Err(error) = conn.execute(
             "UPDATE p2p_receiving_methods SET is_default = 0, updated_at = ?2
