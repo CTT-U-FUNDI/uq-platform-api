@@ -5328,6 +5328,26 @@ pub async fn zando_items_list(
         }
     }
 
+    // ===== ALLÈGEMENT BAS DÉBIT / BASSE GAMME =====
+    // ?limit=N → max N items (défaut 50, plafond 500).
+    // ?slim=1 → retire media_urls/description (liste compacte, les
+    // médias ne se chargent qu'à l'ouverture de l'item).
+    let limit: usize = query
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50)
+        .clamp(1, 500);
+    let slim = query.get("slim").map(|v| v == "1").unwrap_or(false);
+    items.truncate(limit);
+    if slim {
+        for it in items.iter_mut() {
+            if let Some(obj) = it.as_object_mut() {
+                obj.remove("media_urls");
+                obj.remove("description");
+            }
+        }
+    }
+
     HttpResponse::Ok().json(json!({
         "status": "success",
         "items": items,
