@@ -1288,10 +1288,33 @@ pub async fn arbitrate_order(
         let gros_montant =
             points_cmd as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64 > 200.0;
         if gros_montant && !est_owner {
-            let senior_ok = kyc == 1 && vert >= 50 && ventes >= 50 && rouge == 0 && noir == 0;
+            // ===== SEUIL ADAPTATIF =====
+            // Au début de la plateforme, personne n'a 50/50 — exiger
+            // ce niveau bloquerait les honnêtes. On compte les seniors
+            // disponibles : s'il y en a assez, on exige le niveau ;
+            // sinon on accepte l'arbitre standard (20/20) — la
+            // compétence prime, pas le quota.
+            let seniors: i64 = conn_check
+                .query_row(
+                    "SELECT COUNT(*) FROM uq_index u
+                     JOIN reputation rep ON rep.uq = u.uq_number
+                     WHERE u.kyc_verified = 1
+                       AND rep.vert >= 50
+                       AND rep.rouge = 0 AND rep.noir = 0
+                       AND (SELECT COUNT(*) FROM p2p_orders
+                             WHERE seller = u.uq_number AND status = 'completed') >= 50",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            // Si moins de 3 seniors existent, on accepte l'arbitre
+            // standard — sinon on exige le niveau senior.
+            let requis_senior = seniors >= 3;
+            let senior_ok = !requis_senior
+                || (kyc == 1 && vert >= 50 && ventes >= 50 && rouge == 0 && noir == 0);
             if !senior_ok {
                 return forbidden(
-                    "Litige > 200 USD : arbitrage réservé aux arbitres seniors (KYC + 50 verts + 50 ventes).",
+                    "Litige > 200 USD : en attente d'arbitres seniors (actuellement insuffisants). Réessaie plus tard ou contacte le support.",
                 );
             }
         }
