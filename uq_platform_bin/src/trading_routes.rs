@@ -4205,6 +4205,104 @@ pub async fn p2p_order_confirm(
     }))
 }
 
+/// POST /api/p2p/market/orders/{id}/non-reception
+/// Le vendeur prouve qu'il n'a RIEN reçu : capture de son mobile
+/// money montrant l'absence de transaction. Fenêtre : 10 min après
+/// le délai vendeur. Empêche le litige auto--condamnation quand le
+/// SMS/l'argent arrive en retard.
+pub async fn p2p_seller_non_reception(
+    req: actix_web::HttpRequest,
+    path: web::Path<i64>,
+    body: web::Json<Value>,
+) -> HttpResponse {
+    let identifiant = path.into_inner();
+    let uq = texte(&body, "uq");
+    if let Err(response) = exiger_participant(&req, &uq) {
+        return response;
+    }
+    let conn = match ouvrir_index() {
+        Ok(conn) => conn,
+        Err(e) => return echec(e),
+    };
+    let commande = match charger_commande(&conn, identifiant) {
+        Ok(c) => c,
+        Err(e) => return refus(&e, "COMMANDE_INTROUVABLE"),
+    };
+    if !commande.vendeur.eq_ignore_ascii_case(&uq) {
+        return HttpResponse::Forbidden().json(json!({
+            "status":"error","message":"Seul le vendeur peut déclarer la non-réception"
+        }));
+    }
+    if commande.statut != "paid" {
+        return refus("La commande doit être 'paid' pour une non-réception", "STATUT_INVALIDE");
+    }
+    let deadline: i64 = conn
+        .query_row(
+            "SELECT COALESCE(seller_deadline,0) FROM p2p_orders WHERE id = ?1",
+            params![identifiant],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    // Fenêtre : du deadline jusqu'à deadline+10min
+    let maintenant = maintenant();
+    if deadline == 0 || maintenant < deadline || maintenant > deadline + 600 {
+        return refus(
+            "Contre-preuve possible uniquement dans les 10 min après le délai vendeur.",
+            "FENETRE_CLOTUREE",
+        );
+    }
+    // Une seule contre-preuve par commande.
+    let _ = conn.execute_batch(
+        "ALTER TABLE p2p_proofs ADD COLUMN kind TEXT DEFAULT 'paiement';",
+    );
+    let existe: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM p2p_proofs WHERE order_id = ?1 AND kind = 'non_reception'",
+            params![identifiant],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if existe > 0 {
+        return refus("Contre-preuve déjà soumise pour cette commande", "DEJA_SOUMIS");
+    }
+    let image = texte(&body, "image");
+    let extraction = body.get("extraction").cloned().unwrap_or(json!(null));
+    if image.is_empty() && extraction.is_null() {
+        return refus("Image ou extraction requise pour la non-réception", "PREUVE_REQUISE");
+    }
+    // Stocke la preuve — hash seulement si image, champs si extraction.
+    let image_hash = if !image.is_empty() {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(image.as_bytes()))
+    } else {
+        String::new()
+    };
+    let _ = conn.execute(
+        "INSERT INTO p2p_proofs
+            (order_id, role, uq, montant_declare, devise_declare, numero_declare, nom_declare,
+             image, format, conformite, verdict, veto, signaux, reasons, created_at, nom_ok, kind)
+         VALUES (?1,'seller',?2,0,'','',?3,'',?4,0,'non_reception',0,'[]','[]',?5,0,'non_reception')",
+        params![identifiant, uq, commande.vendeur, image_hash, maintenant],
+    );
+    // Marque la commande pour arbitrage avec les deux versions.
+    let _ = conn.execute(
+        "UPDATE p2p_orders SET litige = 'non_reception_revendiquee', updated_at = ?2 WHERE id = ?1",
+        params![identifiant, maintenant],
+    );
+    notifier(
+        &conn,
+        &commande.acheteur,
+        "trading",
+        "Le vendeur conteste la réception",
+        &format!("Le vendeur de la commande #{} déclare ne pas avoir reçu ton paiement — litige ouvert avec les deux preuves.", identifiant),
+        &format!("p2p:{}", identifiant),
+    );
+    HttpResponse::Ok().json(json!({
+        "status":"success",
+        "message":"Contre-preuve enregistrée — litige ouvert, l'arbitre examinera les deux versions."
+    }))
+}
+
 pub async fn p2p_order_complete(
     req: HttpRequest,
     path: web::Path<i64>,
@@ -4261,6 +4359,10 @@ pub async fn p2p_order_complete(
     // ===== DÉLAI VENDEUR DÉPASSÉ → LITIGE AUTO =====
     // Si le vendeur n'a pas libéré sous 30 min après "paid", la
     // commande passe en litige — l'acheteur est protégé.
+    // ⚠️ MAIS : le vendeur peut fournir une CONTRE-PREUVE (capture
+    // de son mobile money montrant qu'il n'a RIEN reçu) dans les
+    // 10 min suivant le délai — le litige reste ouvert mais avec
+    // les deux versions des faits, pas un auto-condamnation.
     let deadline: i64 = conn
         .query_row(
             "SELECT COALESCE(seller_deadline,0) FROM p2p_orders WHERE id = ?1",
@@ -4269,27 +4371,41 @@ pub async fn p2p_order_complete(
         )
         .unwrap_or(0);
     if deadline > 0 && maintenant() > deadline {
-        let _ = conn.execute(
-            "UPDATE p2p_orders SET status = 'disputed', litige = 'vendeur_sans_reponse', updated_at = ?2 WHERE id = ?1",
-            params![identifiant, maintenant()],
-        );
-        let _ = conn.execute(
-            "INSERT INTO p2p_disputes (order_id, opened_by, reason, status, created_at)
-             VALUES (?1, 'system', 'Vendeur sans réponse après 30 min', 'open', ?2)",
-            params![identifiant, maintenant()],
-        );
-        notifier(
-            &conn,
-            &commande.vendeur,
-            "trading",
-            "Litige automatique",
-            &format!("La commande #{} passe en litige : tu n'as pas libéré sous 30 min après le paiement annoncé.", identifiant),
-            &format!("p2p:{}", identifiant),
-        );
-        return refus(
-            "Le vendeur n'a pas libéré sous 30 min — litige ouvert automatiquement.",
-            "VENDEUR_TIMEOUT",
-        );
+        // Fenêtre de grâce : 10 min pour la contre-preuve vendeur.
+        let contre_preuve: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM p2p_proofs
+                 WHERE order_id = ?1 AND role = 'seller' AND kind = 'non_reception'",
+                params![identifiant],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let grace_expiree = maintenant() > deadline + 600;
+        if contre_preuve == 0 && grace_expiree {
+            let _ = conn.execute(
+                "UPDATE p2p_orders SET status = 'disputed', litige = 'vendeur_sans_reponse', updated_at = ?2 WHERE id = ?1",
+                params![identifiant, maintenant()],
+            );
+            let _ = conn.execute(
+                "INSERT INTO p2p_disputes (order_id, opened_by, reason, status, created_at)
+                 VALUES (?1, 'system', 'Vendeur sans réponse après 30 min', 'open', ?2)",
+                params![identifiant, maintenant()],
+            );
+            notifier(
+                &conn,
+                &commande.vendeur,
+                "trading",
+                "Litige automatique",
+                &format!("La commande #{} passe en litige : tu n'as pas libéré sous 30 min après le paiement annoncé.", identifiant),
+                &format!("p2p:{}", identifiant),
+            );
+            return refus(
+                "Le vendeur n'a pas libéré sous 30 min — litige ouvert automatiquement.",
+                "VENDEUR_TIMEOUT",
+            );
+        }
+        // Si contre-preuve existe ou grâce pas expirée → on continue
+        // (le litige sera traité avec les deux versions).
     }
 
     if commande.points == 0 {

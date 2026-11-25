@@ -599,6 +599,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::post().to(crate::trading_routes::p2p_order_complete),
         )
         .route(
+            "/api/p2p/market/orders/{id}/non-reception",
+            web::post().to(crate::trading_routes::p2p_seller_non_reception),
+        )
+        .route(
             "/api/p2p/market/orders/{id}/cancel",
             web::post().to(crate::trading_routes::p2p_order_cancel),
         )
