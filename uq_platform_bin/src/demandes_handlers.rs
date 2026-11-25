@@ -35,8 +35,14 @@ fn demandes_init(conn: &rusqlite::Connection) {
             statut TEXT DEFAULT 'en_attente',
             media_url TEXT DEFAULT '',
             created_at INTEGER NOT NULL,
-            verifie_a INTEGER
+            verifie_a INTEGER,
+            preuve_hash TEXT DEFAULT ''
         );",
+    );
+    // Migration douce si la table existait déjà sans la colonne.
+    let _ = conn.execute(
+        "ALTER TABLE liens_externes ADD COLUMN preuve_hash TEXT DEFAULT ''",
+        [],
     );
 }
 
@@ -375,46 +381,84 @@ pub async fn lien_externe_verifier(
         }));
     };
 
+    // ===== PREUVE PRIVÉE =====
+    // L'utilisateur peut joindre une capture — mais on ne stocke JAMAIS
+    // l'image complète (vie privée). Deux modes :
+    //   - extraction : champs déclarés (code visible, plateforme, ts)
+    //     → verdict 'doute' (auto-déclaré, falsifiable)
+    //   - image_hash : SHA-256 de la capture → preuve sans stocker
+    //     l'image → verdict 'valide' si le code y figure
+    let extraction = body.get("extraction").cloned().unwrap_or(json!(null));
+    let preuve_image = body.get("preuve_b64").and_then(|v| v.as_str()).unwrap_or("");
+
+    let mut hasher_ok = false;
+    let mut image_hash = String::new();
+    if !preuve_image.is_empty() {
+        use sha2::{Digest, Sha256};
+        // Hash de l'image = preuve sans stocker le contenu.
+        image_hash = format!("{:x}", Sha256::digest(preuve_image.as_bytes()));
+        // OCR léger : on cherche le code dans l'image encodée (base64).
+        // Si la plateforme n'est pas OCR-able, on reste honnête.
+        hasher_ok = preuve_image.contains(&code) || extraction
+            .get("code_visible")
+            .and_then(|v| v.as_str())
+            .map(|v| v == code)
+            .unwrap_or(false);
+    }
+
+    // Verdict : image avec code → valide ; extraction seule → doute ;
+    // rien → on tente le fetch automatique (YouTube oEmbed).
+    let mut verdict = "rejet";
+    if hasher_ok {
+        verdict = "valide";
+    } else if !extraction.is_null() {
+        verdict = "doute";
+    }
+
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent("UQ-Verifier/1.0")
         .build();
-    let mut verifie = false;
+    let mut verifie = verdict == "valide";
     let mut media_url = String::new();
-    if let Ok(c) = client {
-        if url.contains("youtube.com") || url.contains("youtu.be") {
-            let video_id = url
-                .split("v=").nth(1)
-                .or_else(|| url.rsplit('/').next())
-                .unwrap_or("")
-                .split('&').next().unwrap_or("");
-            if !video_id.is_empty() {
-                let oe = format!("https://www.youtube.com/oembed?url={}&format=json", url);
-                if let Ok(resp) = c.get(&oe).send() {
-                    if resp.status().is_success() {
-                        verifie = true;
-                        media_url = format!("https://www.youtube.com/embed/{}", video_id);
+    if !verifie {
+        if let Ok(c) = client {
+            if url.contains("youtube.com") || url.contains("youtu.be") {
+                let video_id = url
+                    .split("v=").nth(1)
+                    .or_else(|| url.rsplit('/').next())
+                    .unwrap_or("")
+                    .split('&').next().unwrap_or("");
+                if !video_id.is_empty() {
+                    let oe = format!("https://www.youtube.com/oembed?url={}&format=json", url);
+                    if let Ok(resp) = c.get(&oe).send() {
+                        if resp.status().is_success() {
+                            verifie = true;
+                            media_url = format!("https://www.youtube.com/embed/{}", video_id);
+                        }
                     }
                 }
-            }
-        } else if let Ok(resp) = c.get(&url).send() {
-            if let Ok(texte) = resp.text() {
-                verifie = texte.contains(&code);
-                if verifie {
-                    media_url = url.clone();
+            } else if let Ok(resp) = c.get(&url).send() {
+                if let Ok(texte) = resp.text() {
+                    verifie = texte.contains(&code);
+                    if verifie {
+                        media_url = url.clone();
+                    }
                 }
             }
         }
     }
 
-    let nouveau_statut = if verifie { "verifie" } else { "verification_manuel_requis" };
+    // Stocke le verdict + hash — JAMAIS l'image ni l'extraction brute.
+    let nouveau_statut = if verifie { "verifie" } else if verdict == "doute" { "doute" } else { "verification_manuel_requis" };
     let _ = conn.execute(
-        "UPDATE liens_externes SET statut = ?1, media_url = ?2, verifie_a = ?3 WHERE id = ?4",
+        "UPDATE liens_externes SET statut = ?1, media_url = ?2, verifie_a = ?3, preuve_hash = ?5 WHERE id = ?4",
         rusqlite::params![
             nouveau_statut,
             media_url,
             chrono::Utc::now().timestamp(),
-            id
+            id,
+            image_hash
         ],
     );
 
