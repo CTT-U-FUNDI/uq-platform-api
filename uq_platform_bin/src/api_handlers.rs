@@ -1214,10 +1214,32 @@ pub async fn admin_promo_codes_creer(
     }))
 }
 
-pub async fn account_verify() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.create_account("verified_user", &[0u8; 32]);
-    HttpResponse::Ok().json(json!({"status":"success","kyc_verified":true}))
+pub async fn account_verify(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT obligatoire — avant, n'importe qui créait un faux
+    // compte "verified_user" et obtenait kyc_verified:true sans rien
+    // vérifier. Désormais on lit le VRAI statut KYC du compte authentifié.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let verifie = index
+        .get_account(&claims.sub)
+        .map(|a| {
+            a.get("kyc_status")
+                .or_else(|| a.get("is_verified"))
+                .map(|v| {
+                    v.as_str().map(|s| s == "verified" || s == "Verifie").unwrap_or(false)
+                        || v.as_i64().map(|n| n == 1).unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .unwrap_or(false);
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "kyc_verified": verifie,
+        "uq": claims.sub,
+    }))
 }
 pub async fn account_get(path: web::Path<String>) -> HttpResponse {
     HttpResponse::Ok().json(json!({"account_id":path.into_inner()}))
@@ -2433,10 +2455,32 @@ pub async fn identity_create() -> HttpResponse {
     db.create_account("identity_user", &[0u8; 32]);
     HttpResponse::Ok().json(json!({"status":"success","identity_created":true}))
 }
-pub async fn identity_kyc() -> HttpResponse {
-    let db = Database::shared("uq_platform_db.json");
-    db.create_account("kyc_user", &[0u8; 32]);
-    HttpResponse::Ok().json(json!({"status":"success","kyc_verified":true}))
+pub async fn identity_kyc(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT obligatoire + statut KYC réel — avant, ce stub
+    // créait "kyc_user" et renvoyait verified sans aucune vérification.
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(claims) => claims,
+        Err(response) => return response,
+    };
+    let index = crate::uq_index::UqIndex::shared("uq_index.db");
+    let statut = index
+        .get_account(&claims.sub)
+        .and_then(|a| {
+            a.get("kyc_status")
+                .or_else(|| a.get("is_verified"))
+                .cloned()
+        })
+        .unwrap_or(serde_json::Value::Null);
+    let verifie = statut
+        .as_str()
+        .map(|s| s.eq_ignore_ascii_case("verified") || s == "Verifie")
+        .unwrap_or(false)
+        || statut.as_i64() == Some(1);
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "kyc_verified": verifie,
+        "kyc_status": statut,
+    }))
 }
 pub async fn identity_get(req: actix_web::HttpRequest, path: web::Path<String>) -> HttpResponse {
     // 🔐 SÉCURITÉ (vague 1) — USER : JWT obligatoire
