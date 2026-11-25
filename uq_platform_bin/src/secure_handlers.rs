@@ -555,10 +555,14 @@ pub async fn secure_finalize_user(
 // FORGOT PASSWORD
 // ====================
 pub async fn secure_forgot_password(body: web::Json<serde_json::Value>) -> HttpResponse {
+    // ⚠️ Honnêteté : aucun email n'est envoyé — la réinitialisation par
+    // email n'est pas implémentée. On le dit au lieu de promettre.
+    // Pour retrouver son UQ : POST /api/account/recover-uq (email/pseudo).
     let uq = body.get("uq_number").and_then(|v| v.as_str()).unwrap_or("");
     eprintln!("🔑 Réinitialisation demandée pour {}", uq);
-    HttpResponse::Ok().json(json!({
-        "status": "success",
-        "message": "Si ce compte existe, vous recevrez un email."
+    HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "Réinitialisation par email non implémentée. Pour retrouver ton UQ, utilise /api/account/recover-uq avec ton email de récupération ou ton pseudo."
     }))
 }
