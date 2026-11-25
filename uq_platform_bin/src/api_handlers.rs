@@ -2048,21 +2048,53 @@ pub async fn bubble_transfer(
     }))
 }
 pub async fn bubble_freeze() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "bubble_freeze non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("freezer", "Bulle gelée", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","frozen":true}))
 }
 pub async fn bubble_unfreeze() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "bubble_unfreeze non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("unfreezer", "Bulle dégelée", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","unfrozen":true}))
 }
 pub async fn bubble_burn() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "bubble_burn non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("burner", "Bulle brûlée", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","burned":true}))
 }
 pub async fn bubble_lend() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "bubble_lend non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("lender", "Bulle prêtée", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","lent":true}))
@@ -2532,36 +2564,92 @@ pub async fn exchange_sms() -> HttpResponse {
 // PRÊTS + ASSURANCE + ESCROW (10)
 // ==========================================================
 pub async fn lending_offer() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "lending_offer non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("lender", "Offre de prêt", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","offer_created":true}))
 }
 pub async fn lending_borrow() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "lending_borrow non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("borrower", "Emprunt", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","borrowed":true}))
 }
 pub async fn lending_repay() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "lending_repay non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("borrower", "Remboursement", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","repaid":true}))
 }
 pub async fn lending_liquidate() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "lending_liquidate non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("lender", "Liquidation", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","liquidated":true}))
 }
 pub async fn insurance_contribute() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "insurance_contribute non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("contributor", "Contribution assurance", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","contributed":true}))
 }
 pub async fn insurance_claim() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "insurance_claim non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("claimant", "Sinistre", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","claimed":true}))
 }
 pub async fn insurance_vote() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "insurance_vote non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("voter", "vote", "Vote sinistre");
     HttpResponse::Ok().json(json!({"status":"success","voted":true}))
@@ -2671,26 +2759,66 @@ pub async fn network_peers() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","peers":stats}))
 }
 pub async fn network_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "network_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("network", "status", "check");
     HttpResponse::Ok().json(json!({"status":"success","ready":true}))
 }
 pub async fn network_threats() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "network_threats non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("network", "threats", "scan");
     HttpResponse::Ok().json(json!({"status":"success","threats":0}))
 }
 pub async fn d2d_connect() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "d2d_connect non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("d2d", "connect", "peer");
     HttpResponse::Ok().json(json!({"status":"success","connected":true}))
 }
 pub async fn d2d_disconnect() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "d2d_disconnect non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("d2d", "disconnect", "peer");
     HttpResponse::Ok().json(json!({"status":"success","disconnected":true}))
 }
 pub async fn d2d_scan() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "d2d_scan non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("d2d", "scan", "peers");
     HttpResponse::Ok().json(json!({"status":"success","scanning":true}))
@@ -2701,16 +2829,40 @@ pub async fn d2d_peers() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","peers":stats}))
 }
 pub async fn mesh_relay() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "mesh_relay non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("mesh", "relay", "packet");
     HttpResponse::Ok().json(json!({"status":"success","relayed":true}))
 }
 pub async fn mesh_routing() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "mesh_routing non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("mesh", "routing", "table");
     HttpResponse::Ok().json(json!({"status":"success","routing":[]}))
 }
 pub async fn mesh_route() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "mesh_route non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("mesh", "route", "find");
     HttpResponse::Ok().json(json!({"status":"success","route_found":true}))
@@ -2721,21 +2873,53 @@ pub async fn mesh_sellers() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","sellers":offers}))
 }
 pub async fn frequency_hop() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "frequency_hop non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("freq", "hop", "change");
     HttpResponse::Ok().json(json!({"status":"success","hopped":true}))
 }
 pub async fn frequency_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "frequency_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("freq", "status", "check");
     HttpResponse::Ok().json(json!({"status":"success","frequency":"2.4GHz"}))
 }
 pub async fn phantom_create_channel() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "phantom_create_channel non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("phantom", "create", "channel");
     HttpResponse::Ok().json(json!({"status":"success","channel_created":true}))
 }
 pub async fn phantom_channels() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "phantom_channels non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("phantom", "channels", "list");
     HttpResponse::Ok().json(json!({"status":"success","channels":[]}))
@@ -2746,66 +2930,170 @@ pub async fn phantom_channels() -> HttpResponse {
 // repondent un succes constant. Voir la tache de purge des faux garde-fous.
 // ==========================================================
 pub async fn security_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "status", "check");
     HttpResponse::Ok().json(json!({"status":"success","secure":true}))
 }
 pub async fn security_root_check() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_root_check non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "root", "check");
     HttpResponse::Ok().json(json!({"status":"success","rooted":false}))
 }
 pub async fn security_emulator_check() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_emulator_check non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "emulator", "check");
     HttpResponse::Ok().json(json!({"status":"success","emulator":false}))
 }
 pub async fn security_biometric_sync() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_biometric_sync non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "biometric", "sync");
     HttpResponse::Ok().json(json!({"status":"success","synced":true}))
 }
 pub async fn security_memory_guard() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_memory_guard non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "memory", "guard");
     HttpResponse::Ok().json(json!({"status":"success","guarded":true}))
 }
 pub async fn security_secure_storage() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_secure_storage non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "storage", "secure");
     HttpResponse::Ok().json(json!({"status":"success","stored":true}))
 }
 pub async fn security_side_channel() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_side_channel non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "side_channel", "protect");
     HttpResponse::Ok().json(json!({"status":"success","protected":true}))
 }
 pub async fn security_trusted_ipc() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_trusted_ipc non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "ipc", "trusted");
     HttpResponse::Ok().json(json!({"status":"success","trusted":true}))
 }
 pub async fn security_vtee_generate() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "security_vtee_generate non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("security", "vtee", "generate");
     HttpResponse::Ok().json(json!({"status":"success","generated":true}))
 }
 pub async fn vtee_enclave() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vtee_enclave non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vtee", "enclave", "create");
     HttpResponse::Ok().json(json!({"status":"success","enclave_created":true}))
 }
 pub async fn vtee_attest() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vtee_attest non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vtee", "attest", "verify");
     HttpResponse::Ok().json(json!({"status":"success","attested":true}))
 }
 pub async fn keys_derive() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "keys_derive non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("keys", "derive", "new");
     HttpResponse::Ok().json(json!({"status":"success","derived":true}))
 }
 pub async fn secure_store() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "secure_store non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("secure", "store", "data");
     HttpResponse::Ok().json(json!({"status":"success","stored":true}))
@@ -2815,61 +3103,157 @@ pub async fn secure_store() -> HttpResponse {
 // VAULT (15)
 // ==========================================================
 pub async fn vault_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "status", "check");
     HttpResponse::Ok().json(json!({"status":"success","shamir":"3/5"}))
 }
 pub async fn vault_guardians() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_guardians non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "guardians", "list");
     HttpResponse::Ok().json(json!({"status":"success","guardians":[]}))
 }
 pub async fn vault_recovery_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_recovery_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "recovery", "status");
     HttpResponse::Ok().json(json!({"status":"success","recovery":"idle"}))
 }
 pub async fn vault_authenticity() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_authenticity non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "authenticity", "verify");
     HttpResponse::Ok().json(json!({"status":"success","authentic":true}))
 }
 pub async fn vault_compromised() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_compromised non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "compromised", "check");
     HttpResponse::Ok().json(json!({"status":"success","compromised":0}))
 }
 pub async fn vault_p2p_usage() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_p2p_usage non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "p2p", "usage");
     HttpResponse::Ok().json(json!({"status":"success","usage":0.0}))
 }
 pub async fn vault_split() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_split non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "split", "key");
     HttpResponse::Ok().json(json!({"status":"success","split":5}))
 }
 pub async fn vault_combine() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_combine non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "combine", "key");
     HttpResponse::Ok().json(json!({"status":"success","combined":true}))
 }
 pub async fn vault_guardian_replace() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_guardian_replace non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "guardian", "replace");
     HttpResponse::Ok().json(json!({"status":"success","replaced":true}))
 }
 pub async fn vault_proof() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_proof non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "proof", "create");
     HttpResponse::Ok().json(json!({"status":"success","proof_created":true}))
 }
 pub async fn vault_proof_verify() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_proof_verify non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "proof", "verify");
     HttpResponse::Ok().json(json!({"status":"success","proof_valid":true}))
 }
 pub async fn vault_recovery_start() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_recovery_start non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "recovery", "start");
     HttpResponse::Ok().json(json!({"status":"success","recovery_started":true}))
@@ -2884,6 +3268,14 @@ pub async fn vault_session() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","session_created":true}))
 }
 pub async fn vault_p2p_store() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "vault_p2p_store non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("vault", "p2p", "store");
     HttpResponse::Ok().json(json!({"status":"success","stored":true}))
@@ -3395,6 +3787,14 @@ pub async fn chat_group_send(
 }
 
 pub async fn chat_encrypt() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "chat_encrypt non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("chat", "encrypt", "message");
     HttpResponse::Ok().json(json!({"status":"success","encrypted":true}))
@@ -3410,6 +3810,14 @@ pub async fn data_stats() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","stats":stats}))
 }
 pub async fn data_publish() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "data_publish non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("data_seller", "Données", 10, 100);
     HttpResponse::Ok().json(json!({"status":"success","published":true}))
@@ -3420,11 +3828,27 @@ pub async fn data_purchase() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","purchased":true}))
 }
 pub async fn data_tunnel() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "data_tunnel non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("tunnel", "open", "data");
     HttpResponse::Ok().json(json!({"status":"success","tunnel_open":true}))
 }
 pub async fn data_price() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "data_price non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("data", "price", "set");
     HttpResponse::Ok().json(json!({"status":"success","price_set":true}))
@@ -3434,61 +3858,157 @@ pub async fn data_price() -> HttpResponse {
 // BLACKKEY + BIOMÉTRIE + VÉRIFICATION (10)
 // ==========================================================
 pub async fn blackkey_sign() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "blackkey_sign non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("blackkey", "sign", "data");
     HttpResponse::Ok().json(json!({"status":"success","signed":true}))
 }
 pub async fn blackkey_decrypt() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "blackkey_decrypt non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("blackkey", "decrypt", "data");
     HttpResponse::Ok().json(json!({"status":"success","decrypted":true}))
 }
 pub async fn blackkey_mutate() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "blackkey_mutate non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("blackkey", "mutate", "key");
     HttpResponse::Ok().json(json!({"status":"success","mutated":true}))
 }
 pub async fn blackkey_integrity() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "blackkey_integrity non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("blackkey", "integrity", "check");
     HttpResponse::Ok().json(json!({"status":"success","integrity":"verified"}))
 }
 pub async fn biometric_template() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "biometric_template non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("biometric", "template", "create");
     HttpResponse::Ok().json(json!({"status":"success","template_created":true}))
 }
 pub async fn biometric_verify() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "biometric_verify non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("biometric", "verify", "match");
     HttpResponse::Ok().json(json!({"status":"success","verified":true}))
 }
 pub async fn biometric_liveness() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "biometric_liveness non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("biometric", "liveness", "check");
     HttpResponse::Ok().json(json!({"status":"success","alive":true}))
 }
 pub async fn biometric_spoofing() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "biometric_spoofing non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("biometric", "spoofing", "detect");
     HttpResponse::Ok().json(json!({"status":"success","spoofing_detected":false}))
 }
 pub async fn verify_youtube() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "verify_youtube non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("verify", "youtube", "check");
     HttpResponse::Ok().json(json!({"status":"success","platform":"youtube","verified":true}))
 }
 pub async fn verify_spotify() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "verify_spotify non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("verify", "spotify", "check");
     HttpResponse::Ok().json(json!({"status":"success","platform":"spotify","verified":true}))
 }
 pub async fn verify_instagram() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "verify_instagram non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("verify", "instagram", "check");
     HttpResponse::Ok().json(json!({"status":"success","platform":"instagram","verified":true}))
 }
 pub async fn verify_tiktok() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "verify_tiktok non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("verify", "tiktok", "check");
     HttpResponse::Ok().json(json!({"status":"success","platform":"tiktok","verified":true}))
@@ -3498,31 +4018,79 @@ pub async fn verify_tiktok() -> HttpResponse {
 // DIVERS (10)
 // ==========================================================
 pub async fn emergency_sos() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "emergency_sos non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("sos", "broadcast", "URGENCE");
     HttpResponse::Ok().json(json!({"status":"success","sos_sent":true}))
 }
 pub async fn emergency_beacon() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "emergency_beacon non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("emergency", "beacon", "broadcast");
     HttpResponse::Ok().json(json!({"status":"success","beacon_sent":true}))
 }
 pub async fn internet_sell() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "internet_sell non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("internet_seller", "Connexion", 5, 100);
     HttpResponse::Ok().json(json!({"status":"success","selling":true}))
 }
 pub async fn transport_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "transport_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("transport", "status", "check");
     HttpResponse::Ok().json(json!({"status":"success","ready":true}))
 }
 pub async fn autopilot_status() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "autopilot_status non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("autopilot", "status", "check");
     HttpResponse::Ok().json(json!({"status":"success","active":true}))
 }
 pub async fn secure_retrieve() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "secure_retrieve non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("secure", "retrieve", "data");
     HttpResponse::Ok().json(json!({"status":"success","retrieved":true}))
@@ -3538,6 +4106,14 @@ pub async fn dao_stats() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","dao_stats":stats}))
 }
 pub async fn publish_item() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "publish_item non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("publisher", "Item publié", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","published":true}))
@@ -3553,6 +4129,14 @@ pub async fn mini_peers() -> HttpResponse {
 // ==========================================================
 
 pub async fn arbitration_dispute() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "arbitration_dispute non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("disputant", "arbitrator", "Litige ouvert");
     HttpResponse::Ok().json(json!({"status":"success","dispute_opened":true}))
@@ -3563,11 +4147,27 @@ pub async fn arbitration_status() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","disputes":stats["messages"]}))
 }
 pub async fn arbitration_vote() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "arbitration_vote non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("arbitrator", "dispute", "Vote enregistré");
     HttpResponse::Ok().json(json!({"status":"success","vote_cast":true}))
 }
 pub async fn fraud_blacklist() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "fraud_blacklist non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("admin", "Adresse blacklistée", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","blacklisted":true}))
@@ -3578,6 +4178,14 @@ pub async fn fraud_history() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","history":stats}))
 }
 pub async fn fraud_report() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "fraud_report non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("fraud_reporter", "Fraude signalée", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","reported":true}))
@@ -3588,36 +4196,92 @@ pub async fn fraud_score() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","risk_score":0,"dashboard":dashboard}))
 }
 pub async fn fraud_unblacklist() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "fraud_unblacklist non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("admin", "network", "Adresse débloquée");
     HttpResponse::Ok().json(json!({"status":"success","unblacklisted":true}))
 }
 pub async fn freeze_complete() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "freeze_complete non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("freezer", "Contrat complété", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","completed":true}))
 }
 pub async fn freeze_create() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "freeze_create non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("freezer", "Contrat de gel", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","contract_created":true}))
 }
 pub async fn freeze_early() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "freeze_early non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("freezer", "Dégel anticipé", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","early_unfrozen":true}))
 }
 pub async fn frequency_hop_now() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "frequency_hop_now non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("freq", "hop", "now");
     HttpResponse::Ok().json(json!({"status":"success","hopped":true}))
 }
 pub async fn mailbox_delete() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "mailbox_delete non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("mailbox", "delete", "message");
     HttpResponse::Ok().json(json!({"status":"success","deleted":true}))
 }
 pub async fn mailbox_get(req: actix_web::HttpRequest) -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "mailbox_get non implementee cote serveur."
+    }));
+
     // 🔐 SÉCURITÉ (vague 1) — USER : accès à SES données (ou owner)
     // (handler sans paramètre de chemin : contrôle JWT simple)
     if let Err(r) = crate::auth_guard::exiger_auth(&req) {
@@ -3628,6 +4292,14 @@ pub async fn mailbox_get(req: actix_web::HttpRequest) -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","messages":[]}))
 }
 pub async fn mailbox_send() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "mailbox_send non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("sender", "recipient", "Message mailbox");
     HttpResponse::Ok().json(json!({"status":"success","sent":true}))
@@ -3643,26 +4315,66 @@ pub async fn marketplace_buy() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","purchased":true}))
 }
 pub async fn marketplace_complete() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "marketplace_complete non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("marketplace", "complete", "order");
     HttpResponse::Ok().json(json!({"status":"success","completed":true}))
 }
 pub async fn marketplace_publish() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "marketplace_publish non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("seller", "Produit marketplace", 100, 1);
     HttpResponse::Ok().json(json!({"status":"success","published":true}))
 }
 pub async fn micro_credit_fund() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "micro_credit_fund non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("lender", "Prêt financé", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","funded":true}))
 }
 pub async fn micro_credit_request() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "micro_credit_request non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("borrower", "Demande micro-crédit", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","request_created":true}))
 }
 pub async fn micro_credit_voucher() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "micro_credit_voucher non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("voucher", "borrower", "Garantie ajoutée");
     HttpResponse::Ok().json(json!({"status":"success","voucher_added":true}))
@@ -3673,11 +4385,27 @@ pub async fn offline_apply() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","applied":true}))
 }
 pub async fn offline_create() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "offline_create non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("offline_user", "Transaction hors ligne", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","offline_tx_created":true}))
 }
 pub async fn offline_verify() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "offline_verify non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("verifier", "offline_user", "Transaction vérifiée");
     HttpResponse::Ok().json(json!({"status":"success","verified":true}))
@@ -3733,6 +4461,14 @@ pub async fn oracle_median(
     }
 }
 pub async fn oracle_report() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "oracle_report non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("oracle", "Prix signalé", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","price_reported":true}))
@@ -3743,6 +4479,14 @@ pub async fn oracle_validators() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","validators":7,"stats":stats}))
 }
 pub async fn p2p_broadcast() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "p2p_broadcast non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("broadcaster", "all_nodes", "Broadcast P2P");
     HttpResponse::Ok().json(json!({"status":"success","broadcast":true}))
@@ -3753,16 +4497,40 @@ pub async fn p2p_peers() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","peers":stats["sessions"]}))
 }
 pub async fn p2p_send() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "p2p_send non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("p2p_sender", "p2p_recipient", "Message P2P");
     HttpResponse::Ok().json(json!({"status":"success","sent":true}))
 }
 pub async fn p2p_start() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "p2p_start non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("p2p_node", "Nœud P2P démarré", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","started":true}))
 }
 pub async fn reputation_endorse() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "reputation_endorse non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("endorser", "endorsee", "Endorsement");
     HttpResponse::Ok().json(json!({"status":"success","endorsed":true}))
@@ -3790,6 +4558,14 @@ pub async fn reputation_get(req: actix_web::HttpRequest, path: web::Path<String>
     }))
 }
 pub async fn savings_contract() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "savings_contract non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("saver", "Contrat épargne", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","contract_created":true}))
@@ -3899,16 +4675,40 @@ pub async fn serve_index() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","service":"uq_platform","stats":stats}))
 }
 pub async fn shield_aid() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "shield_aid non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("aid_requester", "shield_pool", "Demande d aide");
     HttpResponse::Ok().json(json!({"status":"success","aid_requested":true}))
 }
 pub async fn shield_approve() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "shield_approve non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("validator", "aid_requester", "Aide approuvée");
     HttpResponse::Ok().json(json!({"status":"success","approved":true}))
 }
 pub async fn shield_key_lost() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "shield_key_lost non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("key_lost_user", "guardians", "Clé perdue");
     HttpResponse::Ok().json(json!({"status":"success","declared":true}))
@@ -3920,16 +4720,40 @@ pub async fn shops_list() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","shops":shops,"total":shops.len()}))
 }
 pub async fn stablecoin_burn() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "stablecoin_burn non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("burner", "UST burned", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","burned":true}))
 }
 pub async fn stablecoin_mint() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "stablecoin_mint non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.publish_offer("minter", "UST minted", 0, 0);
     HttpResponse::Ok().json(json!({"status":"success","minted":true}))
 }
 pub async fn stablecoin_ratio() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "stablecoin_ratio non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("stablecoin", "ratio", "check");
     HttpResponse::Ok().json(json!({"status":"success","ratio":150.0}))
@@ -3940,6 +4764,14 @@ pub async fn validator_list() -> HttpResponse {
     HttpResponse::Ok().json(json!({"status":"success","validators":stats["accounts"]}))
 }
 pub async fn validator_validate() -> HttpResponse {
+    // STUB ASSUME : fonctionnalite non implementee — on refuse
+    // honnetement au lieu de renvoyer un succes mensonger.
+    return HttpResponse::NotImplemented().json(json!({
+        "status": "error",
+        "code": "NOT_IMPLEMENTED",
+        "message": "validator_validate non implementee cote serveur."
+    }));
+
     let db = Database::shared("uq_platform_db.json");
     db.send_message("validator", "network", "Validation effectuée");
     HttpResponse::Ok().json(json!({"status":"success","validated":true}))
