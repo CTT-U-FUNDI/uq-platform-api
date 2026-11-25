@@ -636,8 +636,9 @@ pub async fn core_init(
 // ====================
 
 fn verifier_activite_reelle(_user: &str) -> Result<(), String> {
-    // TODO: Connecter a uq_index.db
-    Ok(())
+    // UBI DÉSACTIVÉ : l'enveloppe UBI n'est plus distribuée — les
+    // utilisateurs passent par les codes promo ($1 USD après KYC).
+    Err("UBI desactive : utilisez votre code promo.".to_string())
 }
 
 // ====================

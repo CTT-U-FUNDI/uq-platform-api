@@ -2051,6 +2051,15 @@ pub async fn ubi_claim(
     req: actix_web::HttpRequest,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
+    // UBI DÉSACTIVÉ par décision produit : les réclamations UBI sont
+    // abandonnées — les utilisateurs sont récompensés par les codes
+    // promo ($1 USD après KYC), pas par l'enveloppe UBI.
+    return HttpResponse::Gone().json(json!({
+        "status": "error",
+        "code": "UBI_DESACTIVE",
+        "message": "L'UBI est désactivé. Utilise ton code promo à l'inscription."
+    }));
+
     // ===== 1. Compte ciblé =====
     let account = body
         .get("account")
