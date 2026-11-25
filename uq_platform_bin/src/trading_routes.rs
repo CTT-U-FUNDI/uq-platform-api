@@ -2722,6 +2722,14 @@ pub async fn p2p_offer_create(req: HttpRequest, body: web::Json<Value>) -> HttpR
     if cote != "buy" && cote != "sell" {
         return refus("Sens invalide (buy ou sell)", "SENS_INVALIDE");
     }
+    // 🔐 RÈGLE : vendre exige KYC + moyen de réception vérifié au nom du
+    // titulaire de la carte SIM (holder_name_hash + name challenges).
+    if cote == "sell" && !profil.kyc {
+        return refus(
+            "La vérification KYC est obligatoire pour vendre du BORB — le nom du titulaire du moyen de réception doit correspondre à ta carte SIM.",
+            "KYC_REQUIS",
+        );
+    }
     let devise_saisie = texte(&body, "currency");
     // Le vendeur encaisse dans sa devise de paiement ; défaut USD. Ce qui est
     // vendu est du BORB, ancré à la base du marché 1 BORB = 1 USD.
@@ -3097,6 +3105,20 @@ pub async fn p2p_offer_take(
     };
     let borb = points as f64 / crate::p2p_escrow::POINTS_PAR_BORB as f64;
 
+    // 🔐 RÈGLE : plancher 5 USD — aucune transaction P2P sous 5 USD.
+    // 1 BORB = 1 USD (base) ; en unité DEVISE on convertit au taux de l'offre.
+    let valeur_usd = if unite == "BORB" {
+        borb
+    } else {
+        montant / cote_taux
+    };
+    if valeur_usd < 5.0 {
+        return refus(
+            "Le montant minimum d'une transaction P2P est de 5 USD.",
+            "MONTANT_MINIMUM",
+        );
+    }
+
     let (vendeur, acheteur) = if cote == "sell" {
         (createur.clone(), uq.clone())
     } else {
@@ -3136,6 +3158,15 @@ pub async fn p2p_offer_take(
         .as_ref()
         .map(|profil| profil.kyc)
         .unwrap_or(false);
+
+    // 🔐 RÈGLE : aucun ordre sans KYC — l'acheteur doit être vérifié
+    // avant de engager une transaction P2P.
+    if !kyc_acheteur {
+        return refus(
+            "La vérification KYC est obligatoire pour acheter ou vendre du BORB.",
+            "KYC_REQUIS",
+        );
+    }
 
     if telephone_acheteur.trim().is_empty() {
         return refus(
