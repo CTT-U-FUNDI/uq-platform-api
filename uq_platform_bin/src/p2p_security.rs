@@ -417,6 +417,34 @@ pub async fn receiving_method_create(req: HttpRequest, body: web::Json<Value>) -
         Ok(conn) => conn,
         Err(error) => return failure(error),
     };
+    // 🔐 OTP OBLIGATOIRE : le numéro doit être prouvé par SMS avant
+    // d'être enregistré — le jeton `verification_telephone` vient de
+    // /api/verify/confirm (usage unique). Le numéro vérifié doit
+    // correspondre à account_identifier (même E164).
+    let jeton_otp = text(&body, "verification_telephone");
+    if jeton_otp.is_empty() {
+        return refused(
+            "Vérification SMS requise : appelle /api/verify/challenge puis /api/verify/confirm pour obtenir le jeton, puis repasse-le ici.",
+            "OTP_REQUIS",
+        );
+    }
+    let tel_verifie = crate::verify_routes::valeur_verifiee(
+        &jeton_otp,
+        crate::verify_routes::Portee::Telephone,
+    );
+    let ident_norm = crate::verify_routes::analyser_telephone(&account_identifier)
+        .map(|n| n.e164)
+        .unwrap_or_else(|| account_identifier.clone());
+    match tel_verifie {
+        Some(v) if v == ident_norm || v == account_identifier => {}
+        _ => {
+            return refused(
+                "Le numéro vérifié par SMS ne correspond pas au numéro déclaré.",
+                "OTP_MISMATCH",
+            )
+        }
+    }
+
     let holder_hash = secret_hash(&holder_name);
     let last4 = account_last4(&account_identifier);
     let is_default = body
@@ -582,12 +610,17 @@ pub fn method_for_seller(
     if selected == 0 {
         return Err("Aucun moyen de réception vérifié n'est disponible.".to_string());
     }
+    // 🔐 Délai de carence : un moyen de réception doit avoir au moins
+    // 24h avant de recevoir des fonds — anti-fraude express sur les
+    // comptes jetables. created_at est en timestamp Unix.
+    let delai_ok = now() - 24 * 3600;
     conn.query_row(
         "SELECT id, account_identifier, provider, currency
          FROM p2p_receiving_methods
          WHERE id = ?1 AND UPPER(uq) = UPPER(?2)
-           AND verification_status = 'verified' AND enabled = 1",
-        params![selected, seller],
+           AND verification_status = 'verified' AND enabled = 1
+           AND created_at <= ?3",
+        params![selected, seller, delai_ok],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
     )
     .optional()

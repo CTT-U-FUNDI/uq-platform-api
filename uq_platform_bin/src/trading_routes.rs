@@ -3119,6 +3119,39 @@ pub async fn p2p_offer_take(
         );
     }
 
+    // 🔐 Plafonds progressifs : la confiance grandit avec l'historique.
+    //  - KYC seul (peu de transactions) : 50 USD/jour
+    //  - >= 10 ordres complétés : 500 USD/jour
+    let debut_jour = {
+        let m = maintenant();
+        m - (m % 86_400)
+    };
+    let (nb_ordres, _total_jour): (i64, f64) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(montant),0) FROM p2p_orders
+             WHERE buyer = ?1 AND created_at >= ?2",
+            params![uq, debut_jour],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap_or((0, 0.0));
+    let plafond = if nb_ordres >= 10 { 500.0 } else { 50.0 };
+    if valeur_usd > plafond {
+        return refus(
+            &format!(
+                "Plafond quotidien atteint : {:.0} USD max pour ton niveau de confiance ({} ordres). Progresse avec des transactions réussies pour débloquer 500 USD/jour.",
+                plafond, nb_ordres
+            ),
+            "LIMITE_QUOTIDIENNE",
+        );
+    }
+
+    // Score de confiance exposé : KYC + historique → palier visible.
+    let confiance = if nb_ordres >= 10 {
+        "premium"
+    } else {
+        "confirme"
+    };
+
     let (vendeur, acheteur) = if cote == "sell" {
         (createur.clone(), uq.clone())
     } else {
@@ -3370,6 +3403,7 @@ pub async fn p2p_offer_take(
         // ligne du vendeur, pas la sienne.
         "numero_de_preuve": telephone_vendeur,
         "buyer_kyc_verified": kyc_acheteur,
+        "confiance": confiance,
         "instructions": "Envoie le montant au numéro mobile money du vendeur, joins la capture de ton paiement et recopie le nom complet que ton opérateur affiche après le paiement — la plateforme ne te montre jamais ce nom, c'est ce qui prouve que le bon bénéficiaire a été payé. Le moteur analyse, puis ouvre « J'ai payé ». Une fois libérés, les BORB entrent dans ton coffre : vendables en Trading et convertibles en devise virtuelle pour transférer, mais pas transférables directement."
     }))
 }
