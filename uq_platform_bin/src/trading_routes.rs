@@ -4158,6 +4158,17 @@ pub async fn p2p_order_confirm(
             "STATUT_INVALIDE",
         );
     }
+    // ===== DÉLAI VENDEUR =====
+    // Le vendeur a 30 min pour vérifier son mobile money et libérer.
+    // Passé ce délai, la commande part en litige automatiquement —
+    // l'acheteur n'attend jamais indéfiniment.
+    let _ = conn.execute_batch(
+        "ALTER TABLE p2p_orders ADD COLUMN seller_deadline INTEGER DEFAULT 0;",
+    );
+    let _ = conn.execute(
+        "UPDATE p2p_orders SET seller_deadline = ?2 WHERE id = ?1",
+        params![identifiant, maintenant() + 1800],
+    );
     let nom_acheteur = crate::uq_public_alias::get_public_display(&commande.acheteur);
     let signal = match verdict.as_str() {
         "valide" => "Analyse : preuve conforme.".to_string(),
@@ -4244,6 +4255,40 @@ pub async fn p2p_order_complete(
         return refus(
             "Le paiement n'a pas encore été annoncé par l'acheteur",
             "PAIEMENT_NON_ANONCE",
+        );
+    }
+
+    // ===== DÉLAI VENDEUR DÉPASSÉ → LITIGE AUTO =====
+    // Si le vendeur n'a pas libéré sous 30 min après "paid", la
+    // commande passe en litige — l'acheteur est protégé.
+    let deadline: i64 = conn
+        .query_row(
+            "SELECT COALESCE(seller_deadline,0) FROM p2p_orders WHERE id = ?1",
+            params![identifiant],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if deadline > 0 && maintenant() > deadline {
+        let _ = conn.execute(
+            "UPDATE p2p_orders SET status = 'disputed', litige = 'vendeur_sans_reponse', updated_at = ?2 WHERE id = ?1",
+            params![identifiant, maintenant()],
+        );
+        let _ = conn.execute(
+            "INSERT INTO p2p_disputes (order_id, opened_by, reason, status, created_at)
+             VALUES (?1, 'system', 'Vendeur sans réponse après 30 min', 'open', ?2)",
+            params![identifiant, maintenant()],
+        );
+        notifier(
+            &conn,
+            &commande.vendeur,
+            "trading",
+            "Litige automatique",
+            &format!("La commande #{} passe en litige : tu n'as pas libéré sous 30 min après le paiement annoncé.", identifiant),
+            &format!("p2p:{}", identifiant),
+        );
+        return refus(
+            "Le vendeur n'a pas libéré sous 30 min — litige ouvert automatiquement.",
+            "VENDEUR_TIMEOUT",
         );
     }
 
