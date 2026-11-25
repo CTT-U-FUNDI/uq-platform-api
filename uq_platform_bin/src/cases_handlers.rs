@@ -7,7 +7,12 @@ use actix_web::{web, HttpResponse};
 use serde_json::json;
 
 /// GET /api/cases/seven
-pub async fn cases_seven() -> HttpResponse {
+pub async fn cases_seven(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -71,7 +76,12 @@ pub async fn cases_seven() -> HttpResponse {
 }
 
 /// GET /api/cases/bridges
-pub async fn cases_bridges() -> HttpResponse {
+pub async fn cases_bridges(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -134,7 +144,12 @@ fn default_bridges() -> Vec<serde_json::Value> {
 }
 
 /// GET /api/cases/anomalies
-pub async fn cases_anomalies() -> HttpResponse {
+pub async fn cases_anomalies(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -193,7 +208,12 @@ pub async fn cases_anomalies() -> HttpResponse {
 }
 
 /// GET /api/cases/optimizations
-pub async fn cases_optimizations() -> HttpResponse {
+pub async fn cases_optimizations(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,

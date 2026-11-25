@@ -7,7 +7,12 @@ use actix_web::{web, HttpResponse};
 use serde_json::json;
 
 /// GET /api/counter/status
-pub async fn counter_status() -> HttpResponse {
+pub async fn counter_status(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT requis
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -95,7 +100,12 @@ pub async fn counter_status() -> HttpResponse {
 }
 
 /// POST /api/counter/calculate
-pub async fn counter_calculate(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn counter_calculate(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT requis
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+
     let amount_borb = body
         .get("amount_borb")
         .and_then(|v| v.as_f64())
@@ -148,7 +158,12 @@ pub async fn counter_calculate(body: web::Json<serde_json::Value>) -> HttpRespon
 }
 
 /// GET /api/counter/transactions
-pub async fn counter_transactions() -> HttpResponse {
+pub async fn counter_transactions(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT requis
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -203,7 +218,12 @@ pub async fn counter_transactions() -> HttpResponse {
 }
 
 /// GET /api/counter/rights
-pub async fn counter_rights() -> HttpResponse {
+pub async fn counter_rights(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT requis
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -320,7 +340,12 @@ pub fn all_units() -> Vec<serde_json::Value> {
 }
 
 /// GET /api/counter/units
-pub async fn counter_units() -> HttpResponse {
+pub async fn counter_units(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT requis
+    if let Err(r) = crate::auth_guard::exiger_auth(&req) {
+        return r;
+    }
+
     HttpResponse::Ok().json(json!({
         "status": "success",
         "total_levels": 13,

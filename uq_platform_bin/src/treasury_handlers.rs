@@ -75,7 +75,12 @@ pub async fn treasury_status(req: actix_web::HttpRequest) -> HttpResponse {
 }
 
 /// GET /api/treasury/sales
-pub async fn treasury_sales() -> HttpResponse {
+pub async fn treasury_sales(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -118,7 +123,12 @@ pub async fn treasury_sales() -> HttpResponse {
 }
 
 /// GET /api/treasury/revenue
-pub async fn treasury_revenue() -> HttpResponse {
+pub async fn treasury_revenue(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -173,7 +183,12 @@ pub async fn treasury_revenue() -> HttpResponse {
 }
 
 /// GET /api/treasury/system/profiles
-pub async fn treasury_system_profiles() -> HttpResponse {
+pub async fn treasury_system_profiles(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -237,7 +252,12 @@ fn default_profiles() -> Vec<serde_json::Value> {
 }
 
 /// GET /api/treasury/system/messages
-pub async fn treasury_system_messages() -> HttpResponse {
+pub async fn treasury_system_messages(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -280,7 +300,12 @@ pub async fn treasury_system_messages() -> HttpResponse {
 }
 
 /// GET /api/treasury/dev/ads
-pub async fn treasury_dev_ads() -> HttpResponse {
+pub async fn treasury_dev_ads(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
@@ -323,7 +348,12 @@ pub async fn treasury_dev_ads() -> HttpResponse {
 }
 
 /// POST /api/treasury/dev/ads/create
-pub async fn treasury_dev_ads_create(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn treasury_dev_ads_create(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let title = body.get("title").and_then(|v| v.as_str()).unwrap_or("");
     let description = body
         .get("description")
@@ -375,7 +405,12 @@ pub async fn treasury_dev_ads_create(body: web::Json<serde_json::Value>) -> Http
 }
 
 /// POST /api/treasury/dev/ads/delete
-pub async fn treasury_dev_ads_delete(body: web::Json<serde_json::Value>) -> HttpResponse {
+pub async fn treasury_dev_ads_delete(req: actix_web::HttpRequest, body: web::Json<serde_json::Value>) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let ad_id = body.get("ad_id").and_then(|v| v.as_i64()).unwrap_or(0);
 
     if ad_id <= 0 {
@@ -412,7 +447,12 @@ pub async fn treasury_dev_ads_delete(body: web::Json<serde_json::Value>) -> Http
 }
 
 /// GET /api/treasury/wallets
-pub async fn treasury_wallets() -> HttpResponse {
+pub async fn treasury_wallets(req: actix_web::HttpRequest) -> HttpResponse {
+    // 🔐 SÉCURITÉ : JWT(owner) requis
+    if let Err(r) = crate::auth_guard::exiger_owner(&req) {
+        return r;
+    }
+
     let db_path = "uq_index.db";
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
