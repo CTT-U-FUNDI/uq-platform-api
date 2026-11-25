@@ -1787,6 +1787,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::post().to(crate::demandes_handlers::lien_externe_verifier),
         )
         .route(
+            "/api/liens-externe/verifier-profil",
+            web::post().to(crate::demandes_handlers::lien_externe_verifier_profil),
+        )
+        .route(
             "/api/liens-externe/mes-liens",
             web::get().to(crate::demandes_handlers::lien_externe_mes),
         )

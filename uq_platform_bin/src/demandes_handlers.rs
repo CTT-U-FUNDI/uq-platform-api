@@ -26,6 +26,17 @@ fn demandes_init(conn: &rusqlite::Connection) {
             statut TEXT DEFAULT 'en_attente',
             created_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS comptes_sociaux (
+            id TEXT PRIMARY KEY,
+            uq TEXT NOT NULL,
+            plateforme TEXT NOT NULL,
+            profil_url TEXT NOT NULL,
+            code TEXT NOT NULL,
+            statut TEXT DEFAULT 'en_attente',
+            created_at INTEGER NOT NULL,
+            verifie_a INTEGER,
+            UNIQUE(uq, plateforme, profil_url)
+        );
         CREATE TABLE IF NOT EXISTS liens_externes (
             id TEXT PRIMARY KEY,
             uq TEXT NOT NULL,
@@ -307,6 +318,13 @@ pub async fn lien_externe_soumettre(
             "status":"error","message":"URL http(s) valide requise"
         }));
     }
+    // type = "profil" (lien du COMPTE social dans la bio) ou "video"
+    // (code incrusté dans une vidéo précise). Le profil vérifie une
+    // fois → tous les contenus du compte passent.
+    let type_soumission = body
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("video");
     let plateforme = if url.contains("tiktok.com") { "tiktok" }
         else if url.contains("youtube.com") || url.contains("youtu.be") { "youtube" }
         else if url.contains("instagram.com") { "instagram" }
@@ -321,6 +339,28 @@ pub async fn lien_externe_soumettre(
 
     let code = generer_code_externe();
     let maintenant = chrono::Utc::now().timestamp();
+
+    if type_soumission == "profil" {
+        // Vérification de COMPTE : le code/lien UQ dans la bio du profil.
+        let id = format!("soc_{}_{}", maintenant, claims.sub.replace('-', ""));
+        let _ = conn.execute(
+            "INSERT INTO comptes_sociaux (id, uq, plateforme, profil_url, code, statut, created_at)
+             VALUES (?1,?2,?3,?4,?5,'en_attente',?6)
+             ON CONFLICT(uq, plateforme, profil_url) DO UPDATE SET code=?5, statut='en_attente'",
+            rusqlite::params![id, claims.sub, plateforme, url, code, maintenant],
+        );
+        return HttpResponse::Created().json(json!({
+            "status":"success",
+            "id": id,
+            "code": code,
+            "type": "profil",
+            "plateforme": plateforme,
+            "message": format!("Mets ce code {} dans la bio de ton profil {} — une fois vérifié, TOUTES tes vidéos de ce compte seront reconnues.", code, plateforme),
+            "prochaine_etape": "POST /api/liens-externe/verifier-profil {id} après avoir mis à jour ta bio"
+        }));
+    }
+
+    // type = video : code dans la description ou incrusté.
     let id = format!("lien_{}_{}", maintenant, claims.sub.replace('-', ""));
     let _ = conn.execute(
         "INSERT INTO liens_externes (id, uq, url, code, plateforme, statut, created_at)
@@ -494,6 +534,124 @@ pub async fn lien_externe_verifier(
             "Contenu vérifié — il apparaît maintenant dans le flux UQ."
         } else {
             "La plateforme ne permet pas la vérification automatique. Un admin validera manuellement."
+        }
+    }))
+}
+
+/// POST /api/liens-externe/verifier-profil {id}
+/// Vérifie qu'un COMPTE social a le code UQ dans sa bio.
+/// Méthodes par plateforme (toutes gratuites, sans clé API) :
+///   - fetch de la page profil + recherche du code dans le HTML
+///   - oEmbed TikTok/YouTube pour confirmer que le profil existe
+/// Si rien ne marche → verification_manuel_requis (honnête).
+pub async fn lien_externe_verifier_profil(
+    req: actix_web::HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let claims = match crate::auth_guard::exiger_auth(&req) {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    if id.is_empty() {
+        return HttpResponse::BadRequest().json(json!({"status":"error","message":"id requis"}));
+    }
+
+    let db = Database::shared("uq_platform_db.json");
+    let Ok(conn) = db.conn() else {
+        return HttpResponse::InternalServerError().json(json!({"status":"error"}));
+    };
+    demandes_init(&conn);
+
+    let row = conn
+        .query_row(
+            "SELECT profil_url, code, plateforme FROM comptes_sociaux WHERE id = ?1 AND uq = ?2",
+            rusqlite::params![id, claims.sub],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .ok();
+    let Some((profil_url, code, plateforme)) = row else {
+        return HttpResponse::NotFound().json(json!({
+            "status":"error","message":"Profil introuvable ou non autorisé"
+        }));
+    };
+
+    // ===== VÉRIFICATION =====
+    // 1. Fetch la page du profil et chercher le code/lien UQ.
+    //    Facebook/YouTube exposent la bio dans les meta og:description ;
+    //    TikTok/Instagram sont JS-lourds — souvent en échec → manuel.
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .user_agent("Mozilla/5.0 (compatible; UQ-Verifier/1.0)")
+        .build();
+    let mut verifie = false;
+    let mut detail = String::new();
+
+    if let Ok(c) = &client {
+        // oEmbed YouTube : confirme que la chaîne existe.
+        if plateforme == "youtube" && (profil_url.contains("youtube.com") || profil_url.contains("youtu.be")) {
+            let oe = format!("https://www.youtube.com/oembed?url={}&format=json", profil_url);
+            if let Ok(resp) = c.get(&oe).send() {
+                if resp.status().is_success() {
+                    detail = "youtube_oembed_ok".to_string();
+                }
+            }
+        }
+        // Fetch page profil : on cherche le code OU un lien uqplatform.
+        if let Ok(resp) = c.get(&profil_url).send() {
+            if let Ok(texte) = resp.text() {
+                let haut = &texte[..texte.len().min(200_000)]; // 200KB suffisent pour les meta
+                if haut.contains(&code) || haut.contains("uqplatform.com") || haut.contains("uq-") {
+                    verifie = haut.contains(&code);
+                    detail = format!("html_{}_code={}", if verifie { "trouve" } else { "uq_sans_code" }, verifie);
+                }
+            }
+        }
+    }
+
+    // TikTok a un oEmbed gratuit aussi (pour les vidéos, pas la bio —
+    // on l'utilise pour confirmer que le profil répond).
+    if !verifie && plateforme == "tiktok" {
+        let oe = format!("https://www.tiktok.com/oembed?url={}", profil_url);
+        if let Ok(c) = &client {
+            if let Ok(resp) = c.get(&oe).send() {
+                if resp.status().is_success() {
+                    detail = "tiktok_oembed_ok".to_string();
+                }
+            }
+        }
+    }
+
+    let nouveau_statut = if verifie { "verifie" } else { "verification_manuel_requis" };
+    let _ = conn.execute(
+        "UPDATE comptes_sociaux SET statut = ?1, verifie_a = ?2 WHERE id = ?3",
+        rusqlite::params![nouveau_statut, chrono::Utc::now().timestamp(), id],
+    );
+
+    if verifie {
+        // Compte social vérifié → toutes ses vidéos sont fiables.
+        db.save_notification(
+            &claims.sub,
+            &format!("✅ Ton profil {} est vérifié — tes contenus externes apparaîtront dans le flux UQ.", plateforme),
+        );
+    }
+
+    HttpResponse::Ok().json(json!({
+        "status": if verifie { "success" } else { "en_attente" },
+        "verifie": verifie,
+        "statut": nouveau_statut,
+        "plateforme": plateforme,
+        "detail": detail,
+        "message": if verifie {
+            "Profil vérifié — toutes tes vidéos de ce compte sont maintenant authentiques pour UQ."
+        } else {
+            "La plateforme ne permet pas la vérification automatique de la bio. Envoie une capture de ta bio avec le code pour validation manuelle."
         }
     }))
 }
