@@ -104,6 +104,7 @@ pub async fn add_action(req: HttpRequest, path: web::Path<String>) -> HttpRespon
         params![uq],
     );
 
+    projeter_reputation(&conn, &uq);
     HttpResponse::Ok().json(json!({"status": "success"}))
 }
 
@@ -162,6 +163,7 @@ pub async fn verify_report(
         );
     }
 
+    projeter_reputation(&conn, &uq);
     HttpResponse::Ok().json(json!({"status": "success"}))
 }
 
@@ -420,6 +422,7 @@ pub async fn add_report(
                  ON CONFLICT(uq) DO UPDATE SET orange = orange + 1, updated_at = datetime('now')",
                 params![accusateur],
             );
+            projeter_reputation(&conn, &accusateur);
             HttpResponse::Ok().json(json!({
                 "status": "suspect",
                 "message": "Signalement suspect : toutes les actions sont des succes. L'accusateur est place en Orange.",
@@ -442,6 +445,7 @@ pub async fn add_report(
                  ON CONFLICT(uq) DO UPDATE SET orange = orange + 1, updated_at = datetime('now')",
                 params![accuse],
             );
+            projeter_reputation(&conn, &accuse);
             HttpResponse::Ok().json(json!({
                 "status": "success",
                 "dossier_id": dossier_id,
@@ -457,6 +461,39 @@ pub async fn add_report(
 // ============================================================================
 // RACHAT ET BLOCAGES
 // ============================================================================
+
+/// Projection publique Firestore : le doc `reputation/{uq}` reflète les
+/// compteurs SQLite. No-op sans FIREBASE_SERVICE_ACCOUNT — la règle
+/// Firestore interdit l'écriture client, seul ce backend écrit.
+fn projeter_reputation(conn: &rusqlite::Connection, uq: &str) {
+    let lu = conn.query_row(
+        "SELECT vert, blanc, orange, rouge, noir FROM reputation WHERE uq = ?1",
+        rusqlite::params![uq],
+        |r| {
+            Ok(json!({
+                "vert": r.get::<_, i64>(0).unwrap_or(0),
+                "blanc": r.get::<_, i64>(1).unwrap_or(0),
+                "orange": r.get::<_, i64>(2).unwrap_or(0),
+                "rouge": r.get::<_, i64>(3).unwrap_or(0),
+                "noir": r.get::<_, i64>(4).unwrap_or(0),
+            }))
+        },
+    );
+    if let Ok(compteurs) = lu {
+        crate::firestore_sync::ecrire(
+            &format!("reputation/{}", uq),
+            &serde_json::json!({
+                "uq": uq,
+                "vert": compteurs["vert"],
+                "blanc": compteurs["blanc"],
+                "orange": compteurs["orange"],
+                "rouge": compteurs["rouge"],
+                "noir": compteurs["noir"],
+                "updatedAt": chrono::Utc::now().timestamp(),
+            }),
+        );
+    }
+}
 
 /// Incremente le compteur de rachat et leve le blocage si 10 rouges effaces.
 pub fn achat_reussi(conn: &rusqlite::Connection, uq: &str) -> Result<(), String> {
@@ -517,6 +554,7 @@ pub fn achat_reussi(conn: &rusqlite::Connection, uq: &str) -> Result<(), String>
         );
     }
 
+    projeter_reputation(conn, uq);
     Ok(())
 }
 

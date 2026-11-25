@@ -9,6 +9,7 @@ mod command_registry;
 mod db;
 mod domain;
 mod frais_plateforme;
+mod firestore_sync;
 mod geo;
 mod guardian_routes;
 mod owner_guard;

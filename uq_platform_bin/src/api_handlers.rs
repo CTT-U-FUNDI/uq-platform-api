@@ -4813,7 +4813,29 @@ pub async fn zando_item_publish(
     let id = path.into_inner();
 
     match db.publish_shop_item(&id, &claims.sub) {
-        Ok(()) => HttpResponse::Ok().json(json!({"status": "success"})),
+        Ok(()) => {
+            // Projection publique Firestore : la vitrine reflète
+            // l'item publié. No-op sans FIREBASE_SERVICE_ACCOUNT.
+            if let Some(item) = db.get_shop_item_by_id(&id) {
+                crate::firestore_sync::ecrire(
+                    &format!("zando_items/{}", id),
+                    &serde_json::json!({
+                        "id": id,
+                        "seller": item.get("shop_id").cloned().unwrap_or_default(),
+                        "title": item.get("title").cloned().unwrap_or_default(),
+                        "subtitle": item.get("subtitle").cloned().unwrap_or_default(),
+                        "description": item.get("description").cloned().unwrap_or_default(),
+                        "item_type": item.get("item_type").cloned().unwrap_or_default(),
+                        "price_borb": item.get("price_borb").cloned().unwrap_or_default(),
+                        "price_usd": item.get("price_usd").cloned().unwrap_or_default(),
+                        "category": item.get("category").cloned().unwrap_or_default(),
+                        "published": true,
+                        "updatedAt": chrono::Utc::now().timestamp(),
+                    }),
+                );
+            }
+            HttpResponse::Ok().json(json!({"status": "success"}))
+        }
         Err(e) if e.starts_with("Item introuvable") => HttpResponse::BadRequest().json(json!({
             "status": "error",
             "message": e

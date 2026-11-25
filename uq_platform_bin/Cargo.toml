@@ -19,7 +19,7 @@ image = { version = "0.25", features = ["png", "jpeg"] }
 ab_glyph = "0.2"
 imageproc = "0.24"
 rand = "0.8"
-reqwest = { version = "0.12", features = ["json", "native-tls"] }
+reqwest = { version = "0.12", features = ["json", "native-tls", "blocking"] }
 actix-files = "0.6"
 lazy_static = "1.4"
 uq_player_lib = { path = "../uq_player_lib" }
